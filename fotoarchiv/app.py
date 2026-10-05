@@ -84,20 +84,36 @@ def create_app(archiv, work):
         return cleanup.plan(path, body.get("volby"),
                             body.get("raw_v_koreni", True))
 
-    @app.get("/api/akce/<nazev>/nahled/<soubor>")
-    def akce_thumb(nazev, soubor):
+    def root_file(nazev, soubor):
+        """Soubor v kořeni akce; podsložky a skryté soubory nejsou."""
         path = event_dir(nazev)
         if "/" in soubor or "\\" in soubor or soubor.startswith("."):
             abort(404)
         src = path / soubor
         if not src.is_file():
             abort(404)
-        thumb = thumbs.thumbnail(src, cache_dir)
+        return src
+
+    @app.get("/api/akce/<nazev>/nahled/<soubor>")
+    def akce_thumb(nazev, soubor):
+        size = request.args.get("velikost", str(thumbs.SIZE))
+        if size not in map(str, thumbs.SIZES):
+            abort(400)
+        src = root_file(nazev, soubor)
+        thumb = thumbs.thumbnail(src, cache_dir, int(size))
         if thumb is None:
             abort(404)
         response = send_file(thumb, mimetype="image/jpeg")
         response.cache_control.max_age = 3600
         return response
+
+    @app.get("/api/akce/<nazev>/soubor/<soubor>")
+    def akce_original(nazev, soubor):
+        # Originál jen pro čtení; send_file umí Range (206) pro přetáčení.
+        src = root_file(nazev, soubor)
+        if scan.extension(soubor) not in scan.MEDIA_EXT:
+            abort(404)
+        return send_file(src, conditional=True)
 
     @app.get("/api/jmena")
     def jmena():

@@ -153,6 +153,13 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    akce, hlavička skupiny = skupina, vybrané soubory = soubory. Zděděné
    hodnoty jsou ve formuláři vidět a jdou přepsat. Lišta ukazuje, co
    chybí („2 skupiny bez autorů, 14 souborů bez data“).
+
+   Místo mřížky jde přepnout na **lupu** (Enter, dvojklik na dlaždici
+   nebo přepínač; zpět Esc): velká fotka nebo přehrávač videa a pod ní
+   filmový pás celé akce se skupinami oddělenými předělem. Šipky
+   přepínají aktuální soubor a vyberou jen jej, Shift+šipky výběr
+   rozšiřují; klik do pásu vybírá jako v mřížce. Výběr i formulář jsou
+   s mřížkou společné.
 4. **Dokončení akce** zkontroluje úplnost a zapíše sidecary.
 
 Našeptávání a kontrola jmen viz výše.
@@ -181,8 +188,10 @@ na jakém stroji, od kdy, počitadlo). Druhý uživatel dostane upozornění.
 - Zavření prohlížeče bez odhlášení: server po výpadku heartbeatu
   z prohlížeče zámek sám uvolní.
 
-Metadata (JPG, mp4) čte a XMP sidecary zapisuje `exiftool`. Náhledy se
-cachují lokálně mimo archiv — archiv leží na SMB.
+Metadata (JPG, mp4) čte a XMP sidecary zapisuje `exiftool`. Náhledy
+(320 px do mřížky, 1600 px do lupy) se cachují lokálně mimo archiv —
+archiv leží na SMB; lupa si sousední fotky načítá předem. Videa se do
+lupy posílají přímo z archivu, jen ke čtení.
 
 Primárně Linux (Fedora). Kolegové na Windows jsou žádoucí, ale ne
 priorita: snadné spuštění na Windows se řeší, jen pokud nebude stát

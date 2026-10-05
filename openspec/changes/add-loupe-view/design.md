@@ -44,15 +44,22 @@ Pás se při změně aktuálního souboru posune (`scrollIntoView` s
 
 ### Klávesy
 
-Globální obsluha `keydown` reaguje jen v režimu lupy a jen když fokus
+Globální obsluha `keydown` reaguje jen na pracovní ploše a jen když fokus
 není v `input`, `textarea` ani `select` (stejná ochrana jako dnešní Esc).
-Enter v mřížce otevře lupu na kotvě výběru. Esc v lupě vrací do mřížky
-(výběr nemaže); Esc v mřížce maže výběr jako dosud.
+Šipky přepínají soubory jen v lupě, i když je fokus na přehrávači videa
+(šipkami se tedy video nepřetáčí). Enter v mřížce otevře lupu na
+aktuálním souboru (naposledy kliknutém), ne na kotvě výběru — po
+Shift+kliku se liší a spec chce aktuální naposledy kliknutý. Bez
+aktuálního souboru lupa ukáže první vybraný, jinak první soubor akce.
+Esc v lupě vrací do mřížky (výběr nemaže); Esc v mřížce maže výběr jako
+dosud.
 
 ### Velké náhledy: parametr velikosti
 
 `thumbnail(src, cache_dir, size=SIZE)`; velikost je součástí klíče cache
-a jména souboru, takže 320 a 1600 px vedle sebe nekolidují. Endpoint
+a jména souboru (`<hash>-<velikost>.jpg`), takže 320 a 1600 px vedle sebe
+nekolidují. Stávající 320px náhledy (`<hash>.jpg`) se tím jednou
+přegenerují; staré soubory zůstanou v cache do ručního smazání. Endpoint
 `/api/akce/<n>/nahled/<soubor>?velikost=1600` (povolené hodnoty 320
 a 1600, jiné odmítnout). JPEG se dekóduje s `draft` na nejbližší větší
 měřítko, kvalita 85. Pro video stačí stávající snímek přes `ffmpeg`

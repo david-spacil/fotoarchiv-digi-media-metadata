@@ -29,6 +29,13 @@ function eventUrl(name, rest = "") {
   return `/api/akce/${encodeURIComponent(name)}${rest}`;
 }
 
+const LARGE = 1600;
+
+function thumbUrl(f, size) {
+  return eventUrl(state.name, `/nahled/${encodeURIComponent(f)}` +
+    (size ? `?velikost=${size}` : ""));
+}
+
 async function api(url, opts = {}) {
   const r = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -90,6 +97,9 @@ const state = {
   group: null,       // vybraná hlavička skupiny
   anchor: null,
   order: [],         // pořadí souborů v mřížce (pro Shift)
+  view: "grid",      // "grid" | "loupe"
+  current: null,     // aktuální soubor (lupa)
+  preload: [],
   sessionNames: new Set(),
   keptEmpty: new Set(), // prázdné skupiny, které uživatel chtěl ponechat
   dirty: false,
@@ -104,10 +114,20 @@ window.addEventListener("beforeunload", (e) => {
   if (state.dirty || state.saving) e.preventDefault();
 });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && state.mode === "workspace" &&
-      !e.target.closest("input, textarea, select") &&
-      !document.querySelector("dialog[open]")) {
-    select(new Set(), null);
+  if (state.mode !== "workspace" ||
+      e.target.closest("input, textarea, select") ||
+      document.querySelector("dialog[open]")) return;
+  const loupe = state.view === "loupe";
+  if (e.key === "Escape") {
+    if (loupe) setView("grid");
+    else select(new Set(), null);
+  } else if (e.key === "Enter" && !loupe && !e.target.closest("button, a")) {
+    e.preventDefault();
+    setView("loupe");
+  } else if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && loupe &&
+             !e.altKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    step(e.key === "ArrowRight" ? 1 : -1, e.shiftKey);
   }
 });
 
@@ -156,7 +176,7 @@ async function openEvent(name) {
   Object.assign(state, {
     name, detail: null, doc: null, version: null, mode: null,
     sel: new Set(), group: null, anchor: null, dirty: false,
-    conflict: false,
+    conflict: false, view: "grid", current: null,
   });
   const events = state.events || await api("/api/akce");
   const entry = events.find((e) => e.nazev === name);
@@ -471,18 +491,51 @@ function renderGrid() {
   const scroll = grid.scrollTop;
   grid.replaceChildren(...nodes, h("div", { id: "band", hidden: true }));
   grid.scrollTop = scroll;
+  renderFilm(secs);
 }
 
 function select(files, group, opts = {}) {
   state.sel = files;
   state.group = group;
-  for (const el of document.querySelectorAll("#grid .tile")) {
+  for (const el of document.querySelectorAll("#grid .tile, #film .ftile")) {
     el.classList.toggle("selected", files.has(el.dataset.file));
   }
-  for (const el of document.querySelectorAll("#grid .ghead")) {
+  for (const el of document.querySelectorAll("#film .ftile")) {
+    el.classList.toggle("current", el.dataset.file === state.current);
+  }
+  for (const el of document.querySelectorAll("#grid .ghead, #film .fhead")) {
     el.classList.toggle("selected", !!group && el.dataset.group === group);
   }
+  if (state.view === "loupe") renderBig();
   if (!opts.keepPanel) renderPanel();
+}
+
+function range(a, b) {
+  const i = state.order.indexOf(a);
+  const j = state.order.indexOf(b);
+  return state.order.slice(Math.min(i, j), Math.max(i, j) + 1);
+}
+
+// Klik na soubor v mřížce i v pásu: klik, Ctrl, Shift; nastaví aktuální.
+function clickFile(f, e) {
+  const add = e.ctrlKey || e.metaKey;
+  state.current = f;
+  if (e.shiftKey && state.anchor && state.order.includes(state.anchor)) {
+    select(new Set([...(add ? state.sel : []), ...range(state.anchor, f)]),
+      null);
+    return;
+  }
+  const next = new Set(add ? state.sel : []);
+  if (add && next.has(f)) next.delete(f);
+  else next.add(f);
+  state.anchor = f;
+  select(next, null);
+}
+
+function clickGroupHead(gid) {
+  if (gid) select(new Set(), gid);
+  // „Bez skupiny“ nemá skupinu; vybere její soubory.
+  else select(new Set(sections().find((s) => !s.gid)?.files || []), null);
 }
 
 function setupGrid(grid) {
@@ -492,36 +545,17 @@ function setupGrid(grid) {
       return;
     }
     const head = e.target.closest(".ghead");
-    if (head) {
-      if (head.dataset.group) {
-        select(new Set(), head.dataset.group);
-      } else {
-        // „Bez skupiny“ nemá skupinu; vybere její soubory.
-        const files = [...head.nextElementSibling.children]
-          .map((t) => t.dataset.file);
-        select(new Set(files), null);
-      }
-      return;
-    }
+    if (head) return clickGroupHead(head.dataset.group);
     const t = e.target.closest(".tile");
-    if (!t) {
-      if (!e.target.closest("details")) select(new Set(), null);
-      return;
-    }
-    const f = t.dataset.file;
-    const add = e.ctrlKey || e.metaKey;
-    if (e.shiftKey && state.anchor && state.order.includes(state.anchor)) {
-      const a = state.order.indexOf(state.anchor);
-      const b = state.order.indexOf(f);
-      const range = state.order.slice(Math.min(a, b), Math.max(a, b) + 1);
-      select(new Set([...(add ? state.sel : []), ...range]), null);
-      return;
-    }
-    const next = new Set(add ? state.sel : []);
-    if (add && next.has(f)) next.delete(f);
-    else next.add(f);
-    state.anchor = f;
-    select(next, null);
+    if (t) clickFile(t.dataset.file, e);
+    else if (!e.target.closest("details")) select(new Set(), null);
+  });
+
+  grid.addEventListener("dblclick", (e) => {
+    const t = e.target.closest(".tile");
+    if (!t || state.mode !== "workspace") return;
+    state.current = t.dataset.file;
+    setView("loupe");
   });
 
   // Výběr tažením: začíná mimo dlaždici i hlavičku.
@@ -567,6 +601,146 @@ function setupGrid(grid) {
     window.addEventListener("mouseup", up);
     e.preventDefault();
   });
+}
+
+// --- lupa a filmový pás ----------------------------------------------------
+
+function setView(view) {
+  state.view = view;
+  const loupe = view === "loupe";
+  if (loupe && !state.order.includes(state.current)) {
+    state.current = state.order.find((f) => state.sel.has(f)) ??
+      state.order[0] ?? null;
+  }
+  if (!loupe) document.querySelector("#big video")?.pause();
+  document.getElementById("grid").hidden = loupe;
+  document.getElementById("loupe").hidden = !loupe;
+  for (const b of document.querySelectorAll(".views button")) {
+    b.classList.toggle("active", b.dataset.view === view);
+  }
+  if (loupe) {
+    renderFilm();
+    renderBig();
+  } else if (state.current) {
+    document.querySelector(
+      `#grid .tile[data-file="${CSS.escape(state.current)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// Šipky v lupě: další/předchozí soubor; se Shiftem rozšíří výběr od kotvy.
+function step(dir, extend) {
+  const i = state.order.indexOf(state.current);
+  const f = state.order[i < 0 ? 0 : i + dir];
+  if (!f) return;
+  state.current = f;
+  if (extend) {
+    if (!state.order.includes(state.anchor)) {
+      state.anchor = state.order[Math.max(i, 0)];
+    }
+    select(new Set(range(state.anchor, f)), null);
+  } else {
+    state.anchor = f;
+    select(new Set([f]), null);
+  }
+}
+
+function filmTile(f) {
+  const info = state.scan[f] || {};
+  const present = state.present.has(f);
+  return h("div", {
+    class: `ftile${present ? "" : " missing"}` +
+      `${state.sel.has(f) ? " selected" : ""}` +
+      `${f === state.current ? " current" : ""}`,
+    dataset: { file: f }, title: f,
+  }, present
+    ? h("img", { src: thumbUrl(f), loading: "lazy", alt: "", draggable: false,
+      onerror: (e) => e.target.replaceWith(
+        h("span", { class: "ph" }, info.video ? "▶ video" : f)) })
+    : h("span", { class: "ph" }, "chybí"));
+}
+
+function renderFilm(secs) {
+  const film = document.getElementById("film");
+  if (!film || state.view !== "loupe") return;
+  const scroll = film.scrollLeft;
+  film.replaceChildren(...(secs || sections()).map((s) =>
+    h("div", { class: "fsec" },
+      h("div", {
+        class: `fhead${s.gid && state.group === s.gid ? " selected" : ""}`,
+        dataset: { group: s.gid || "" }, title: s.title,
+      }, s.title),
+      s.files.map(filmTile))));
+  film.scrollLeft = scroll;
+  revealCurrent();
+}
+
+function revealCurrent() {
+  if (!state.current) return;
+  document.querySelector(
+    `#film .ftile[data-file="${CSS.escape(state.current)}"]`)
+    ?.scrollIntoView({ inline: "nearest", block: "nearest" });
+}
+
+function setupFilm(film) {
+  film.addEventListener("click", (e) => {
+    const head = e.target.closest(".fhead");
+    if (head) return clickGroupHead(head.dataset.group);
+    const t = e.target.closest(".ftile");
+    if (t) clickFile(t.dataset.file, e);
+  });
+}
+
+// Velká fotka: hned roztažený náhled 320 px, po načtení 1600 px.
+function renderBig() {
+  const big = document.getElementById("big");
+  if (!big) return;
+  revealCurrent();
+  const f = state.current;
+  if (big.dataset.file === (f || "")) return;
+  big.dataset.file = f || "";
+  if (!f) {
+    big.replaceChildren(h("div", { class: "media" },
+      h("span", { class: "ph" }, "Akce nemá soubory.")));
+    return;
+  }
+  const info = state.scan[f] || {};
+  const media = h("div", { class: "media" });
+  const placeholder = (text) => h("span", { class: "ph" }, text);
+  if (!state.present.has(f)) {
+    media.append(placeholder("Soubor chybí v kořeni akce."));
+  } else if (info.video) {
+    const fallback = () => media.replaceChildren(
+      h("img", { src: thumbUrl(f, LARGE), alt: "",
+        onerror: (e) => e.target.replaceWith(placeholder("bez náhledu")) }),
+      h("p", { class: "vmsg" },
+        "Video nejde v prohlížeči přehrát (nepodporovaný formát)."));
+    media.append(h("video", {
+      src: eventUrl(state.name, `/soubor/${encodeURIComponent(f)}`),
+      poster: thumbUrl(f, LARGE), controls: true, preload: "metadata",
+      onerror: fallback,
+      onloadedmetadata: (e) => { if (!e.target.videoWidth) fallback(); },
+    }));
+  } else {
+    const img = h("img", { src: thumbUrl(f), alt: "", draggable: false,
+      onerror: () => img.replaceWith(placeholder("bez náhledu")) });
+    const large = new Image();
+    large.onload = () => { if (big.dataset.file === f) img.src = large.src; };
+    large.src = thumbUrl(f, LARGE);
+    media.append(img);
+  }
+  const datum = resolve(state.doc, f).datum?.hodnota;
+  const i = state.order.indexOf(f);
+  big.replaceChildren(media, h("div", { class: "caption" },
+    `${f} · ${datum ? datum.replace("T", " ") : "bez data"} · ` +
+    `${i + 1} / ${state.order.length}`));
+  // Sousedé dopředu, ať šipka nečeká na SMB.
+  state.preload = [i + 1, i + 2, i - 1].map((n) => state.order[n])
+    .filter((g) => g && state.present.has(g)).map((g) => {
+      const im = new Image();
+      im.src = thumbUrl(g, LARGE);
+      return im;
+    });
 }
 
 // --- formulář ----------------------------------------------------------------
@@ -879,14 +1053,25 @@ function renderWorkspace() {
     h("div", { class: "eventbar" }, back,
       h("h1", {}, state.name),
       h("span", { class: "paths" }, d.pracovni_soubor),
+      h("span", { class: "views" },
+        h("button", { dataset: { view: "grid" }, title: "Esc",
+          onclick: () => setView("grid") }, "Mřížka"),
+        h("button", { dataset: { view: "loupe" },
+          title: "Enter nebo dvojklik", onclick: () => setView("loupe") },
+        "Lupa")),
       h("span", { class: "proto" }, "Prototyp: dokončení akce a export " +
         "XMP zatím nejsou, změny se ukládají průběžně.")),
     h("div", { id: "bar", class: "bar" }),
     h("div", { class: "workspace" },
       h("div", { id: "grid", class: "grid" }),
+      h("div", { id: "loupe", class: "loupe", hidden: true },
+        h("div", { id: "big", class: "big" }),
+        h("div", { id: "film", class: "film" })),
       h("aside", { id: "panel", class: "panel" })));
   setupGrid(document.getElementById("grid"));
+  setupFilm(document.getElementById("film"));
   renderGrid();
+  setView(state.view);
   renderBar();
   renderPanel();
   setStatus();
@@ -921,6 +1106,7 @@ function renderBar() {
     item(`${plural(list.length, "soubor", "soubory", "souborů")} ${label}`,
       () => {
         state.anchor = list[0];
+        state.current = list[0];
         select(new Set(list), null);
         document.querySelector(
           `#grid .tile[data-file="${CSS.escape(list[0])}"]`)
