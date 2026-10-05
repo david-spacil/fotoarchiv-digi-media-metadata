@@ -53,9 +53,17 @@ Místo skupiny a souboru SHALL být jedna hodnota s návrhy z míst akce.
 Účastníci jsou výčet důležitých lidí na akci a přednostní návrhy při
 označování osob; MUST NOT se dědit na skupiny ani soubory.
 
+Položky seznamu SHALL oddělovat jen Enter; čárka je součást hodnoty
+(adresy, jména).
+
 #### Scenario: Více míst
-- **WHEN** uživatel do pole místo napíše `Molenburk, Housko`
+- **WHEN** uživatel do pole místa napíše `Molenburk`, Enter, `Housko`,
+  Enter
 - **THEN** akce má dvě místa `Molenburk` a `Housko`
+
+#### Scenario: Adresa s čárkou
+- **WHEN** uživatel do pole místa napíše `Adamova 150, Adamov` a Enter
+- **THEN** akce má jedno místo `Adamova 150, Adamov`
 
 #### Scenario: Místo u fotky
 - **WHEN** akce má místa `Molenburk` a `Housko` a uživatel u fotky

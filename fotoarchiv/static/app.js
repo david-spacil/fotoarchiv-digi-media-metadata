@@ -909,14 +909,15 @@ function editor(type, value, placeholder, update, inheritedValue) {
 // --- pole jmen ---------------------------------------------------------------
 
 // Pole se štítky. `people` = jména osob (návrhy a kontrola tvaru);
-// jinak volné štítky (místa), kde i čárka odděluje položky.
+// jinak volné štítky (místa). Položky odděluje jen Enter: čárka patří
+// do jmen i adres (`Adamova 150, Adamov`).
 function namesField(initial, update, inheritedValue, placeholder,
   people = true) {
   let names = [...initial];
   let inherited = inheritedValue ? [...inheritedValue] : null;
   const chips = h("div", { class: "chips" });
   const input = h("input", { placeholder: placeholder || (people
-    ? "Příjmení, Jméno – Enter přidá" : "Enter nebo čárka přidá") });
+    ? "Příjmení, Jméno – Enter přidá" : "Enter přidá") });
   const list = h("ul", { class: "suggest", hidden: true });
   const hint = h("div", { class: "hint", hidden: true });
   let active = -1;
@@ -999,18 +1000,7 @@ function namesField(initial, update, inheritedValue, placeholder,
     }, n)));
     list.hidden = !all.length;
   }, 150);
-  input.addEventListener("input", () => {
-    if (!people && input.value.includes(",")) {
-      const parts = input.value.split(",");
-      input.value = parts.pop();
-      const base = inherited || names;
-      const added = parts.map((s) => s.trim())
-        .filter((s) => s && !base.includes(s));
-      if (added.length) commit([...base, ...added]);
-      return;
-    }
-    showSuggest();
-  });
+  input.addEventListener("input", showSuggest);
   input.addEventListener("keydown", (e) => {
     const items = [...list.children];
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
