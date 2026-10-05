@@ -15,14 +15,16 @@ TAGS = ["DateTimeOriginal", "CreateDate", "Make", "Model",
         "GPSLatitude", "GPSLongitude"]
 
 WHATSAPP_RE = re.compile(r"^IMG-(\d{4})(\d{2})(\d{2})-WA\d+", re.I)
-# (id, čitelný název, vzor názvu souboru)
+# (id, název skupiny bez přístroje, vzor názvu souboru)
 PATTERNS = [
-    ("panasonic", "P#######", re.compile(r"^P\d{7}\.", re.I)),
-    ("samsung", "YYYYMMDD_HHMMSS", re.compile(r"^\d{8}_\d{6}")),
+    ("panasonic", "Soubory P… bez přístroje",
+     re.compile(r"^P\d{7}\.", re.I)),
+    ("samsung", "Soubory RRRRMMDD_HHMMSS bez přístroje",
+     re.compile(r"^\d{8}_\d{6}")),
     ("whatsapp", "WhatsApp", WHATSAPP_RE),
-    ("img", "IMG_####", re.compile(r"^IMG_\d{4}", re.I)),
+    ("img", "Soubory IMG_… bez přístroje", re.compile(r"^IMG_\d{4}", re.I)),
 ]
-OTHER = ("ostatni", "ostatní")
+OTHER = ("ostatni", "Ostatní")
 EXIF_DATE_RE = re.compile(r"^(\d{4}):(\d{2}):(\d{2}) (\d{2}):(\d{2}):(\d{2})")
 
 

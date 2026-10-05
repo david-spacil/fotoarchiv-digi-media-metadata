@@ -51,6 +51,11 @@ název.
 - **WHEN** akce obsahuje `IMG-20260428-WA0003.jpg` bez EXIF
 - **THEN** soubor patří do skupiny WhatsApp
 
+#### Scenario: Vzor bez přístroje
+- **WHEN** akce obsahuje `P*.JPG` bez údaje o přístroji a žádný jiný
+  soubor se stejným vzorem přístroj nemá
+- **THEN** skupina se jmenuje `Soubory P… bez přístroje`
+
 ### Requirement: Náhledy
 Aplikace SHALL zobrazit náhled každé fotky a videa. Náhledy MUST být
 uloženy v lokální cache mimo archiv a při dalším otevření akce znovu

@@ -100,3 +100,10 @@ def test_groups_video_without_device_joins_single_device():
         f("prezentace.png", None)])
     assert g["prirazeni"]["20260428_144812.mp4"] == "sm-a528b"
     assert g["prirazeni"]["prezentace.png"] == "ostatni"
+    assert g["skupiny"]["ostatni"] == {"nazev": "Ostatní"}
+
+
+def test_groups_pattern_without_any_device_has_readable_name():
+    g = scan.propose_groups([f("P1503712.JPG", None)])
+    assert g["skupiny"] == {
+        "panasonic": {"nazev": "Soubory P… bez přístroje"}}
