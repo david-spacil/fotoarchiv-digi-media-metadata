@@ -78,3 +78,53 @@ def test_save_leaves_archive_and_no_temp(ws):
     assert snapshot(ws.archiv) == before
     assert [p.name for p in ws.metadata_path(EVENT).parent.iterdir()] == \
         ["_metadata.json"]
+
+
+@pytest.fixture
+def ws_prod(ws):
+    return Workspace(ws.archiv, ws.work, zapis=True)
+
+
+def test_production_saves_in_event_dir(ws_prod):
+    v = ws_prod.save(EVENT, {"n": 1}, None)
+    path = ws_prod.archiv / EVENT / "_metadata.json"
+    assert ws_prod.metadata_path(EVENT) == path
+    assert json.loads(path.read_text()) == {"n": 1}
+    ws_prod.save(EVENT, {"n": 2}, v)
+    assert sorted(p.name for p in path.parent.iterdir()) == \
+        ["RAW", "Thumbs.db", "_metadata.json", "a.jpg", "b.mp4"]
+    assert not ws_prod.work.exists()
+
+
+def test_production_ignores_work_copy(ws, ws_prod):
+    ws.save(EVENT, {"n": "work"}, None)
+    assert ws_prod.load(EVENT) == (None, None)
+    event = ws_prod.list_events()[0]
+    assert event["stav"] == "nezpracovano"
+    ws_prod.save(EVENT, {"n": "archiv"}, None)
+    # Metadata se nepočítají mezi soubory akce.
+    assert ws_prod.list_events()[0]["souboru"] == 2
+    assert ws_prod.metadata_files() == [ws_prod.archiv / EVENT /
+                                        "_metadata.json"]
+    assert len(ws.metadata_files()) == 2
+
+
+def test_adopt_skips_existing(ws):
+    from fotoarchiv.archive import adopt
+    ws.save(EVENT, {"n": "work"}, None)
+    ws.save("2025-01-02 starší", {"n": "work2"}, None)
+    ws.metadata_path("2025-01-02 starší").parent.with_name(
+        "2020-01-01 smazaná").mkdir()
+    (ws.metadata_path("2025-01-02 starší").parent.with_name(
+        "2020-01-01 smazaná") / "_metadata.json").write_text("{}")
+    archived = ws.archiv / EVENT / "_metadata.json"
+    archived.write_text('{"n": "archiv"}')
+    before = snapshot(ws.archiv)
+    adopted, skipped = adopt(ws.archiv, ws.work)
+    assert [n for n, _ in adopted] == ["2025-01-02 starší"]
+    assert sorted(n for n, _ in skipped) == ["2020-01-01 smazaná", EVENT]
+    assert archived.read_text() == '{"n": "archiv"}'
+    assert snapshot(ws.archiv)[f"{EVENT}/_metadata.json"] == \
+        before[f"{EVENT}/_metadata.json"]
+    assert json.loads((ws.archiv / "2025-01-02 starší" /
+                       "_metadata.json").read_text()) == {"n": "work2"}

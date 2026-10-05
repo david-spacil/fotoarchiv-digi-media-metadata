@@ -4,9 +4,12 @@ Pokyny pro AI agenty (Claude Code, Codex aj.) pracující v tomto repozitáři.
 
 ## Stav
 
-Prototyp (OpenSpec změna `add-prototype-workspace`): Flask server
-v `fotoarchiv/`, klient v `fotoarchiv/static/` (čisté ES moduly bez build
-kroku). Archiv jen čte, `_metadata.json` a cache ukládá do `.work/`.
+Prototyp: Flask server v `fotoarchiv/`, klient v `fotoarchiv/static/`
+(čisté ES moduly bez build kroku). Bez přepínače vývojový režim: archiv
+jen čte, `_metadata.json` a cache ukládá do `.work/`. S
+`--zapis-do-archivu` produkční: `_metadata.json` ve složce akce, úklid
+se provádí; cache zůstává v `.work/`. Zámek akcí je v paměti serveru
+(`lock.py`) — **server smí běžet jen jako jeden proces**.
 
 `README.md` je specifikace (archiv, datový model, jména osob, výstupy,
 aplikace). Při změně návrhu ho aktualizovat; tady ho neopakovat.
@@ -19,7 +22,10 @@ Změny se vedou přes OpenSpec (`openspec/`, příkazy `/opsx:*`).
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv \
   --archiv /mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
-# → http://127.0.0.1:5000, volitelně --work .work --port 5000
+# → http://127.0.0.1:5000, volitelně --work .work --port 5000,
+#   --zapis-do-archivu (produkční režim, zapisuje do archivu)
+.venv/bin/python -m fotoarchiv prevzit --archiv … --work .work
+# → jednorázově převezme _metadata.json z .work do archivu
 
 .venv/bin/python -m pytest -q                       # testy Pythonu
 .venv/bin/python -m pytest tests/test_cleanup.py::test_collision_blocks

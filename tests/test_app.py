@@ -6,13 +6,15 @@ from PIL import Image
 
 from fotoarchiv.__main__ import main
 from fotoarchiv.app import create_app
+from fotoarchiv.lock import Locks
 from .conftest import make_tree, snapshot
 
 EVENT = "2026-04-28 kontrola"
+R1 = {"relace": "r1", "jmeno": "Spáčil, David"}
+R2 = {"relace": "r2", "jmeno": "Kopáčová, Jana"}
 
 
-@pytest.fixture
-def client(tmp_path, monkeypatch):
+def make_client(tmp_path, monkeypatch, zapis=False, locks=None):
     archiv = tmp_path / "archiv"
     archiv.mkdir()
     make_tree(archiv, {f"{EVENT}/": {"IMG-20260428-WA0001.jpg": "x",
@@ -23,9 +25,19 @@ def client(tmp_path, monkeypatch):
     Image.new("RGB", (2000, 1000)).save(archiv / EVENT / "foto.jpg")
     monkeypatch.setattr("fotoarchiv.scan.run_exiftool",
                         lambda d, n: {})
-    app = create_app(archiv, tmp_path / "work")
+    app = create_app(archiv, tmp_path / "work", zapis, locks)
     app.testing = True
     return app.test_client(), archiv
+
+
+@pytest.fixture
+def client(tmp_path, monkeypatch):
+    return make_client(tmp_path, monkeypatch)
+
+
+@pytest.fixture
+def prod(tmp_path, monkeypatch):
+    return make_client(tmp_path, monkeypatch, zapis=True)
 
 
 def test_index_html(client):
@@ -42,12 +54,13 @@ def test_flow_new_save_conflict(client):
     assert d["novy"] and d["version"] is None
     doc = d["metadata"]
     assert doc["soubory"]["IMG-20260428-WA0001.jpg"]["datum"] == "2026-04-28"
+    assert c.post(f"/api/akce/{EVENT}/zamek", json=R1).status_code == 200
     r = c.put(f"/api/akce/{EVENT}/metadata",
-              json={"metadata": doc, "version": None})
+              json={"metadata": doc, "version": None, "relace": "r1"})
     assert r.status_code == 200
     assert c.get("/api/akce").json[0]["stav"] == "rozpracovano"
     r = c.put(f"/api/akce/{EVENT}/metadata",
-              json={"metadata": doc, "version": None})
+              json={"metadata": doc, "version": None, "relace": "r1"})
     assert r.status_code == 409
     assert snapshot(archiv) == before
 
@@ -94,3 +107,92 @@ def test_original_range(client):
                  "..%2F..%2Fx.jpg"):
         assert c.get(f"/api/akce/{EVENT}/soubor/{name}").status_code == 404
     assert snapshot(archiv) == before
+
+
+def test_lock_api(client):
+    c, _ = client
+    url = f"/api/akce/{EVENT}/zamek"
+    r = c.post(url, json=R1)
+    assert r.status_code == 200 and r.json["zamek"]["jmeno"] == R1["jmeno"]
+    r = c.post(url, json=R2)
+    assert r.status_code == 409
+    assert r.json["drzitel"]["jmeno"] == "Spáčil, David"
+    assert c.get(f"/api/akce/{EVENT}").json["zamek"]["jmeno"] == R1["jmeno"]
+    assert c.put(url, json={"relace": "r1"}).status_code == 200
+    assert c.put(url, json={"relace": "r2"}).status_code == 409
+    c.delete(url, json={"relace": "r2"})
+    assert c.post(url, json=R2).status_code == 409
+    c.delete(url, json={"relace": "r1"})
+    assert c.post(url, json=R2).status_code == 200
+    # Beacon posílá text/plain.
+    r = c.post(url + "/uvolnit", data=json.dumps({"relace": "r2"}),
+               content_type="text/plain")
+    assert r.status_code == 200
+    assert c.get(f"/api/akce/{EVENT}").json["zamek"] is None
+    assert c.post(url, json={"relace": "r1"}).status_code == 400
+    assert c.post("/api/akce/2026-01-01 neni/zamek", json=R1).status_code \
+        == 404
+
+
+def test_lost_lock(tmp_path, monkeypatch):
+    clock = [0.0]
+    c, _ = make_client(tmp_path, monkeypatch,
+                       locks=Locks(clock=lambda: clock[0]))
+    url = f"/api/akce/{EVENT}/zamek"
+    c.post(url, json=R1)
+    clock[0] += 301
+    assert c.post(url, json=R2).status_code == 200
+    r = c.put(url, json={"relace": "r1"})
+    assert r.status_code == 409 and r.json["drzitel"]["jmeno"] == R2["jmeno"]
+
+
+def test_save_requires_lock(client):
+    c, archiv = client
+    doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    url = f"/api/akce/{EVENT}/metadata"
+    body = {"metadata": doc, "version": None}
+    assert c.put(url, json=body).status_code == 423
+    c.post(f"/api/akce/{EVENT}/zamek", json=R1)
+    r = c.put(url, json=dict(body, relace="r2"))
+    assert r.status_code == 423
+    assert r.json["drzitel"]["jmeno"] == R1["jmeno"]
+    assert c.get("/api/akce").json[0]["stav"] == "nezpracovano"
+    assert c.put(url, json=dict(body, relace="r1")).status_code == 200
+
+
+def test_prod_saves_into_archive(prod):
+    c, archiv = prod
+    assert c.get("/api/info").json["zapis"] is True
+    doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    c.post(f"/api/akce/{EVENT}/zamek", json=R1)
+    r = c.put(f"/api/akce/{EVENT}/metadata",
+              json={"metadata": doc, "version": None, "relace": "r1"})
+    assert r.status_code == 200
+    assert json.loads((archiv / EVENT / "_metadata.json").read_text()) == doc
+    d = c.get(f"/api/akce/{EVENT}").json
+    assert not d["novy"] and "_metadata.json" not in d["nezpracovane"]
+
+
+def test_cleanup_execute_dev_refused(client):
+    c, archiv = client
+    before = snapshot(archiv)
+    c.post(f"/api/akce/{EVENT}/zamek", json=R1)
+    r = c.post(f"/api/akce/{EVENT}/uklid/provest",
+               json={"relace": "r1", "volby": {"RAW": "ponechat"}})
+    assert r.status_code == 403
+    assert snapshot(archiv) == before
+
+
+def test_cleanup_execute_prod(prod):
+    c, archiv = prod
+    url = f"/api/akce/{EVENT}/uklid/provest"
+    body = {"volby": {"RAW": "ponechat"}, "raw_v_koreni": True}
+    assert c.post(url, json=dict(body, relace="r1")).status_code == 423
+    assert (archiv / EVENT / "RAW").is_dir()
+    c.post(f"/api/akce/{EVENT}/zamek", json=R1)
+    r = c.post(url, json=dict(body, relace="r1"))
+    assert r.status_code == 200
+    assert [(o["typ"], o["stav"]) for o in r.json["operace"]] == [
+        ("rename", "hotovo"), ("move", "blokovano")]
+    assert (archiv / EVENT / "RAW.ignored" / "a.rw2").exists()
+    assert (archiv / EVENT / "a.rw2").read_text() == "raw"

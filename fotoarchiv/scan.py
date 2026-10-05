@@ -7,7 +7,7 @@ import subprocess
 import unicodedata
 from pathlib import Path
 
-from .archive import is_skipped
+from .archive import is_metadata, is_skipped
 
 MEDIA_EXT = {"jpg", "jpeg", "png", "mp4", "mov"}
 VIDEO_EXT = {"mp4", "mov"}
@@ -41,7 +41,8 @@ def root_files(event_dir):
     media, other = [], []
     with os.scandir(event_dir) as it:
         for entry in it:
-            if not entry.is_file() or is_skipped(entry.name):
+            if (not entry.is_file() or is_skipped(entry.name)
+                    or is_metadata(entry.name)):
                 continue
             if extension(entry.name) in MEDIA_EXT:
                 media.append((entry.name, entry.stat()))

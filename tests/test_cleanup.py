@@ -1,3 +1,7 @@
+import os
+
+import pytest
+
 from fotoarchiv import cleanup
 from .conftest import snapshot
 
@@ -97,3 +101,81 @@ def test_plan_is_dry(tree):
     before = snapshot(root)
     cleanup.plan(root, {"Video": "presunout"})
     assert snapshot(root) == before
+
+
+def states(result):
+    return [(o["typ"], o["z"], o["stav"]) for o in result["operace"]]
+
+
+def test_execute_move_folder_to_root(tree):
+    files = {f"v{i:02}.mp4": str(i) for i in range(22)}
+    root = tree({"Video/": dict(files, **{"Thumbs.db": ""}), "a.jpg": ""})
+    result = cleanup.execute(root, {"Video": "presunout"})
+    assert all(o["stav"] == "hotovo" for o in result["operace"])
+    assert sorted(p.name for p in root.iterdir()) == sorted([*files, "a.jpg"])
+    assert (root / "v07.mp4").read_text() == "7"
+
+
+def test_execute_keep_folder_renamed(tree):
+    root = tree({"RAWy/": {"a.rw2": "", "b.rw2": ""}, "c.RW2": "x"})
+    result = cleanup.execute(root, {"RAWy": "ponechat"})
+    assert states(result) == [("rename", "RAWy", "hotovo"),
+                              ("move", "c.RW2", "hotovo")]
+    assert sorted(p.name for p in root.iterdir()) == ["RAW.ignored"]
+    assert sorted(p.name for p in (root / "RAW.ignored").iterdir()) == \
+        ["a.rw2", "b.rw2", "c.RW2"]
+
+
+def test_execute_creates_raw_ignored(tree):
+    root = tree({"a.rw2": "", "a.jpg": ""})
+    cleanup.execute(root)
+    assert (root / "RAW.ignored" / "a.rw2").is_file()
+
+
+def test_execute_collision_after_preview(tree, monkeypatch):
+    root = tree({"Video/": {"a.mp4": "nový", "b.mp4": ""}})
+    stale = cleanup.plan(root, {"Video": "presunout"})
+    # Mezi náhledem a provedením vznikne v kořeni A.MP4.
+    (root / "A.MP4").write_text("starý")
+    monkeypatch.setattr(cleanup, "plan", lambda *a: stale)
+    result = cleanup.execute(root, {"Video": "presunout"})
+    assert states(result) == [("move", "Video/a.mp4", "blokovano"),
+                              ("move", "Video/b.mp4", "hotovo"),
+                              ("delete", "Video", "blokovano")]
+    assert (root / "A.MP4").read_text() == "starý"
+    assert (root / "Video" / "a.mp4").read_text() == "nový"
+
+
+def test_execute_collision_replanned(tree):
+    root = tree({"Video/": {"a.mp4": ""}})
+    cleanup.plan(root, {"Video": "presunout"})
+    (root / "a.mp4").write_text("starý")
+    result = cleanup.execute(root, {"Video": "presunout"})
+    assert {o["stav"] for o in result["operace"]} == {"blokovano"}
+    assert (root / "a.mp4").read_text() == "starý"
+    assert (root / "Video" / "a.mp4").exists()
+
+
+def test_execute_permission_error(tree, monkeypatch):
+    root = tree({"Video/": {"a.mp4": "", "b.mp4": "", "c.mp4": ""}})
+    real = os.rename
+
+    def rename(src, dst):
+        if src.endswith("b.mp4"):
+            raise PermissionError(13, "Permission denied", src)
+        real(src, dst)
+    monkeypatch.setattr(cleanup.os, "rename", rename)
+    result = cleanup.execute(root, {"Video": "presunout"})
+    assert states(result) == [("move", "Video/a.mp4", "hotovo"),
+                              ("move", "Video/b.mp4", "chyba"),
+                              ("move", "Video/c.mp4", "hotovo"),
+                              ("delete", "Video", "blokovano")]
+    assert "Permission denied" in result["operace"][1]["chyba"]
+    assert (root / "Video" / "b.mp4").exists()
+
+
+def test_execute_delete_refuses_non_empty(tree):
+    root = tree({"Video/": {"a.mp4": ""}})
+    with pytest.raises(OSError):
+        cleanup._delete(root, "Video")
+    assert (root / "Video" / "a.mp4").exists()

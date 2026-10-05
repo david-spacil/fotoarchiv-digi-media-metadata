@@ -1,15 +1,18 @@
 """Plán úklidu kořene akce: podsložky a RAWy.
 
 Plán je seznam operací `move`, `rename` a `delete` s příznakem `blocked`.
-V prototypu se jen zobrazí; provedení doplní pozdější změna nad stejným
-plánem. Nic se nikdy nepřepíše: cíl, který existuje (nebo vznikne dřívější
-operací plánu), operaci zablokuje.
+Ve vývojovém režimu se jen zobrazí, v produkčním ho `execute` sestaví znovu
+a provede. Nic se nikdy nepřepíše: cíl, který existuje (nebo vznikne
+dřívější operací plánu, nebo mezi náhledem a provedením), operaci zablokuje.
 """
 
+import logging
 import os
 import unicodedata
 
 from .archive import is_skipped
+
+log = logging.getLogger(__name__)
 
 RAW_EXT = {"rw2", "cr2", "cr3", "nef", "arw", "dng", "orf", "raf"}
 RAW_DIR = "RAW.ignored"
@@ -146,3 +149,73 @@ def plan(event_dir, choices=None, raw_from_root=True):
         "raw_v_koreni": sum(1 for f in root_files if is_raw(f)),
         "operace": ops,
     }
+
+
+DONE = "hotovo"
+BLOCKED = "blokovano"
+FAILED = "chyba"
+
+
+class Blocked(Exception):
+    pass
+
+
+def _move(event_dir, src, dst):
+    """Přesun/přejmenování, které nikdy nepřepíše existující cíl."""
+    dst_path = os.path.join(event_dir, dst)
+    target_dir = os.path.dirname(dst_path)
+    if os.path.basename(target_dir) == RAW_DIR and \
+            not os.path.isdir(target_dir):
+        os.mkdir(target_dir)
+    # os.rename na Linuxu cíl přepíše: kontrola těsně před ním, souběh
+    # vylučuje zámek akce. Porovnání jako v plánu (SMB, NFC/NFD).
+    with os.scandir(target_dir) as it:
+        existing = {_key(e.name) for e in it}
+    if _key(os.path.basename(dst_path)) in existing:
+        raise Blocked("cíl už existuje")
+    os.rename(os.path.join(event_dir, src), dst_path)
+
+
+def _delete(event_dir, name):
+    """Smaže podsložku, ve které zbyl nejvýš `Thumbs.db`."""
+    path = os.path.join(event_dir, name)
+    entries = os.listdir(path)
+    if any(not is_skipped(e) for e in entries):
+        raise OSError(f"složka není prázdná: {name}")
+    for e in entries:
+        os.remove(os.path.join(path, e))
+    os.rmdir(path)
+
+
+def execute(event_dir, choices=None, raw_from_root=True):
+    """Sestaví plán znovu a provede jeho neblokované operace.
+
+    Vrátí operace plánu doplněné o `stav` (hotovo / blokovano / chyba)
+    a `chyba`. Selhaný nebo blokovaný přesun zablokuje smazání své
+    podsložky, ostatní operace běží dál.
+    """
+    result = plan(event_dir, choices, raw_from_root)
+    unfinished = set()  # podsložky, ze kterých se nepřesunulo všechno
+    for o in result["operace"]:
+        o["chyba"] = None
+        source_dir = o["z"].split("/")[0] if "/" in o["z"] else None
+        try:
+            if o["blocked"]:
+                raise Blocked(o["duvod"])
+            if o["typ"] == "delete":
+                if o["z"] in unfinished:
+                    raise Blocked("přesun ze složky neproběhl")
+                _delete(event_dir, o["z"])
+            else:
+                _move(event_dir, o["z"], o["do"])
+            o["stav"] = DONE
+        except Blocked as e:
+            o["stav"], o["duvod"] = BLOCKED, str(e)
+        except OSError as e:
+            o["stav"], o["chyba"] = FAILED, str(e)
+        if o["stav"] != DONE and o["typ"] == "move" and source_dir:
+            unfinished.add(source_dir)
+        log.info("úklid %s: %s %s → %s: %s %s", os.path.basename(event_dir),
+                 o["typ"], o["z"], o["do"], o["stav"],
+                 o["chyba"] or o["duvod"] or "")
+    return result

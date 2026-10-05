@@ -105,11 +105,144 @@ const state = {
   dirty: false,
   saving: false,
   conflict: false,
+  locked: null,      // akce, jejíž zámek tahle relace drží
+  readonly: null,    // držitel cizího zámku otevřené akce, nebo null
 };
+
+// --- uživatel a zámek akce ---------------------------------------------------
+
+// Relace = záložka prohlížeče. Náhodný token přes getRandomValues:
+// crypto.randomUUID je jen v zabezpečeném kontextu (https, localhost).
+function session() {
+  let id = sessionStorage.getItem("relace");
+  if (!id) {
+    id = [...crypto.getRandomValues(new Uint8Array(16))]
+      .map((b) => b.toString(16).padStart(2, "0")).join("");
+    sessionStorage.setItem("relace", id);
+  }
+  return id;
+}
+
+function userName() {
+  return localStorage.getItem("jmeno");
+}
+
+const NAME_RE = /^[^,]+, [^,]+$/;
+
+// Do zavedení přihlašování jméno zadané v prohlížeči (jen se zobrazuje).
+function askName() {
+  return new Promise((done) => {
+    const input = h("input", { value: userName() || "", list: "jmena-uziv",
+      placeholder: "Příjmení, Jméno", autocomplete: "off" });
+    const options = h("datalist", { id: "jmena-uziv" });
+    const warn = h("p", { class: "warn", hidden: true },
+      "Zadejte ve tvaru „Příjmení, Jméno“.");
+    const submit = (e) => {
+      e.preventDefault();
+      const name = input.value.trim().replace(/\s+/g, " ")
+        .replace(/\s*,\s*/, ", ");
+      if (!NAME_RE.test(name)) {
+        warn.hidden = false;
+        return;
+      }
+      localStorage.setItem("jmeno", name);
+      dialog.close();
+      dialog.remove();
+      done(name);
+    };
+    const dialog = h("dialog", { class: "conflict" },
+      h("form", { onsubmit: submit },
+        h("h2", {}, "Kdo jste?"),
+        h("p", {}, "Jméno uvidí ostatní u akce, kterou upravujete."),
+        input, options, warn,
+        h("div", { class: "buttons" },
+          h("button", { class: "primary" }, "Pokračovat"))));
+    dialog.addEventListener("cancel", (e) => e.preventDefault());
+    document.body.append(dialog);
+    dialog.showModal();
+    api("/api/jmena").then((r) => options.replaceChildren(
+      ...r.navrhy.map((n) => h("option", { value: n })))).catch(() => {});
+  });
+}
+
+const HEARTBEAT_MS = 60_000;
+let heartbeatTimer = null;
+
+// Získá zámek akce; při cizím zámku nastaví `state.readonly` (držitel).
+async function acquireLock(name) {
+  try {
+    await api(eventUrl(name, "/zamek"), {
+      method: "POST", body: { relace: session(), jmeno: userName() },
+    });
+  } catch (err) {
+    if (err.status !== 409) throw err;
+    state.readonly = err.data.drzitel;
+    return false;
+  }
+  state.locked = name;
+  state.readonly = null;
+  clearInterval(heartbeatTimer);
+  heartbeatTimer = setInterval(heartbeat, HEARTBEAT_MS);
+  return true;
+}
+
+async function heartbeat() {
+  const name = state.locked;
+  if (!name) return;
+  try {
+    await api(eventUrl(name, "/zamek"), {
+      method: "PUT", body: { relace: session() },
+    });
+  } catch (err) {
+    if (err.status !== 409 || name !== state.locked) return;
+    // Zámek je pryč (restart serveru nebo opuštění); volný se získá znovu.
+    state.locked = null;
+    clearInterval(heartbeatTimer);
+    if (!await acquireLock(name).catch(() => false)) lostLock();
+  }
+}
+
+function releaseLock() {
+  const name = state.locked;
+  state.locked = null;
+  clearInterval(heartbeatTimer);
+  if (!name) return;
+  api(eventUrl(name, "/zamek"), {
+    method: "DELETE", body: { relace: session() },
+  }).catch(() => {});
+}
+
+function lockNotice() {
+  const r = state.readonly;
+  if (!r) return null;
+  return h("p", { class: "notice readonly" },
+    `Akci upravuje ${r.jmeno}. Jen ke čtení – změny se neukládají.`,
+    " ", h("button", { class: "link", onclick: () => route() },
+      "Zkusit znovu"));
+}
+
+// Zámek získal někdo jiný: zahodit plánované uložení a přepnout jen
+// ke čtení.
+function lostLock() {
+  if (!state.readonly) state.readonly = { jmeno: "jiný uživatel" };
+  state.dirty = false;
+  if (state.mode === "workspace") renderWorkspace();
+  else if (state.mode === "wizard") renderReadonlyWizard();
+}
 
 // --- směrování -----------------------------------------------------------
 
 window.addEventListener("hashchange", route);
+window.addEventListener("pagehide", () => {
+  if (!state.locked) return;
+  navigator.sendBeacon(eventUrl(state.locked, "/zamek/uvolnit"),
+    JSON.stringify({ relace: session() }));
+  state.locked = null;
+  clearInterval(heartbeatTimer);
+});
+window.addEventListener("pageshow", (e) => {
+  if (e.persisted) route(); // návrat z bfcache: zámek získat znovu
+});
 window.addEventListener("beforeunload", (e) => {
   if (state.dirty || state.saving) e.preventDefault();
 });
@@ -134,7 +267,9 @@ document.addEventListener("keydown", (e) => {
 async function route() {
   if (state.dirty && state.mode === "workspace") await save();
   const m = location.hash.match(/^#\/akce\/(.+)$/);
-  if (m) await openEvent(decodeURIComponent(m[1]));
+  const name = m ? decodeURIComponent(m[1]) : null;
+  if (state.locked && state.locked !== name) releaseLock();
+  if (name) await openEvent(name);
   else await showList();
 }
 
@@ -142,10 +277,16 @@ function header(...right) {
   const info = state.info || {};
   return h("header", {},
     h("a", { href: "#/", class: "brand" }, "Fotoarchiv – metadata"),
-    h("span", { class: "paths" },
-      `archiv (jen čtení): ${info.archiv || "…"} · `,
-      h("strong", {}, `ukládá se do: ${info.work || "…"}`)),
-    ...right);
+    info.zapis
+      ? h("span", { class: "paths" }, `archiv: ${info.archiv || "…"} · `,
+        h("strong", {}, "metadata a úklid se zapisují do archivu"))
+      : h("span", { class: "paths" },
+        `archiv (jen čtení): ${info.archiv || "…"} · `,
+        h("strong", {}, `ukládá se do: ${info.work || "…"}`)),
+    ...right,
+    userName() ? h("button", { class: "link user", title: "Změnit jméno",
+      onclick: async () => { await askName(); route(); } }, userName())
+      : null);
 }
 
 // --- seznam akcí ----------------------------------------------------------
@@ -176,12 +317,28 @@ async function openEvent(name) {
   Object.assign(state, {
     name, detail: null, doc: null, version: null, mode: null,
     sel: new Set(), group: null, anchor: null, dirty: false,
-    conflict: false, view: "grid", current: null,
+    conflict: false, view: "grid", current: null, readonly: null,
   });
-  const events = state.events || await api("/api/akce");
+  // Stav akce se mohl změnit u jiného uživatele.
+  const events = state.events = await api("/api/akce");
   const entry = events.find((e) => e.nazev === name);
   if (!entry) {
     app.replaceChildren(header(), h("main", {}, "Akce nenalezena."));
+    return;
+  }
+  if (!userName()) await askName();
+  if (name !== state.name) return; // mezitím jinam
+  await acquireLock(name);
+  if (state.readonly) {
+    await loadDetail();
+    state.dirty = false;
+    if (state.detail.novy) {
+      state.mode = "wizard";
+      renderReadonlyWizard();
+    } else {
+      state.mode = "workspace";
+      renderWorkspace();
+    }
     return;
   }
   if (entry.stav === "nezpracovano") {
@@ -233,6 +390,7 @@ function setStatus(text) {
   const el = document.getElementById("save-status");
   if (!el) return;
   if (text) el.textContent = text;
+  else if (state.readonly) el.textContent = "Jen ke čtení";
   else if (state.conflict) el.textContent = "Neuloženo – konflikt";
   else if (state.saving) el.textContent = "Ukládám…";
   else if (state.dirty) el.textContent = "Neuloženo";
@@ -242,7 +400,7 @@ function setStatus(text) {
 }
 
 async function save() {
-  if (state.conflict || !state.doc) return;
+  if (state.conflict || !state.doc || state.readonly) return;
   if (state.saving) {
     state.dirty = true;
     return;
@@ -253,7 +411,8 @@ async function save() {
   const name = state.name;
   try {
     const r = await api(eventUrl(name, "/metadata"), {
-      method: "PUT", body: { metadata: state.doc, version: state.version },
+      method: "PUT",
+      body: { metadata: state.doc, version: state.version, relace: session() },
     });
     if (name === state.name) state.version = r.version;
     for (const n of collectNames(state.doc)) state.sessionNames.add(n);
@@ -262,6 +421,11 @@ async function save() {
     if (err.status === 409) {
       state.conflict = true;
       conflictDialog();
+    } else if (err.status === 423 && name === state.name) {
+      state.readonly = err.data?.drzitel;
+      state.locked = null;
+      clearInterval(heartbeatTimer);
+      lostLock();
     } else {
       setStatus(`Chyba ukládání: ${err.message}`);
     }
@@ -1051,6 +1215,7 @@ function renderWorkspace() {
         "Lupa")),
       h("span", { class: "proto" }, "Prototyp: dokončení akce a export " +
         "XMP zatím nejsou, změny se ukládají průběžně.")),
+    lockNotice(),
     h("div", { id: "bar", class: "bar" }),
     h("div", { class: "workspace" },
       h("div", { id: "grid", class: "grid" }),
@@ -1170,11 +1335,13 @@ function renderPanel() {
     title = "Akce";
   }
   const targets = targetsFor(level, ids);
-  panel.replaceChildren(
-    h("h2", {}, title),
-    ...extra.filter(Boolean),
-    h("div", { class: "form" },
-      FIELDS[level].map((k) => fieldRow(targets, k, onChange))));
+  // Jen ke čtení: fieldset disabled zakáže všechna pole a tlačítka panelu.
+  panel.replaceChildren(h("fieldset", { class: "panel-body",
+    disabled: !!state.readonly },
+  h("h2", {}, title),
+  ...extra.filter(Boolean),
+  h("div", { class: "form" },
+    FIELDS[level].map((k) => fieldRow(targets, k, onChange)))));
 }
 
 // --- průvodce --------------------------------------------------------------
@@ -1222,6 +1389,56 @@ function navButtons({ back = true, next = "Pokračovat", onNext,
   ];
 }
 
+// Akci bez metadat prochází průvodcem někdo jiný.
+function renderReadonlyWizard() {
+  app.replaceChildren(header(),
+    h("div", { class: "eventbar" }, h("a", { href: "#/" }, "← Akce"),
+      h("h1", {}, state.name)),
+    lockNotice(),
+    h("main", { class: "wizard" }, h("p", {}, "Akce zatím nemá uložená " +
+      "metadata. Až je průvodce uloží, uvidíte je tady ke čtení.")));
+}
+
+const OPS = { move: "přesun", rename: "přejmenování", delete: "smazání" };
+const OP_STAV = { hotovo: "hotovo", blokovano: "blokováno", chyba: "chyba" };
+
+async function executeCleanup() {
+  app.replaceChildren(...wizardFrame(h("main", { class: "wizard" },
+    "Provádím úklid…"), []));
+  let result;
+  try {
+    result = await api(eventUrl(state.name, "/uklid/provest"), {
+      method: "POST", body: { volby: wizard.volby,
+        raw_v_koreni: wizard.rawRoot, relace: session() },
+    });
+  } catch (err) {
+    if (err.status === 423) {
+      state.readonly = err.data?.drzitel;
+      state.locked = null;
+      return lostLock();
+    }
+    throw err;
+  }
+  const count = (st) => result.operace.filter((o) => o.stav === st).length;
+  const rows = result.operace.map((o) => h("tr", {
+    class: o.stav === "hotovo" ? "" : o.stav === "chyba" ? "failed" : "blocked",
+  },
+  h("td", {}, OPS[o.typ]), h("td", {}, h("code", {}, o.z)),
+  h("td", {}, o.do ? h("code", {}, `→ ${o.do}`) : ""),
+  h("td", {}, OP_STAV[o.stav], o.stav === "hotovo" ? ""
+    : `: ${o.chyba || o.duvod}`)));
+  app.replaceChildren(...wizardFrame(h("main", { class: "wizard" },
+    h("p", { class: count("chyba") ? "notice error" : "notice" },
+      `Hotovo ${count("hotovo")}, blokováno ${count("blokovano")}, ` +
+      `chyba ${count("chyba")}. Neprovedené operace zůstaly beze změny; ` +
+      "další krok pracuje se soubory, které jsou teď v kořeni."),
+    h("table", { class: "ops" }, rows)),
+  [h("span"), h("button", { class: "primary", onclick: () => {
+    wizard.step = 1;
+    renderWizard();
+  } }, "Pokračovat a načíst soubory")]));
+}
+
 async function renderCleanup() {
   app.replaceChildren(...wizardFrame(h("main", { class: "wizard" },
     "Počítám plán úklidu…"), []));
@@ -1252,7 +1469,6 @@ async function renderCleanup() {
       onchange: (e) => { wizard.rawRoot = e.target.checked; replan(); } }),
     ` Přesunout ${plural(plan.raw_v_koreni, "RAW", "RAWy", "RAWů")} ` +
     "z kořene do ", h("code", {}, "RAW.ignored")) : null;
-  const OPS = { move: "přesun", rename: "přejmenování", delete: "smazání" };
   const ops = plan.operace.length
     ? h("table", { class: "ops" }, plan.operace.map((o) => h("tr", {
       class: o.blocked ? "blocked" : "" },
@@ -1261,16 +1477,36 @@ async function renderCleanup() {
     h("td", {}, o.blocked ? `blokováno: ${o.duvod}` : ""))))
     : h("p", {}, "Žádné operace.");
   const empty = !plan.podslozky.length && !plan.raw_v_koreni;
+  const zapis = state.info.zapis;
+  const todo = plan.operace.filter((o) => !o.blocked).length;
+  let nav = navButtons({ next: "Potvrdit plán a načíst soubory" });
+  if (zapis && todo) {
+    // Dvojí potvrzení: operace v archivu nejdou vrátit tlačítkem.
+    nav = navButtons({ next: `Provést úklid (${plural(todo, "operace",
+      "operace", "operací")})`, onNext: () => {
+      if (!nav[1].dataset.confirm) {
+        nav[1].dataset.confirm = "1";
+        nav[1].textContent = "Opravdu přesunout a přejmenovat v archivu?";
+        return;
+      }
+      executeCleanup();
+    } });
+  }
   app.replaceChildren(...wizardFrame(h("main", { class: "wizard" },
-    h("p", { class: "notice" }, "Nasucho: prototyp plán jen ukazuje, " +
-      "v archivu nic nepřesune ani nepřejmenuje. Další krok pracuje se " +
-      "soubory, které jsou v kořeni teď."),
+    zapis
+      ? h("p", { class: "notice" }, "Po potvrzení se plán provede " +
+        "v archivu: přesuny, přejmenování na .ignored a smazání " +
+        "vyprázdněných složek. Nic se nepřepíše, blokované operace se " +
+        "přeskočí. Složky bez rozhodnutí zůstanou, jak jsou.")
+      : h("p", { class: "notice" }, "Nasucho: vývojový režim plán jen " +
+        "ukazuje, v archivu nic nepřesune ani nepřejmenuje. Další krok " +
+        "pracuje se soubory, které jsou v kořeni teď."),
     empty ? h("p", {}, "Kořen akce nemá podsložky ani RAWy, " +
       "není co uklízet.") : null,
     folders, rawRoot,
     plan.operace.length || !empty ? h("h3", {}, "Plán") : null,
     empty ? null : ops),
-  navButtons({ next: "Potvrdit plán a načíst soubory" })));
+  nav));
 }
 
 function renderGroupsStep() {

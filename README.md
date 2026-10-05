@@ -5,9 +5,11 @@ Průvodce obohacením metadat digitální fotodokumentace ARÚB
 aplikace s náhledy, ve které se fotkám a videím přiřazují metadata
 jednotlivě nebo po skupinách.
 
-Stav: **prototyp** — archiv jen čte, `_metadata.json` ukládá do
-pracovního adresáře `.work/` mimo archiv; export XMP, zámek a provedení
-úklidu zatím chybí. Spuštění a testy viz `AGENTS.md`.
+Stav: **prototyp** se dvěma režimy. Výchozí vývojový archiv jen čte
+a `_metadata.json` ukládá do pracovního adresáře `.work/` mimo archiv;
+produkční (`--zapis-do-archivu`) ukládá `_metadata.json` do složky akce
+a úklid provádí. Export XMP a dokončení akce zatím chybí. Spuštění
+a testy viz `AGENTS.md`.
 
 ## Archiv
 
@@ -46,8 +48,9 @@ prohlížení: jen fotky a videa, která patří do Immiche.
     přejmenuje na `RAW.ignored` bez ohledu na původní název (`raw`,
     `RAWy`, …).
   - RAWy v kořeni průvodce nabídne přesunout do `RAW.ignored`.
-- Přesun nikdy nepřepíše existující soubor; při shodě názvů se zastaví
-  a nahlásí ji. Pokud `RAW.ignored` už existuje, soubory se do ní
+- Přesun nikdy nepřepíše existující soubor; operace se shodou názvů se
+  přeskočí a nahlásí, ostatní proběhnou a podsložka, ze které něco
+  zbylo, se nesmaže. Pokud `RAW.ignored` už existuje, soubory se do ní
   přidají.
 - Přesuny a přejmenování mění cesty, které by Immich bral jako nové
   assety. Proto se mají udělat před napojením archivu do Immiche.
@@ -182,7 +185,11 @@ Našeptávání a kontrola jmen viz výše.
 
 ### Ukládání a export
 
-- `_metadata.json` se ukládá průběžně.
+- `_metadata.json` se ukládá průběžně, atomicky (dočasný soubor
+  a přejmenování), v produkčním režimu do složky akce, ve vývojovém do
+  `.work/metadata/<akce>/`. Rozpracovaná metadata z `.work` převezme do
+  archivu jednorázově `python -m fotoarchiv prevzit` (jen u akcí, které
+  `_metadata.json` v archivu ještě nemají).
 - XMP sidecary se zapisují při dokončení akce a samostatným tlačítkem
   Exportovat. **Přepisují se jen změněné:** obsah sidecaru se generuje
   deterministicky (bez časových razítek) a jeho `sha256` se ukládá
@@ -193,16 +200,22 @@ Našeptávání a kontrola jmen viz výše.
 
 ### Souběh
 
-Otevřená akce se zamyká souborem `_metadata.lock` ve složce akce (kdo,
-na jakém stroji, od kdy, počitadlo). Druhý uživatel dostane upozornění.
+Aplikace běží jako jeden sdílený server; zámek otevřené akce drží
+server v paměti (kdo, relace prohlížeče, od kdy, poslední heartbeat).
+Proto **server smí běžet jen jako jeden proces** (vlákna ano, víc
+workerů ne). Do archivu se žádný soubor zámku nezapisuje.
 
-- Držitel zámku průběžně zvyšuje počitadlo (heartbeat, ~1 min), dokud
-  je akce otevřená v prohlížeči; při zavření akce zámek smaže.
-- Zámek, jehož počitadlo se nezměnilo ~5 min **podle hodin pozorovatele**,
-  je opuštěný a jde převzít. Porovnává se obsah, ne čas souboru —
-  hodiny strojů a SMB serveru se mohou rozcházet.
-- Zavření prohlížeče bez odhlášení: server po výpadku heartbeatu
-  z prohlížeče zámek sám uvolní.
+- Při otevření akce klient požádá o zámek. Drží-li akci někdo jiný,
+  otevře ji jen ke čtení s upozorněním „Akci upravuje …“.
+- Klient zámek obnovuje heartbeatem (~1 min), dokud je akce otevřená;
+  při odchodu z akce nebo zavření stránky ho uvolní.
+- Zámek bez heartbeatu ~5 min (podle hodin serveru) je opuštěný a jde
+  převzít. Kdo o zámek přijde, přepne se jen ke čtení.
+- Uložení a provedení úklidu bez zámku server odmítne; kontrola verze
+  `_metadata.json` platí i pro držitele zámku.
+- Restart serveru zámky zahodí; klient je při dalším heartbeatu získá
+  znovu, pokud je akce volná.
+- „Kdo“ je do zavedení přihlašování jméno zadané v prohlížeči.
 
 Metadata (JPG, mp4) čte a XMP sidecary zapisuje `exiftool`. Náhledy
 (320 px do mřížky, 1600 px do lupy) se cachují lokálně mimo archiv —

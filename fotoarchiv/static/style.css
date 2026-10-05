@@ -170,3 +170,11 @@ dialog .buttons { display: flex; gap: 8px; justify-content: flex-end; }
 .ftile.selected { border-color: #63b3ed; background: #2c5282; }
 .ftile.current { border-color: #fbd38d; }
 .ftile.missing { opacity: 0.5; }
+
+/* zámek akce a jméno uživatele */
+header .user { color: #fff; font-size: 12px; }
+.notice.readonly { background: #fffaf0; border-left-color: #dd6b20;
+  margin: 0 16px; }
+.notice.error { background: #fff5f5; border-left-color: #c53030; }
+fieldset.panel-body { border: 0; margin: 0; padding: 0; min-width: 0; }
+.ops tr.failed td { color: #c53030; }
