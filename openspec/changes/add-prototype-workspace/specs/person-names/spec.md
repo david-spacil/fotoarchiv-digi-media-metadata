@@ -6,9 +6,9 @@ návrhy vznikají z dosud použitých jmen a opravují překlepy a jiné pořad�
 ## ADDED Requirements
 
 ### Requirement: Otevřený seznam jmen
-Seznam návrhů SHALL obsahovat všechna jména z polí `osoby` a `autori`
-ve všech `_metadata.json`, které aplikace vidí, a jména zadaná v tomto
-sezení. Neznámé jméno MUST být přijato a od té doby SHALL být
+Seznam návrhů SHALL obsahovat všechna jména z polí `osoby`, `autori`
+a `ucastnici` ve všech `_metadata.json`, které aplikace vidí, a jména
+zadaná v tomto sezení. Neznámé jméno MUST být přijato a od té doby SHALL být
 v seznamu.
 
 #### Scenario: Nové jméno
@@ -18,11 +18,16 @@ v seznamu.
 ### Requirement: Našeptávání
 Při psaní do pole osoby nebo autora SHALL formulář nabízet jména ze
 seznamu, která odpovídají vstupu bez ohledu na diakritiku a velikost
-písmen.
+písmen. Účastníci otevřené akce SHALL být nabízeni přednostně.
 
 #### Scenario: Bez diakritiky
 - **WHEN** uživatel napíše `spac`
 - **THEN** formulář nabídne `Spáčil, David`
+
+#### Scenario: Účastník akce první
+- **WHEN** akce má mezi účastníky `Kopáčová, Zuzana` a uživatel u fotky
+  napíše `k`
+- **THEN** `Kopáčová, Zuzana` je první z návrhů
 
 ### Requirement: Návrh opravy
 Když zadané jméno odpovídá jménu ze seznamu po odstranění diakritiky,

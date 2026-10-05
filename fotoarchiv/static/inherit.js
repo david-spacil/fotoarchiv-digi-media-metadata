@@ -6,7 +6,8 @@
 
 // Klíče, které patří jen své úrovni a nedědí se.
 export const LOCAL_KEYS = {
-  akce: new Set(),
+  // Účastníci akce jsou výčet lidí na akci, ne osoby na každé fotce.
+  akce: new Set(["ucastnici"]),
   skupina: new Set(["nazev"]),
   soubor: new Set(["skupina", "sha256"]),
 };

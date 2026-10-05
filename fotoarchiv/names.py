@@ -9,7 +9,7 @@ import os
 import re
 import unicodedata
 
-NAME_KEYS = ("osoby", "autori")
+NAME_KEYS = ("osoby", "autori", "ucastnici")
 
 
 def _plain(text):
@@ -28,7 +28,7 @@ def normalize(name):
 
 
 def names_in(doc):
-    """Všechna jména z polí `osoby` a `autori` na všech úrovních."""
+    """Všechna jména z polí `osoby`, `autori` a `ucastnici` (všechny úrovně)."""
     records = [doc.get("akce", {})]
     records += doc.get("skupiny", {}).values()
     records += doc.get("soubory", {}).values()

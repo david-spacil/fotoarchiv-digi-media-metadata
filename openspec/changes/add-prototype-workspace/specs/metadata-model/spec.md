@@ -22,7 +22,8 @@ jinak u jeho skupiny, jinak u akce. Každé pole akce i skupiny MUST jít
 přepsat na nižší úrovni, včetně `autori`. Do `_metadata.json` se SHALL
 ukládat jen hodnoty zadané na dané úrovni, ne zděděné.
 
-Výjimky, které se nedědí: `nazev` skupiny (čitelný název skupiny, ne
+Výjimky, které se nedědí: `ucastnici` akce (výčet lidí na akci, ne
+osoby na každé fotce), `nazev` skupiny (čitelný název skupiny, ne
 název akce) a u souboru `skupina` a `sha256`. Název akce proto nejde
 přepsat na úrovni skupiny, jen u souboru.
 
@@ -35,6 +36,11 @@ přepsat na úrovni skupiny, jen u souboru.
 #### Scenario: Zrušení přepsání
 - **WHEN** uživatel u souboru přepsání pole zruší
 - **THEN** pole zmizí ze záznamu souboru a hodnota se znovu dědí
+
+#### Scenario: Účastníci akce
+- **WHEN** akce má `ucastnici` = [`Spáčil, David`, `Kopáčová, Zuzana`]
+  a soubor ani jeho skupina nemají `osoby`
+- **THEN** soubor nemá žádné osoby
 
 #### Scenario: Název skupiny
 - **WHEN** akce má `nazev` = `kontrola Stezky` a skupina `nazev`

@@ -1,0 +1,29 @@
+{
+  "popis": "Účastníci akce se nedědí; osoby se zadávají u skupiny nebo souboru",
+  "metadata": {
+    "schema": "fotoarchiv-digi-media-metadata/1",
+    "akce": {
+      "nazev": "kontrola",
+      "ucastnici": ["Spáčil, David", "Kopáčová, Zuzana"]
+    },
+    "skupiny": {"s": {"nazev": "S", "osoby": ["Spáčil, David"]}},
+    "soubory": {
+      "a.jpg": {"skupina": "s"},
+      "b.jpg": {"skupina": "s", "osoby": ["Kopáčová, Zuzana"]},
+      "c.jpg": {}
+    }
+  },
+  "ocekavano": {
+    "a.jpg": {
+      "nazev": {"hodnota": "kontrola", "uroven": "akce"},
+      "osoby": {"hodnota": ["Spáčil, David"], "uroven": "skupina"}
+    },
+    "b.jpg": {
+      "nazev": {"hodnota": "kontrola", "uroven": "akce"},
+      "osoby": {"hodnota": ["Kopáčová, Zuzana"], "uroven": "soubor"}
+    },
+    "c.jpg": {
+      "nazev": {"hodnota": "kontrola", "uroven": "akce"}
+    }
+  }
+}

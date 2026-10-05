@@ -91,6 +91,7 @@ const state = {
   anchor: null,
   order: [],         // pořadí souborů v mřížce (pro Shift)
   sessionNames: new Set(),
+  keptEmpty: new Set(), // prázdné skupiny, které uživatel chtěl ponechat
   dirty: false,
   saving: false,
   conflict: false,
@@ -104,6 +105,7 @@ window.addEventListener("beforeunload", (e) => {
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.mode === "workspace" &&
+      !e.target.closest("input, textarea, select") &&
       !document.querySelector("dialog[open]")) {
     select(new Set(), null);
   }
@@ -282,7 +284,7 @@ function collectNames(doc) {
   const records = [doc.akce || {}, ...Object.values(doc.skupiny || {}),
     ...Object.values(doc.soubory || {})];
   for (const r of records) {
-    for (const k of ["osoby", "autori"]) {
+    for (const k of ["osoby", "autori", "ucastnici"]) {
       for (const n of r[k] || []) out.add(n);
     }
   }
@@ -315,6 +317,42 @@ function newGroup(name, files) {
   return gid;
 }
 
+// Skupina, která po přesunu zůstala prázdná: bez vlastních údajů se smaže
+// hned, s údaji (autoři apod.) se uživatel zeptá.
+function dropEmptyGroups(done) {
+  const used = new Set(Object.values(state.doc.soubory).map((r) => r.skupina));
+  const ask = [];
+  for (const gid of groupIds()) {
+    if (used.has(gid) || state.keptEmpty.has(gid)) continue;
+    const own = Object.keys(state.doc.skupiny[gid])
+      .filter((k) => k !== "nazev" && k !== "pristroj");
+    if (own.length) ask.push(gid);
+    else delete state.doc.skupiny[gid];
+  }
+  done();
+  if (!ask.length) return;
+  const close = (drop) => {
+    for (const gid of ask) {
+      if (drop) delete state.doc.skupiny[gid];
+      else state.keptEmpty.add(gid);
+    }
+    dialog.close();
+    dialog.remove();
+    done();
+  };
+  const dialog = h("dialog", { class: "conflict" },
+    h("h2", {}, "Prázdná skupina"),
+    h("p", {}, ask.length === 1 ? "Skupina " : "Skupiny ",
+      ask.map((g) => `„${groupName(g)}“`).join(", "),
+      " už nemá žádné soubory, ale má zadané údaje (např. autory)."),
+    h("div", { class: "buttons" },
+      h("button", { class: "primary", onclick: () => close(true) },
+        "Smazat"),
+      h("button", { onclick: () => close(false) }, "Ponechat")));
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
 function mergeGroup(src, dst) {
   for (const record of Object.values(state.doc.soubory)) {
     if (record.skupina === src) record.skupina = dst;
@@ -335,7 +373,10 @@ function groupTools(afterChange) {
       "souborů")})`),
     h("div", { class: "row" }, target,
       h("button", {
-        onclick: () => { moveFiles(files, target.value); afterChange(); },
+        onclick: () => {
+          moveFiles(files, target.value);
+          dropEmptyGroups(afterChange);
+        },
       }, "Přesunout")),
     h("div", { class: "row" }, nameInput,
       h("button", {
@@ -343,7 +384,7 @@ function groupTools(afterChange) {
           const name = nameInput.value.trim();
           if (!name) return nameInput.focus();
           newGroup(name, files);
-          afterChange();
+          dropEmptyGroups(afterChange);
         },
       }, "Nová skupina z výběru")));
 }
@@ -536,21 +577,20 @@ const F = {
   datum_od: { label: "Datum od", type: "date" },
   datum_do: { label: "Datum do", type: "date" },
   datum: { label: "Datum pořízení", type: "datetime" },
-  misto: { label: "Místo", type: "list" },
-  osoby: { label: "Osoby", type: "names" },
+  misto: { label: "Místo", type: "tags" },
+  osoby: { label: "Osoby na fotce", type: "names" },
+  ucastnici: { label: "Účastníci akce (nedědí se na fotky)", type: "names" },
   autori: { label: "Autoři (fotil někdo z nich)", type: "names" },
-  projekt: { label: "Projekt", type: "text" },
   pristroj: { label: "Přístroj", type: "text" },
   gps: { label: "GPS (šířka, délka)", type: "gps" },
 };
 
 const FIELDS = {
-  akce: ["nazev", "datum_od", "datum_do", "popis", "misto", "osoby",
-    "projekt", "autori"],
-  skupina: ["autori", "pristroj", "popis", "misto", "osoby", "projekt",
-    "datum_od", "datum_do"],
-  soubor: ["datum", "autori", "popis", "osoby", "misto", "projekt",
-    "pristroj", "gps"],
+  akce: ["nazev", "datum_od", "datum_do", "popis", "misto", "ucastnici",
+    "autori"],
+  skupina: ["autori", "pristroj", "popis", "misto", "osoby", "datum_od",
+    "datum_do"],
+  soubor: ["datum", "autori", "popis", "osoby", "misto", "pristroj", "gps"],
 };
 
 const LEVEL = { akce: "akce", skupina: "skupiny", soubor: "souboru" };
@@ -636,14 +676,15 @@ function fieldRow(targets, key, onChange) {
 
 function format(type, v) {
   if (isEmpty(v)) return "";
-  if (type === "list" || type === "names") return v.join("; ");
+  if (type === "tags" || type === "names") return v.join("; ");
   if (type === "gps") return v.join(", ");
   return String(v);
 }
 
 function editor(type, value, placeholder, update, inheritedValue) {
-  if (type === "names") {
-    return namesField(value || [], update, inheritedValue, placeholder);
+  if (type === "names" || type === "tags") {
+    return namesField(value || [], update, inheritedValue, placeholder,
+      type === "names");
   }
   if (type === "textarea") {
     return h("textarea", { rows: 3, placeholder, value: value || "",
@@ -655,11 +696,6 @@ function editor(type, value, placeholder, update, inheritedValue) {
     if (placeholder) el.title = placeholder;
     return h("div", { class: "row" }, el,
       placeholder ? h("span", { class: "ph-text" }, placeholder) : null);
-  }
-  if (type === "list") {
-    return h("input", { value: format("list", value), placeholder,
-      oninput: (e) => update(e.target.value.split(";").map((s) => s.trim())
-        .filter(Boolean)) });
   }
   if (type === "gps") {
     return h("input", { value: format("gps", value), placeholder,
@@ -687,12 +723,15 @@ function editor(type, value, placeholder, update, inheritedValue) {
 
 // --- pole jmen ---------------------------------------------------------------
 
-function namesField(initial, update, inheritedValue, placeholder) {
+// Pole se štítky. `people` = jména osob (návrhy a kontrola tvaru);
+// jinak volné štítky (místa), kde i čárka odděluje položky.
+function namesField(initial, update, inheritedValue, placeholder,
+  people = true) {
   let names = [...initial];
   let inherited = inheritedValue ? [...inheritedValue] : null;
   const chips = h("div", { class: "chips" });
-  const input = h("input", { placeholder: placeholder ||
-    "Příjmení, Jméno – Enter přidá" });
+  const input = h("input", { placeholder: placeholder || (people
+    ? "Příjmení, Jméno – Enter přidá" : "Enter nebo čárka přidá") });
   const list = h("ul", { class: "suggest", hidden: true });
   const hint = h("div", { class: "hint", hidden: true });
   let active = -1;
@@ -718,6 +757,10 @@ function namesField(initial, update, inheritedValue, placeholder) {
     input.value = "";
     list.hidden = true;
     const base = inherited || names;
+    if (!people) {
+      if (!base.includes(name)) commit([...base, name]);
+      return;
+    }
     const known = new Set([...state.sessionNames]);
     const r = known.has(name) ? { znamo: true }
       : await api(`/api/jmena/kontrola?jmeno=${encodeURIComponent(name)}`);
@@ -747,6 +790,7 @@ function namesField(initial, update, inheritedValue, placeholder) {
   };
   const showSuggest = debounce(async () => {
     const q = input.value.trim();
+    if (!people) return;
     if (!q) {
       list.hidden = true;
       return;
@@ -757,7 +801,12 @@ function namesField(initial, update, inheritedValue, placeholder) {
       const toks = normalize(n).split(" ");
       return key.every((k) => toks.some((t) => t.startsWith(k)));
     });
-    const all = [...new Set([...r.navrhy, ...local])]
+    // Účastníci akce se nabízejí přednostně.
+    const ucastnici = (state.doc?.akce?.ucastnici || []).filter((n) => {
+      const toks = normalize(n).split(" ");
+      return key.every((k) => toks.some((t) => t.startsWith(k)));
+    });
+    const all = [...new Set([...ucastnici, ...r.navrhy, ...local])]
       .filter((n) => !(inherited || names).includes(n));
     active = -1;
     list.replaceChildren(...all.map((n) => h("li", {
@@ -765,7 +814,18 @@ function namesField(initial, update, inheritedValue, placeholder) {
     }, n)));
     list.hidden = !all.length;
   }, 150);
-  input.addEventListener("input", showSuggest);
+  input.addEventListener("input", () => {
+    if (!people && input.value.includes(",")) {
+      const parts = input.value.split(",");
+      input.value = parts.pop();
+      const base = inherited || names;
+      const added = parts.map((s) => s.trim())
+        .filter((s) => s && !base.includes(s));
+      if (added.length) commit([...base, ...added]);
+      return;
+    }
+    showSuggest();
+  });
   input.addEventListener("keydown", (e) => {
     const items = [...list.children];
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
@@ -787,6 +847,7 @@ function namesField(initial, update, inheritedValue, placeholder) {
   });
   input.addEventListener("blur", () => setTimeout(() => {
     list.hidden = true;
+    if (!people && input.value.trim()) add(input.value);
   }, 100));
   renderChips();
   return h("div", { class: "names" }, chips, input, list, hint);
@@ -797,7 +858,7 @@ function normalize(name) {
     .toLowerCase().match(/[\p{L}\p{N}_]+/gu)?.sort().join(" ") || "";
 }
 
-// --- pracovní plocha ----------------------------------------------------------
+// --- pracovní plocha -------------------------------------------------------
 
 function renderWorkspace() {
   const d = state.detail;
@@ -806,7 +867,9 @@ function renderWorkspace() {
     header(h("span", { id: "save-status", class: "status" })),
     h("div", { class: "eventbar" }, back,
       h("h1", {}, state.name),
-      h("span", { class: "paths" }, d.pracovni_soubor)),
+      h("span", { class: "paths" }, d.pracovni_soubor),
+      h("span", { class: "proto" }, "Prototyp: dokončení akce a export " +
+        "XMP zatím nejsou, změny se ukládají průběžně.")),
     h("div", { id: "bar", class: "bar" }),
     h("div", { class: "workspace" },
       h("div", { id: "grid", class: "grid" }),
@@ -827,7 +890,9 @@ function renderBar() {
   const item = (text, onclick) =>
     items.push(h("button", { class: "miss", onclick }, text));
   if (m.akce.length) {
-    const names = { nazev: "název", datum_od: "datum od", datum_do: "datum do" };
+    const names = {
+      nazev: "název", datum_od: "datum od", datum_do: "datum do",
+    };
     item(`Akce: chybí ${m.akce.map((k) => names[k]).join(", ")}`,
       () => select(new Set(), null));
   }
@@ -1016,7 +1081,8 @@ async function renderCleanup() {
       "není co uklízet.") : null,
     folders, rawRoot,
     plan.operace.length || !empty ? h("h3", {}, "Plán") : null,
-    empty ? null : ops), navButtons({ next: "Potvrdit plán a načíst soubory" })));
+    empty ? null : ops),
+  navButtons({ next: "Potvrdit plán a načíst soubory" })));
 }
 
 function renderGroupsStep() {
@@ -1072,9 +1138,20 @@ function renderAuthorsStep() {
   const rows = groupIds().map((gid) => {
     const count = Object.values(state.doc.soubory)
       .filter((r) => r.skupina === gid).length;
+    // Pár náhledů rovnoměrně z celé skupiny, ať se skupina pozná.
+    const files = sortedFiles(Object.keys(state.doc.soubory)
+      .filter((f) => state.doc.soubory[f].skupina === gid &&
+        state.present.has(f)));
+    const step = Math.max(1, Math.floor(files.length / 8));
+    const sample = files.filter((_, i) => i % step === 0).slice(0, 8);
     return h("fieldset", { class: "tools" },
       h("legend", {}, `${groupName(gid)} (${plural(count, "soubor",
         "soubory", "souborů")})`),
+      h("div", { class: "strip" }, sample.map((f) => h("img", {
+        src: eventUrl(state.name, `/nahled/${encodeURIComponent(f)}`),
+        alt: "", title: f, loading: "lazy",
+        onerror: (e) => e.target.remove(),
+      }))),
       fieldRow(targetsFor("skupina", [gid]), "autori", () => {}));
   });
   const finish = async () => {

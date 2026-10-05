@@ -22,6 +22,10 @@ rovnou pracovní plochu.
 - **THEN** následuje krok, kde každé skupině zadá autory, a teprve pak
   se otevře pracovní plocha
 
+#### Scenario: Náhledy v kroku autoři skupin
+- **WHEN** průvodce ukáže krok autoři skupin
+- **THEN** u každé skupiny je pás několika náhledů jejích souborů
+
 #### Scenario: Další otevření
 - **WHEN** uživatel otevře akci ve stavu *rozpracováno*
 - **THEN** otevře se rovnou pracovní plocha
@@ -34,6 +38,21 @@ s jinou, vytvořit novou a přesunout do ní vybrané soubory.
 - **WHEN** uživatel sloučí dvě navržené skupiny
 - **THEN** všechny jejich soubory patří do výsledné skupiny a ruční
   údaje u souborů zůstanou
+
+#### Scenario: Skupina zůstane prázdná
+- **WHEN** uživatel přesune poslední soubor ze skupiny jinam
+- **THEN** skupina bez vlastních údajů (kromě názvu a přístroje) se
+  smaže; skupinu se zadanými údaji aplikace nabídne smazat nebo ponechat
+
+### Requirement: Údaje akce
+Údaje akce SHALL být název, datum od–do, popis, místa, účastníci
+a autoři. Místa a účastníci SHALL být seznamy zadávané jako štítky.
+Účastníci jsou výčet důležitých lidí na akci a přednostní návrhy při
+označování osob; MUST NOT se dědit na skupiny ani soubory.
+
+#### Scenario: Více míst
+- **WHEN** uživatel do pole místo napíše `Molenburk, Housko`
+- **THEN** akce má dvě místa `Molenburk` a `Housko`
 
 ### Requirement: Předvyplnění údajů akce
 Krok údaje akce SHALL předvyplnit název z názvu složky (bez data)
@@ -76,6 +95,15 @@ prázdnou hodnotu prototyp nepodporuje.
 #### Scenario: Vyprázdnění pole
 - **WHEN** uživatel u souboru smaže celý zadaný popis
 - **THEN** pole zmizí ze záznamu souboru a zobrazí se zděděný popis
+
+### Requirement: Dokončení akce v prototypu
+Prototyp akci nedokončuje ani neexportuje XMP. Pracovní plocha SHALL
+to uživateli trvale ukazovat spolu s tím, že se změny ukládají
+průběžně.
+
+#### Scenario: Hledání dokončení
+- **WHEN** uživatel má vyplněné všechny údaje
+- **THEN** plocha ukazuje, že dokončení a export v prototypu nejsou
 
 ### Requirement: Lišta chybějících údajů
 Pracovní plocha SHALL průběžně ukazovat, co chybí: akce bez názvu nebo

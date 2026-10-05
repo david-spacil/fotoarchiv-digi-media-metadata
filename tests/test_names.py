@@ -33,14 +33,14 @@ def test_check_new_name_conversion():
 
 
 def test_index_collects_all_levels(tmp_path):
-    doc = {"akce": {"osoby": ["A, B"]},
+    doc = {"akce": {"ucastnici": ["A, B"]},
            "skupiny": {"g": {"autori": ["C, D"]}},
            "soubory": {"x.jpg": {"osoby": ["E, F"], "autori": []}}}
     path = tmp_path / "_metadata.json"
     path.write_text(json.dumps(doc))
     index = names.NameIndex(lambda: [path])
     assert index.names() == ["A, B", "C, D", "E, F"]
-    doc["akce"]["osoby"].append("Nový, Člověk")
+    doc["akce"]["ucastnici"].append("Nový, Člověk")
     path.write_text(json.dumps(doc))
     import os
     os.utime(path, (1, 1))

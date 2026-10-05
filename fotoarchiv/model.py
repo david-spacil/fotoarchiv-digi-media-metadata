@@ -10,7 +10,8 @@ from .archive import EVENT_RE, SCHEMA
 
 # Klíče, které patří jen své úrovni a nedědí se.
 LOCAL_KEYS = {
-    "akce": set(),
+    # Účastníci akce jsou výčet lidí na akci, ne osoby na každé fotce.
+    "akce": {"ucastnici"},
     "skupina": {"nazev"},
     "soubor": {"skupina", "sha256"},
 }
