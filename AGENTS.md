@@ -12,6 +12,8 @@ testy, jeden test).
 `README.md` je specifikace (archiv, datový model, jména osob, výstupy,
 aplikace). Při změně návrhu ho aktualizovat; tady ho neopakovat.
 
+Změny se vedou přes OpenSpec (`openspec/`, příkazy `/opsx:*`).
+
 ## Invarianty návrhu
 
 Pravidla, která se táhnou přes víc částí README a snadno se poruší:
