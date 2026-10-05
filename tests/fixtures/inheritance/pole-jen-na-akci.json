@@ -1,0 +1,27 @@
+{
+  "popis": "Pole zadané jen u akce dědí všechny soubory, i soubor bez skupiny",
+  "metadata": {
+    "schema": "fotoarchiv-digi-media-metadata/1",
+    "akce": {"projekt": "R300012402", "misto": ["Vysočany", "Holštejn"]},
+    "skupiny": {"s": {"nazev": "S"}},
+    "soubory": {
+      "a.jpg": {"skupina": "s"},
+      "b.jpg": {"skupina": null},
+      "c.jpg": {}
+    }
+  },
+  "ocekavano": {
+    "a.jpg": {
+      "projekt": {"hodnota": "R300012402", "uroven": "akce"},
+      "misto": {"hodnota": ["Vysočany", "Holštejn"], "uroven": "akce"}
+    },
+    "b.jpg": {
+      "projekt": {"hodnota": "R300012402", "uroven": "akce"},
+      "misto": {"hodnota": ["Vysočany", "Holštejn"], "uroven": "akce"}
+    },
+    "c.jpg": {
+      "projekt": {"hodnota": "R300012402", "uroven": "akce"},
+      "misto": {"hodnota": ["Vysočany", "Holštejn"], "uroven": "akce"}
+    }
+  }
+}

@@ -5,7 +5,9 @@ Průvodce obohacením metadat digitální fotodokumentace ARÚB
 aplikace s náhledy, ve které se fotkám a videím přiřazují metadata
 jednotlivě nebo po skupinách.
 
-Stav: **návrh**, zatím bez kódu.
+Stav: **prototyp** — archiv jen čte, `_metadata.json` ukládá do
+pracovního adresáře `.work/` mimo archiv; export XMP, zámek a provedení
+úklidu zatím chybí. Spuštění a testy viz `AGENTS.md`.
 
 ## Archiv
 

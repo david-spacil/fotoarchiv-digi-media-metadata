@@ -1,0 +1,35 @@
+{
+  "popis": "Autor přepsaný u fotky, ostatní soubory skupiny dědí oba",
+  "metadata": {
+    "schema": "fotoarchiv-digi-media-metadata/1",
+    "akce": {"nazev": "kontrola", "datum_od": "2026-04-28"},
+    "skupiny": {
+      "g9": {
+        "nazev": "Panasonic DC-G9",
+        "pristroj": "Panasonic DC-G9",
+        "autori": ["Spáčil, David", "Kopáčová, Zuzana"]
+      }
+    },
+    "soubory": {
+      "P1.JPG": {"skupina": "g9", "autori": ["Kopáčová, Zuzana"]},
+      "P2.JPG": {"skupina": "g9"}
+    }
+  },
+  "ocekavano": {
+    "P1.JPG": {
+      "nazev": {"hodnota": "kontrola", "uroven": "akce"},
+      "datum_od": {"hodnota": "2026-04-28", "uroven": "akce"},
+      "pristroj": {"hodnota": "Panasonic DC-G9", "uroven": "skupina"},
+      "autori": {"hodnota": ["Kopáčová, Zuzana"], "uroven": "soubor"}
+    },
+    "P2.JPG": {
+      "nazev": {"hodnota": "kontrola", "uroven": "akce"},
+      "datum_od": {"hodnota": "2026-04-28", "uroven": "akce"},
+      "pristroj": {"hodnota": "Panasonic DC-G9", "uroven": "skupina"},
+      "autori": {
+        "hodnota": ["Spáčil, David", "Kopáčová, Zuzana"],
+        "uroven": "skupina"
+      }
+    }
+  }
+}

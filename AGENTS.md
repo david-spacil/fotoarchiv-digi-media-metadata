@@ -4,15 +4,31 @@ Pokyny pro AI agenty (Claude Code, Codex aj.) pracující v tomto repozitáři.
 
 ## Stav
 
-Repo je ve fázi návrhu: jen `README.md`, žádný kód, build, testy ani
-závislosti. Jazyk a stack aplikace nejsou zvolené — nepředjímat, volba jde
-přes varianty k odsouhlasení. Až kód vznikne, doplnit sem příkazy (spuštění,
-testy, jeden test).
+Prototyp (OpenSpec změna `add-prototype-workspace`): Flask server
+v `fotoarchiv/`, klient v `fotoarchiv/static/` (čisté ES moduly bez build
+kroku). Archiv jen čte, `_metadata.json` a cache ukládá do `.work/`.
 
 `README.md` je specifikace (archiv, datový model, jména osob, výstupy,
 aplikace). Při změně návrhu ho aktualizovat; tady ho neopakovat.
 
 Změny se vedou přes OpenSpec (`openspec/`, příkazy `/opsx:*`).
+
+## Příkazy
+
+```sh
+python -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/python -m fotoarchiv \
+  --archiv /mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
+# → http://127.0.0.1:5000, volitelně --work .work --port 5000
+
+.venv/bin/python -m pytest -q                       # testy Pythonu
+.venv/bin/python -m pytest tests/test_cleanup.py::test_collision_blocks
+node --test tests/js                                # dědění v JS
+```
+
+Systémově: `exiftool`, `ffmpeg` (bez něj video bez náhledu), `node` jen
+na testy. Dědění je v Pythonu (`model.py`) i JS (`static/inherit.js`);
+obě se testují proti `tests/fixtures/inheritance/*.json` — měnit spolu.
 
 ## Invarianty návrhu
 

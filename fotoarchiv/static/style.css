@@ -1,0 +1,130 @@
+/* Prototyp: jen funkční rozvržení, vzhled se řeší samostatně. */
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  font: 14px/1.4 system-ui, sans-serif;
+  color: #222;
+  background: #fafafa;
+}
+#app { display: flex; flex-direction: column; height: 100%; }
+code { font-size: 0.95em; background: #eee; padding: 0 3px; }
+button { font: inherit; cursor: pointer; }
+button.primary { background: #2b6cb0; color: #fff; border: 1px solid #2b6cb0;
+  padding: 4px 12px; border-radius: 3px; }
+button.primary:disabled { opacity: 0.5; cursor: default; }
+button.link { border: 0; background: none; color: #2b6cb0; padding: 0;
+  text-decoration: underline; }
+input, textarea, select { font: inherit; }
+input.invalid { outline: 2px solid #c53030; }
+
+header { display: flex; gap: 16px; align-items: baseline;
+  padding: 6px 12px; background: #2d3748; color: #eee; }
+header a { color: #fff; text-decoration: none; font-weight: 600; }
+header .paths { font-size: 12px; color: #cbd5e0; flex: 1; }
+header .paths strong { color: #fbd38d; font-weight: 500; }
+.status { font-size: 12px; color: #9ae6b4; }
+.status.pending { color: #fbd38d; }
+.status.error { color: #feb2b2; }
+
+.eventbar { display: flex; gap: 16px; align-items: baseline;
+  padding: 6px 12px; border-bottom: 1px solid #ddd; background: #fff; }
+.eventbar h1 { font-size: 16px; margin: 0; }
+.eventbar .paths { font-size: 12px; color: #777; }
+
+main.list, main.loading, main.wizard { padding: 12px 16px; overflow: auto; }
+.list table { border-collapse: collapse; }
+.list td, .list th { padding: 4px 10px; border-bottom: 1px solid #e2e2e2;
+  text-align: left; }
+.list td.num { text-align: right; }
+.badge { font-size: 12px; padding: 1px 6px; border-radius: 8px;
+  background: #e2e8f0; }
+.stav-rozpracovano .badge { background: #fefcbf; }
+.stav-hotovo .badge { background: #c6f6d5; }
+
+.bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 12px;
+  border-bottom: 1px solid #ddd; background: #fffaf0; }
+.bar .miss { border: 1px solid #ed8936; background: #fff; color: #9c4221;
+  border-radius: 12px; padding: 1px 10px; }
+.bar .info { color: #555; font-size: 12px; align-self: center; }
+.bar .ok { color: #276749; }
+
+.workspace { display: flex; flex: 1; min-height: 0; }
+.grid { flex: 1; overflow: auto; padding: 8px 12px; position: relative;
+  user-select: none; }
+.panel { width: 400px; overflow: auto; padding: 8px 12px;
+  border-left: 1px solid #ddd; background: #fff; }
+.panel h2 { font-size: 15px; margin: 4px 0 8px; word-break: break-all; }
+
+.ghead { font-size: 14px; margin: 12px 0 6px; padding: 3px 6px;
+  cursor: pointer; border-radius: 3px; background: #edf2f7; }
+.ghead .count { color: #777; font-weight: normal; }
+.ghead.selected { background: #bee3f8; outline: 2px solid #3182ce; }
+.tiles { display: flex; flex-wrap: wrap; gap: 6px; }
+.tile { width: 150px; cursor: pointer; border: 2px solid transparent;
+  border-radius: 3px; background: #fff; }
+.tile img, .tile .ph { width: 146px; height: 110px; object-fit: contain;
+  display: block; background: #e2e8f0; }
+.tile .ph { display: flex; align-items: center; justify-content: center;
+  color: #555; font-size: 12px; }
+.tile.selected { border-color: #3182ce; background: #ebf8ff; }
+.tile.missing { opacity: 0.6; }
+.tile .cap { font-size: 11px; padding: 1px 3px; display: flex;
+  flex-direction: column; }
+.tile .fn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile .dt { color: #666; }
+#band { position: absolute; border: 1px solid #3182ce;
+  background: rgba(49, 130, 206, 0.15); pointer-events: none; }
+details.other { margin-top: 16px; color: #555; }
+
+.form .field, .field { margin: 8px 0; }
+.field label { display: block; font-weight: 600; font-size: 12px;
+  margin-bottom: 2px; }
+.field .note { font-weight: normal; color: #777; font-style: italic; }
+.field input, .field textarea { width: 100%; }
+.field.inherited input, .field.inherited textarea { background: #f7fafc; }
+.field.inherited input::placeholder,
+.field.inherited textarea::placeholder { color: #4a5568; font-style: italic; }
+.field.mixed input, .field.mixed textarea { background: #fffff0;
+  border: 1px dashed #d69e2e; }
+.field.mixed .note { color: #b7791f; }
+.field.own label { color: #1a365d; }
+.ph-text { color: #4a5568; font-style: italic; font-size: 12px; }
+.row { display: flex; gap: 6px; align-items: center; margin: 4px 0;
+  flex-wrap: wrap; }
+.meta { color: #666; font-size: 12px; }
+fieldset.tools { border: 1px solid #ddd; margin: 8px 0; padding: 6px 8px; }
+fieldset.tools.current { border-color: #3182ce; }
+
+.names { position: relative; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 3px; }
+.chip { background: #e2e8f0; border-radius: 10px; padding: 0 4px 0 8px; }
+.chip.inh { background: #f7fafc; border: 1px dashed #a0aec0; color: #4a5568; }
+.chip .x { border: 0; background: none; padding: 0 3px; color: #555; }
+.suggest { position: absolute; z-index: 5; left: 0; right: 0; margin: 0;
+  padding: 0; list-style: none; background: #fff; border: 1px solid #aaa; }
+.suggest li { padding: 2px 6px; cursor: pointer; }
+.suggest li:hover, .suggest li.active { background: #bee3f8; }
+.hint { background: #fefcbf; padding: 3px 6px; margin-top: 3px; }
+
+.steps { display: flex; gap: 8px; list-style: none; margin: 0;
+  padding: 8px 12px; border-bottom: 1px solid #ddd; counter-reset: s; }
+.steps li { color: #777; counter-increment: s; }
+.steps li::before { content: counter(s) ". "; }
+.steps li.current { color: #000; font-weight: 600; }
+.steps li.done { color: #276749; }
+.wnav { display: flex; justify-content: space-between; padding: 8px 12px;
+  border-top: 1px solid #ddd; background: #fff; }
+main.wizard { flex: 1; max-width: 900px; }
+main.wizard.form { max-width: 600px; }
+.notice { background: #ebf8ff; border-left: 4px solid #3182ce;
+  padding: 6px 10px; }
+.folder { display: block; margin: 8px 0; padding: 6px 10px;
+  border: 1px solid #ddd; background: #fff; }
+.folder.undecided { border-color: #ed8936; }
+.warn { color: #9c4221; }
+.ops td { padding: 2px 8px; }
+.ops tr.blocked { color: #c53030; }
+
+dialog.conflict { max-width: 460px; }
+dialog .buttons { display: flex; gap: 8px; justify-content: flex-end; }

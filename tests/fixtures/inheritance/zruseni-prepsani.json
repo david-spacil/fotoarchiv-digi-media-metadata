@@ -1,0 +1,25 @@
+{
+  "popis": "Po zrušení přepsání (pole chybí u souboru) se hodnota dědí; prázdná hodnota u souboru je přepsání",
+  "metadata": {
+    "schema": "fotoarchiv-digi-media-metadata/1",
+    "akce": {"popis": "akce"},
+    "skupiny": {"s": {"nazev": "S", "popis": "skupina"}},
+    "soubory": {
+      "a.jpg": {"skupina": "s"},
+      "b.jpg": {"skupina": "s", "popis": ""},
+      "c.jpg": {"skupina": "s", "gps": null}
+    }
+  },
+  "ocekavano": {
+    "a.jpg": {
+      "popis": {"hodnota": "skupina", "uroven": "skupina"}
+    },
+    "b.jpg": {
+      "popis": {"hodnota": "", "uroven": "soubor"}
+    },
+    "c.jpg": {
+      "popis": {"hodnota": "skupina", "uroven": "skupina"},
+      "gps": {"hodnota": null, "uroven": "soubor"}
+    }
+  }
+}
