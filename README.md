@@ -136,7 +136,8 @@ Lokální webová aplikace spouštěná nad složkou archivu.
 1. **Seznam akcí** se stavem (nezpracováno / rozpracováno / hotovo)
    a chybějícími údaji.
 2. **Při prvním otevření akce průvodce:** úklid (podsložky, RAW) →
-   načtení a skupiny → údaje akce.
+   načtení a skupiny → údaje akce → autoři skupin. Průvodce provede
+   vším povinným; údaje jednotlivých souborů se doplňují na ploše.
 3. **Pak pracovní plocha** (i při každém dalším otevření): vlevo mřížka
    náhledů po skupinách, vpravo formulář podle výběru — nic vybráno =
    akce, hlavička skupiny = skupina, vybrané soubory = soubory. Zděděné
