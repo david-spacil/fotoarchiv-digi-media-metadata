@@ -23,7 +23,8 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv \
   --archiv /mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
 # → http://127.0.0.1:5000, volitelně --work .work --port 5000,
-#   --zapis-do-archivu (produkční režim, zapisuje do archivu)
+#   --zapis-do-archivu (produkční režim, zapisuje do archivu),
+#   --kontakt E-MAIL (zapne geokódování míst přes Nominatim)
 .venv/bin/python -m fotoarchiv prevzit --archiv … --work .work
 # → jednorázově převezme _metadata.json z .work do archivu
 
@@ -33,7 +34,10 @@ node --test tests/js                                # dědění v JS
 ```
 
 Systémově: `exiftool`, `ffmpeg` (bez něj video bez náhledu), `node` jen
-na testy. Dědění je v Pythonu (`model.py`) i JS (`static/inherit.js`);
+na testy. Geokódování potřebuje `--kontakt` (User-Agent, podmínka
+Nominatimu) a odchozí HTTPS na `nominatim.openstreetmap.org`; bez nich
+jdou souřadnice míst zadat jen ručně. Testy na službu nesahají
+(podvržený `fetch`); skutečné dotazy jen jednotlivě, nikdy hromadně. Dědění je v Pythonu (`model.py`) i JS (`static/inherit.js`);
 obě se testují proti `tests/fixtures/inheritance/*.json` — měnit spolu.
 
 ## Invarianty návrhu

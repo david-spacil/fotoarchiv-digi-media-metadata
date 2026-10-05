@@ -107,6 +107,8 @@ const state = {
   conflict: false,
   locked: null,      // akce, jejíž zámek tahle relace drží
   readonly: null,    // držitel cizího zámku otevřené akce, nebo null
+  placeOpen: null,   // místo, jehož volba souřadnic je otevřená
+  geo: {},           // název místa → odpověď /api/geokodovani
 };
 
 // --- uživatel a zámek akce ---------------------------------------------------
@@ -318,6 +320,7 @@ async function openEvent(name) {
     name, detail: null, doc: null, version: null, mode: null,
     sel: new Set(), group: null, anchor: null, dirty: false,
     conflict: false, view: "grid", current: null, readonly: null,
+    placeOpen: null,
   });
   // Stav akce se mohl změnit u jiného uživatele.
   const events = state.events = await api("/api/akce");
@@ -671,7 +674,10 @@ function select(files, group, opts = {}) {
     el.classList.toggle("selected", !!group && el.dataset.group === group);
   }
   if (state.view === "loupe") renderBig();
-  if (!opts.keepPanel) renderPanel();
+  if (!opts.keepPanel) {
+    state.placeOpen = opts.place ?? null;
+    renderPanel();
+  }
 }
 
 function range(a, b) {
@@ -933,7 +939,8 @@ const FIELDS = {
   soubor: ["datum", "autori", "popis", "osoby", "misto", "pristroj", "gps"],
 };
 
-const LEVEL = { akce: "akce", skupina: "skupiny", soubor: "souboru" };
+const LEVEL = { akce: "akce", skupina: "skupiny", soubor: "souboru",
+  misto: "souřadnic místa" };
 
 // Cíl formuláře: objekt k úpravě a výpočet výsledné hodnoty.
 function targetsFor(level, ids) {
@@ -977,11 +984,12 @@ function fieldRow(targets, key, onChange) {
   const inherited = !st.anyOwn && !isEmpty(st.value);
   const row = h("div", {
     class: `field${st.mixed ? " mixed" : ""}` +
-      `${inherited ? " inherited" : ""}${st.anyOwn ? " own" : ""}`,
+      `${inherited ? " inherited" : ""}${st.anyOwn ? " own" : ""}` +
+      `${inherited && st.from === "misto" ? " from-place" : ""}`,
   });
   const update = (value) => {
     setField(targets, key, value);
-    row.classList.remove("mixed", "inherited");
+    row.classList.remove("mixed", "inherited", "from-place");
     row.classList.toggle("own", !isEmpty(value));
     note.textContent = noteText();
     onChange(key);
@@ -1068,6 +1076,202 @@ function editor(type, value, placeholder, update, inheritedValue) {
   }
   return h("input", { value: value || "", placeholder,
     oninput: (e) => update(e.target.value) });
+}
+
+// --- souřadnice míst -----------------------------------------------------
+
+// Rozhodnutí o souřadnicích místa platí pro celou akce (`souradnice_mist`):
+// {gps, popis[, osm]}, nebo null = bez souřadnic. Na Nominatim se ptá
+// server (sdílená cache), a to až po otevření volby, ne při psaní.
+
+const OSM = "© OpenStreetMap contributors";
+
+// Soubor nemá vlastní ani zděděné GPS (GPS z místa se nepočítá).
+function withoutGps(f) {
+  const gps = resolve(state.doc, f).gps;
+  return !gps || gps.uroven === "misto";
+}
+
+// Výsledná místa vybraných souborů bez GPS.
+function placesOf(files) {
+  const result = new Set();
+  for (const f of files) {
+    const misto = resolve(state.doc, f).misto?.hodnota;
+    if (!isEmpty(misto) && withoutGps(f)) result.add(misto);
+  }
+  return [...result].sort((a, b) => a.localeCompare(b, "cs"));
+}
+
+// Z lišty: vybrat soubory místa a rovnou otevřít volbu souřadnic.
+function openPlace(misto, files) {
+  state.anchor = files[0];
+  state.current = files[0];
+  select(new Set(files), null, { place: misto });
+  document.querySelector(`#grid .tile[data-file="${CSS.escape(files[0])}"]`)
+    ?.scrollIntoView({ block: "center" });
+}
+
+function renderPlaces(box) {
+  const places = placesOf(state.sel);
+  box.replaceChildren(...places.map((m) => placeBlock(m, box)));
+}
+
+function placeBlock(misto, box) {
+  const decision = (state.doc.souradnice_mist || {})[misto];
+  const decided = Object.hasOwn(state.doc.souradnice_mist || {}, misto);
+  const body = h("div");
+  const fs = h("fieldset", { class: "tools place" },
+    h("legend", {}, `Souřadnice místa „${misto}“`), body);
+  const rerender = () => renderPlaces(box);
+  if (state.placeOpen === misto) {
+    body.append(placeChooser(misto, rerender));
+    return fs;
+  }
+  const open = h("button", { onclick: () => {
+    state.placeOpen = misto;
+    rerender();
+  } }, decided ? "Změnit" : "Vybrat souřadnice");
+  if (!decided) {
+    body.append(h("p", { class: "warn" }, "Nerozhodnuto – fotky bez GPS " +
+      "nebudou mít v Immichi místo."), open);
+  } else if (decision === null) {
+    body.append(h("p", { class: "meta" }, "Bez souřadnic."), open);
+  } else {
+    body.append(h("p", { class: "meta" },
+      `${decision.gps.join(", ")}`,
+      decision.popis ? h("br") : null, decision.popis || null), open);
+  }
+  return fs;
+}
+
+function decide(misto, value) {
+  state.doc.souradnice_mist ||= {};
+  state.doc.souradnice_mist[misto] = value;
+  state.placeOpen = null;
+  changed();
+  renderPanel();
+}
+
+// Těžiště GPS souborů akce, které GPS mají (EXIF nebo ručně).
+function eventCentroid() {
+  const pts = Object.keys(state.doc.soubory || {})
+    .filter((f) => state.present.has(f))
+    .map((f) => resolve(state.doc, f).gps)
+    .filter((g) => g && g.uroven !== "misto" && !isEmpty(g.hodnota))
+    .map((g) => g.hodnota);
+  if (!pts.length) return null;
+  return [0, 1].map((i) => pts.reduce((a, p) => a + p[i], 0) / pts.length);
+}
+
+function haversine([lat1, lon1], [lat2, lon2]) {
+  const r = (x) => x * Math.PI / 180;
+  const a = Math.sin(r(lat2 - lat1) / 2) ** 2 + Math.cos(r(lat1)) *
+    Math.cos(r(lat2)) * Math.sin(r(lon2 - lon1) / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.sqrt(a));
+}
+
+// Index předvybraného kandidáta: nejbližší těžišti GPS akce, jinak první.
+function preselect(candidates) {
+  if (!candidates.length) return null;
+  const c = eventCentroid();
+  if (!c) return 0;
+  let best = 0;
+  candidates.forEach((k, i) => {
+    if (haversine(c, k.gps) < haversine(c, candidates[best].gps)) best = i;
+  });
+  return best;
+}
+
+function parseGps(text) {
+  const m = text.trim()
+    .match(/^(-?\d+(?:\.\d+)?)\s*[,;\s]\s*(-?\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const gps = [Number(m[1]), Number(m[2])];
+  return Math.abs(gps[0]) <= 90 && Math.abs(gps[1]) <= 180 ? gps : null;
+}
+
+function placeChooser(misto, rerender) {
+  const name = `place-${Math.random().toString(36).slice(2)}`;
+  const list = h("div", { class: "candidates" });
+  const manual = h("input", {
+    placeholder: "šířka, délka (49.4063, 16.7777)",
+    oninput: () => {
+      manual.classList.toggle("invalid",
+        !!manual.value.trim() && !parseGps(manual.value));
+      manualRadio.checked = true;
+    } });
+  const manualRadio = h("input", { type: "radio", name, value: "rucne" });
+  const noneRadio = h("input", { type: "radio", name, value: "bez" });
+  const err = h("p", { class: "warn" });
+  let candidates = [];
+  const confirm = h("button", { onclick: () => {
+    const v = list.closest("fieldset")
+      .querySelector(`input[name="${name}"]:checked`)?.value;
+    if (v === undefined) {
+      err.textContent = "Vyberte jednu z možností.";
+    } else if (v === "bez") {
+      decide(misto, null);
+    } else if (v === "rucne") {
+      const gps = parseGps(manual.value);
+      if (!gps) err.textContent = "Souřadnice ve tvaru šířka, délka.";
+      else decide(misto, { gps, popis: "zadáno ručně" });
+    } else {
+      const k = candidates[Number(v)];
+      decide(misto, { gps: k.gps, popis: k.popis, osm: k.osm });
+    }
+  } }, "Potvrdit");
+  const cancel = h("button", { class: "link", onclick: () => {
+    state.placeOpen = null;
+    rerender();
+  } }, "zrušit");
+
+  const showCandidates = (found) => {
+    candidates = found;
+    const pre = preselect(found);
+    list.replaceChildren(...[
+      found.length ? null : h("p", { class: "meta" },
+        "Služba místo nenašla – zadejte souřadnice ručně."),
+      ...found.map((k, i) => h("label", { class: "candidate" },
+        h("input", { type: "radio", name, value: String(i),
+          checked: i === pre }),
+        h("span", {}, h("b", {}, k.nazev), " ", k.popis,
+          h("span", { class: "meta" }, ` (${k.gps.join(", ")})`)))),
+      found.length ? h("p", { class: "meta attribution" }, OSM) : null,
+    ].filter(Boolean));
+    if (!found.length) manual.focus();
+  };
+  const search = async () => {
+    err.textContent = "";
+    if (state.geo[misto]) return showCandidates(state.geo[misto]);
+    list.replaceChildren(h("p", { class: "meta" }, "Hledám…"));
+    try {
+      const q = encodeURIComponent(misto);
+      const r = await api(`/api/geokodovani?q=${q}`);
+      state.geo[misto] = r.kandidati;
+      showCandidates(r.kandidati);
+    } catch (e) {
+      const text = e.status === 503
+        ? "Geokódování je na serveru vypnuté (chybí --kontakt)."
+        : "Služba neodpověděla.";
+      list.replaceChildren(h("p", { class: "warn" }, text));
+      if (e.status !== 503) {
+        list.append(h("button", { onclick: search }, "Zkusit znovu"));
+      }
+    }
+  };
+  if (state.info?.geokodovani) search();
+  else list.replaceChildren(h("p", { class: "meta" },
+    "Geokódování je vypnuté – zadejte souřadnice ručně."));
+
+  return h("div", {},
+    list,
+    h("label", { class: "candidate" }, manualRadio,
+      h("span", {}, "Ručně:")),
+    manual,
+    h("label", { class: "candidate" }, noneRadio,
+      h("span", {}, "Bez souřadnic")),
+    err,
+    h("div", { class: "row" }, confirm, cancel));
 }
 
 // --- pole jmen ---------------------------------------------------------------
@@ -1271,6 +1475,11 @@ function renderBar() {
   files(m.souboryBezData, "bez data");
   files(m.souboryBezSkupiny, "bez skupiny");
   files(m.souboryBezMista, "bez místa");
+  const places = Object.keys(m.mistaBezSouradnic);
+  if (places.length) {
+    item(`${plural(places.length, "místo", "místa", "míst")} bez souřadnic`,
+      () => openPlace(places[0], m.mistaBezSouradnic[places[0]]));
+  }
   const chyb = state.detail?.chybejici || [];
   if (chyb.length) {
     items.push(h("span", { class: "info" },
@@ -1291,8 +1500,10 @@ function renderPanel() {
   const panel = document.getElementById("panel");
   if (!panel) return;
   if (state.mode === "wizard") return renderWizardPanel(panel);
+  const placeBox = h("div");
   const onChange = (key) => {
     changed({ grid: key === "datum" });
+    if (key === "misto" || key === "gps") renderPlaces(placeBox);
   };
   const afterGroupChange = () => {
     changed({ grid: true });
@@ -1341,7 +1552,9 @@ function renderPanel() {
   h("h2", {}, title),
   ...extra.filter(Boolean),
   h("div", { class: "form" },
-    FIELDS[level].map((k) => fieldRow(targets, k, onChange)))));
+    FIELDS[level].map((k) => fieldRow(targets, k, onChange))),
+  level === "soubor" ? placeBox : null));
+  if (level === "soubor") renderPlaces(placeBox);
 }
 
 // --- průvodce --------------------------------------------------------------

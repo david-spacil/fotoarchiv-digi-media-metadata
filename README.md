@@ -77,6 +77,12 @@ přístroje a vzoru názvu, uživatel je může upravit.
     "mista": ["Vysočany", "Holštejn"],
     "ucastnici": ["Spáčil, David", "Kopáčová, Zuzana"]
   },
+  "souradnice_mist": {
+    "Vysočany": {"gps": [49.43, 16.804],
+                 "popis": "Vysočany, okres Blansko, …",
+                 "osm": "relation/…"},
+    "u rybníka": null
+  },
   "skupiny": {
     "g9": {
       "autori": ["Spáčil, David", "Kopáčová, Zuzana"],
@@ -104,6 +110,16 @@ přístroje a vzoru názvu, uživatel je může upravit.
 - **Místa akce (`mista`) jsou výčet**, fotka nebo skupina má jedno
   `misto`. Jediné místo akce se na fotky dědí; při víc místech se místo
   doplňuje u skupiny nebo fotky (návrhy z míst akce).
+- **Souřadnice míst (`souradnice_mist`)** jsou rozhodnutí pro akci:
+  přesný název `misto` → `{gps, popis}`, nebo `null` = „bez souřadnic“.
+  Nedědí se, platí pro všechny fotky akce s tím místem. Výsledné `gps`
+  fotky je vlastní nebo zděděné `gps`, jinak souřadnice jejího místa
+  (úroveň `misto`); k souboru se neukládají a GPS z EXIF nepřepisují.
+  Kandidáty hledá server v Nominatimu (OSM) až po otevření volby,
+  odpovědi cachuje v `.work/cache/geokodovani.json` (sdílené všemi
+  akcemi, smazatelné). Předvybraný je kandidát nejbližší fotkám akce
+  s GPS; potvrzuje ho uživatel. Přejmenování místa rozhodnutí
+  nepřenese.
 - **Autorů může být víc.** `autori` znamená „fotil někdo z uvedených“;
   zpětně se nedá zjistit, kdo kdy držel foťák.
 - Údaje z EXIF (datum, přístroj, GPS) zapisuje průvodce, u WhatsAppu
@@ -149,7 +165,8 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
   bez GPS a obec bere jen z GPS. Fotky bez GPS proto dostanou
   souřadnice svého místa, geokódované přes Nominatim (OSM) s cache
   a volbou kandidáta (OpenSpec změna `add-place-geocoding`); název
-  místa se do sidecaru nezapisuje.
+  místa se do sidecaru nezapisuje. U výsledků Nominatimu aplikace
+  uvádí „© OpenStreetMap contributors“.
 - **Immich** bude archiv číst jako externí knihovnu jen pro čtení
   s výjimkami `**/*.ignored/**` a nezpracovávanými složkami první úrovně
   (`přetřídit`, `přednášky SKLEP TIC`). Zatím nenapojeno.

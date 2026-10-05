@@ -56,6 +56,9 @@ def main(argv=None):
     parser.add_argument("--zapis-do-archivu", action="store_true",
                         help="produkční režim: _metadata.json ve složkách "
                              "akcí, úklid se provádí")
+    parser.add_argument("--kontakt",
+                        help="e-mail nebo URL do User-Agent pro Nominatim "
+                             "(OSM); bez něj je geokódování míst vypnuté")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5000)
     parser.add_argument("--debug", action="store_true")
@@ -66,13 +69,16 @@ def main(argv=None):
     # Provedené operace úklidu jdou do logu serveru.
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-    app = create_app(archiv, work, zapis=args.zapis_do_archivu)
+    app = create_app(archiv, work, zapis=args.zapis_do_archivu,
+                     kontakt=args.kontakt)
     print(f"Archiv: {archiv.resolve()}")
     print(f"Pracovní adresář: {work.resolve()}")
     if args.zapis_do_archivu:
         print("Režim: PRODUKČNÍ — metadata a úklid zapisují do archivu.")
     else:
         print("Režim: vývojový — do archivu se nezapisuje.")
+    if not args.kontakt:
+        print("Geokódování míst vypnuto (chybí --kontakt).")
     # Zámek akcí je v paměti: server smí běžet jen jako jeden proces.
     app.run(host=args.host, port=args.port, debug=args.debug,
             threaded=True)

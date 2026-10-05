@@ -34,6 +34,7 @@ test("skupina bez autorů", () => {
     souboryBezData: ["2.jpg", "3.jpg"],
     souboryBezSkupiny: ["4.jpg"],
     souboryBezMista: [],
+    mistaBezSouradnic: {},
   });
 });
 
@@ -46,4 +47,23 @@ test("soubory bez místa jen při víc místech akce", () => {
   assert.deepEqual(missing(doc(["Holštejn"])).souboryBezMista, []);
   assert.deepEqual(missing(doc(["Molenburk", "Housko"])).souboryBezMista,
     ["a.jpg"]);
+});
+
+test("místa bez souřadnic jen u souborů bez GPS", () => {
+  const doc = {
+    akce: { mista: ["Vysočany"] },
+    souradnice_mist: { Holštejn: null },
+    skupiny: {},
+    soubory: {
+      "a.jpg": {},
+      "b.jpg": { gps: [49.4, 16.8] },
+      "c.jpg": { misto: "Holštejn" },
+      "d.jpg": { misto: "Housko", gps: [49.4, 16.8] },
+      "e.jpg": {},
+    },
+  };
+  assert.deepEqual(missing(doc).mistaBezSouradnic,
+    { "Vysočany": ["a.jpg", "e.jpg"] });
+  doc.souradnice_mist.Vysočany = { gps: [49.43, 16.804] };
+  assert.deepEqual(missing(doc).mistaBezSouradnic, {});
 });

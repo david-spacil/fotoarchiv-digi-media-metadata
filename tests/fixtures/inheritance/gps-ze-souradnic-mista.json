@@ -1,0 +1,35 @@
+{
+  "popis": "Bez vlastního GPS se bere GPS z souradnice_mist výsledného místa; EXIF GPS ani GPS skupiny se nepřepisuje, null = bez souřadnic",
+  "metadata": {
+    "schema": "fotoarchiv-digi-media-metadata/1",
+    "akce": {"mista": ["Holštejn"]},
+    "souradnice_mist": {
+      "Holštejn": {"gps": [49.4063, 16.7777], "popis": "Holštejn, okres Blansko"},
+      "u rybníka": null
+    },
+    "skupiny": {"s": {"nazev": "S", "gps": [49.0, 16.0]}},
+    "soubory": {
+      "a.jpg": {},
+      "b.jpg": {"gps": [49.41, 16.78]},
+      "c.jpg": {"misto": "u rybníka"},
+      "d.jpg": {"skupina": "s"},
+      "e.jpg": {"misto": "Vysočany"}
+    }
+  },
+  "ocekavano": {
+    "a.jpg": {
+      "misto": {"hodnota": "Holštejn", "uroven": "akce"},
+      "gps": {"hodnota": [49.4063, 16.7777], "uroven": "misto"}
+    },
+    "b.jpg": {
+      "misto": {"hodnota": "Holštejn", "uroven": "akce"},
+      "gps": {"hodnota": [49.41, 16.78], "uroven": "soubor"}
+    },
+    "c.jpg": {"misto": {"hodnota": "u rybníka", "uroven": "soubor"}},
+    "d.jpg": {
+      "misto": {"hodnota": "Holštejn", "uroven": "akce"},
+      "gps": {"hodnota": [49.0, 16.0], "uroven": "skupina"}
+    },
+    "e.jpg": {"misto": {"hodnota": "Vysočany", "uroven": "soubor"}}
+  }
+}

@@ -9,16 +9,20 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_file
 
-from . import cleanup, lock, model, names, scan, thumbs
+from . import cleanup, geocode, lock, model, names, scan, thumbs
 from .archive import SCHEMA, Conflict, Workspace
 
 STATIC = Path(__file__).parent / "static"
 
 
-def create_app(archiv, work, zapis=False, locks=None):
+def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
+               geocoder=None):
+    """`kontakt` zapne geokódování (User-Agent pro Nominatim)."""
     ws = Workspace(archiv, work, zapis)
     locks = locks or lock.Locks()
     cache_dir = ws.work / "cache"
+    if geocoder is None and kontakt:
+        geocoder = geocode.Geocoder(cache_dir, kontakt)
     name_index = names.NameIndex(ws.metadata_files)
     app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
     app.config["WORKSPACE"] = ws
@@ -38,7 +42,8 @@ def create_app(archiv, work, zapis=False, locks=None):
     def info():
         return {"archiv": str(ws.archiv.resolve()),
                 "work": str(ws.work.resolve()),
-                "zapis": ws.zapis}
+                "zapis": ws.zapis,
+                "geokodovani": geocoder is not None}
 
     @app.get("/api/akce")
     def akce_list():
@@ -184,5 +189,18 @@ def create_app(archiv, work, zapis=False, locks=None):
     def jmena_kontrola():
         return names.check(request.args.get("jmeno", ""),
                            name_index.names())
+
+    @app.get("/api/geokodovani")
+    def geokodovani():
+        if geocoder is None:
+            return {"chyba": "geokodovani_vypnuto"}, 503
+        q = request.args.get("q", "").strip()
+        if not q:
+            abort(400)
+        try:
+            found, cached = geocoder.search(q)
+        except geocode.GeocodeError as e:
+            return {"chyba": "sluzba_nedostupna", "detail": str(e)}, 502
+        return {"kandidati": found, "z_cache": cached}
 
     return app

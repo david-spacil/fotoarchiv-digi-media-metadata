@@ -30,15 +30,28 @@ function collect(levels) {
   return result;
 }
 
-// Výsledné hodnoty polí souboru s úrovní, odkud pocházejí.
+// Výsledné hodnoty polí souboru s úrovní, odkud pocházejí. Bez vlastního
+// či zděděného `gps` se bere `gps` z `souradnice_mist` výsledného místa,
+// s úrovní `misto`.
 export function resolve(doc, filename) {
   const record = (doc.soubory || {})[filename] || {};
   const group = (doc.skupiny || {})[record.skupina] || {};
-  return collect([
+  const result = collect([
     ["akce", doc.akce],
     ["skupina", group],
     ["soubor", record],
   ]);
+  const gps = placeGps(doc, result);
+  if (gps) result.gps = { hodnota: gps, uroven: "misto" };
+  return result;
+}
+
+// GPS z `souradnice_mist`, jen pokud soubor nemá žádné vlastní.
+function placeGps(doc, result) {
+  if (result.gps?.hodnota) return null;
+  const misto = result.misto?.hodnota;
+  if (!misto) return null;
+  return (doc.souradnice_mist || {})[misto]?.gps || null;
 }
 
 // Výsledné hodnoty polí skupiny (zděděné z akce).
@@ -56,7 +69,8 @@ function isEmpty(value) {
 
 // Co chybí: akce bez názvu nebo data, skupiny bez autorů (a ne všechny
 // jejich soubory autory přepisují), soubory bez data, bez skupiny a bez
-// místa (jen když má akce víc míst — jedno místo se dědí).
+// místa (jen když má akce víc míst — jedno místo se dědí) a místa bez
+// rozhodnutých souřadnic (`mistaBezSouradnic`: místo → soubory bez GPS).
 // `present` = názvy souborů, které v kořeni akce skutečně jsou.
 export function missing(doc, present) {
   const akce = doc.akce || {};
@@ -66,7 +80,9 @@ export function missing(doc, present) {
     souboryBezData: [],
     souboryBezSkupiny: [],
     souboryBezMista: [],
+    mistaBezSouradnic: {},
   };
+  const souradnice = doc.souradnice_mist || {};
   const viceMist = (akce.mista || []).length > 1;
   const groups = doc.skupiny || {};
   const files = Object.keys(doc.soubory || {})
@@ -80,14 +96,20 @@ export function missing(doc, present) {
   }
   for (const f of files) {
     const record = doc.soubory[f];
-    if (isEmpty(resolve(doc, f).datum?.hodnota)) {
+    const fields = resolve(doc, f);
+    if (isEmpty(fields.datum?.hodnota)) {
       result.souboryBezData.push(f);
     }
     if (!record.skupina || !groups[record.skupina]) {
       result.souboryBezSkupiny.push(f);
     }
-    if (viceMist && isEmpty(resolve(doc, f).misto?.hodnota)) {
+    if (viceMist && isEmpty(fields.misto?.hodnota)) {
       result.souboryBezMista.push(f);
+    }
+    const misto = fields.misto?.hodnota;
+    if (!isEmpty(misto) && !Object.hasOwn(souradnice, misto) &&
+        isEmpty(fields.gps?.hodnota)) {
+      (result.mistaBezSouradnic[misto] ||= []).push(f);
     }
   }
   return result;

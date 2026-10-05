@@ -196,3 +196,43 @@ def test_cleanup_execute_prod(prod):
         ("rename", "hotovo"), ("move", "blokovano")]
     assert (archiv / EVENT / "RAW.ignored" / "a.rw2").exists()
     assert (archiv / EVENT / "a.rw2").read_text() == "raw"
+
+
+def test_geocoding_disabled_without_contact(client):
+    c, _ = client
+    assert c.get("/api/info").json["geokodovani"] is False
+    r = c.get("/api/geokodovani?q=Holštejn")
+    assert r.status_code == 503
+    assert r.json["chyba"] == "geokodovani_vypnuto"
+
+
+def test_geocoding_endpoint(tmp_path, monkeypatch):
+    from fotoarchiv import geocode
+    calls = []
+
+    def fetch(query, user_agent):
+        calls.append((query, user_agent))
+        if query == "nedostupne":
+            raise geocode.GeocodeError("timeout")
+        return [{"name": "Holštejn", "lat": "49.4063", "lon": "16.7777",
+                 "display_name": "Holštejn, okres Blansko",
+                 "osm_type": "relation", "osm_id": 1}]
+
+    monkeypatch.setattr("fotoarchiv.geocode.fetch_nominatim", fetch)
+    monkeypatch.setattr("fotoarchiv.geocode.INTERVAL", 0)
+    monkeypatch.setattr("fotoarchiv.scan.run_exiftool", lambda d, n: {})
+    (tmp_path / "archiv").mkdir()
+    app = create_app(tmp_path / "archiv", tmp_path / "work",
+                     kontakt="test@example.org")
+    c = app.test_client()
+    assert c.get("/api/info").json["geokodovani"] is True
+    assert c.get("/api/geokodovani?q=").status_code == 400
+    r = c.get("/api/geokodovani?q=Holštejn")
+    assert r.status_code == 200 and r.json["z_cache"] is False
+    assert r.json["kandidati"][0]["gps"] == [49.4063, 16.7777]
+    assert c.get("/api/geokodovani?q=holštejn").json["z_cache"] is True
+    assert calls == [("holštejn",
+                      "fotoarchiv-digi-media-metadata (test@example.org)")]
+    r = c.get("/api/geokodovani?q=nedostupne")
+    assert r.status_code == 502 and r.json["chyba"] == "sluzba_nedostupna"
+    assert (tmp_path / "work" / "cache" / "geokodovani.json").exists()

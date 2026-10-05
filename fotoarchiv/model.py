@@ -26,6 +26,8 @@ def resolve(doc, filename):
     Vrací {pole: {"hodnota": …, "uroven": "akce"|"skupina"|"soubor"}}.
     Pole přítomné na nižší úrovni přepisuje vyšší, i když je prázdné.
     `misto` se z akce dědí, jen když má akce v `mista` právě jedno místo.
+    Bez vlastního či zděděného `gps` se bere `gps` z `souradnice_mist`
+    výsledného místa, s úrovní `misto`.
     """
     record = doc.get("soubory", {}).get(filename, {})
     group = doc.get("skupiny", {}).get(record.get("skupina"), {})
@@ -43,7 +45,19 @@ def resolve(doc, filename):
             if key in LOCAL_KEYS[level]:
                 continue
             result[key] = {"hodnota": value, "uroven": level}
+    place_gps = _place_gps(doc, result)
+    if place_gps:
+        result["gps"] = {"hodnota": place_gps, "uroven": "misto"}
     return result
+
+
+def _place_gps(doc, result):
+    """GPS z `souradnice_mist`, jen pokud soubor nemá žádné vlastní."""
+    if (result.get("gps") or {}).get("hodnota"):
+        return None
+    misto = (result.get("misto") or {}).get("hodnota")
+    place = (doc.get("souradnice_mist") or {}).get(misto) if misto else None
+    return (place or {}).get("gps")
 
 
 def technical(scanned):
