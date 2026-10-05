@@ -99,3 +99,24 @@ nevznikne napůl zapsaný soubor).
 #### Scenario: Úprava popisu
 - **WHEN** uživatel změní popis akce a chvíli nic nedělá
 - **THEN** změna je uložena v `_metadata.json`
+
+### Requirement: GPS ze souřadnic místa
+Výsledné `gps` souboru SHALL být jeho vlastní nebo zděděné `gps`; pokud
+žádné není a výsledné `misto` má v `souradnice_mist` souřadnice,
+výsledné `gps` SHALL být tyto souřadnice s úrovní `misto`. Souřadnice
+místa MUST NOT přepsat GPS z EXIF ani ručně zadané GPS na kterékoli
+úrovni a MUST NOT se ukládat k souboru.
+
+#### Scenario: Fotka bez GPS
+- **WHEN** soubor nemá `gps`, jeho místo je `Holštejn`
+  a `souradnice_mist` má pro `Holštejn` [49.4063, 16.7777]
+- **THEN** výsledné `gps` souboru je [49.4063, 16.7777] z úrovně
+  `misto`
+
+#### Scenario: Fotka s GPS z EXIF
+- **WHEN** soubor má `gps` z EXIF a místo se souřadnicemi
+- **THEN** výsledné `gps` je to z EXIF
+
+#### Scenario: Místo bez souřadnic
+- **WHEN** `souradnice_mist` má pro místo `null`
+- **THEN** soubor bez vlastního GPS nemá výsledné `gps`
