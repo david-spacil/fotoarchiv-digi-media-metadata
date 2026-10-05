@@ -9,9 +9,12 @@ Stav: **návrh**, zatím bez kódu.
 
 ## Archiv
 
-- Na první úrovni složky akcí `YYYY-MM-DD název`, bez dalšího zanoření.
-- Složky `přetřídit` a `přednášky SKLEP TIC` se nezpracovávají.
-- Ve složkách jsou JPG, mp4, občas png/zip a `Thumbs.db` (ignorovat).
+- Na první úrovni složky akcí `YYYY-MM-DD název`. Zpracovávají se jen
+  ty; ostatní (`přetřídit`, `přednášky SKLEP TIC`) se nechávají beze
+  změny.
+- Ve složkách jsou JPG, mp4, RW2, občas png/zip a `Thumbs.db`
+  (ignorovat). Některé akce mají podsložky (`RAW`, `Video`, …), viz
+  [Podsložky a RAW](#podsložky-a-raw).
 - Zdroje se liší kvalitou metadat:
 
   | vzor názvu            | přístroj          | EXIF                   |
@@ -20,6 +23,32 @@ Stav: **návrh**, zatím bez kódu.
   | `YYYYMMDD_HHMMSS.jpg` | Samsung SM-A528B  | datum, GPS             |
   | `IMG-YYYYMMDD-WA*.jpg`| WhatsApp          | žádný, datum jen v názvu |
   | `IMG_####.jpg`        | ?                 | neověřeno              |
+
+## Podsložky a RAW
+
+Zpracovává se jen kořen složky akce. Kořen má zůstat čistý pro
+prohlížení: jen fotky a videa, která patří do Immiche.
+
+- **Podsložky:** u každé podsložky bez přípony `.ignored` se průvodce
+  zeptá, např. *„Složka `Video` obsahuje 22 souborů. Přesunout je mezi
+  soubory akce, nebo složku ponechat stranou?“*
+  - *Přesunout:* obsah jde do kořene, prázdná složka (včetně
+    `Thumbs.db`) se smaže.
+  - *Ponechat:* složka se přejmenuje na `název.ignored` a dál se jí
+    průvodce nevšímá.
+- **Přípona `.ignored` je jediný záznam o ignorování** — nikde jinde se
+  seznam ignorovaných složek nevede. Immich ji vyloučí jedním vzorem.
+- **RAW** (`rw2`, `cr2`, `cr3`, `nef`, `arw`, `dng`, `orf`, `raf`, bez
+  ohledu na velikost písmen) do Immiche nejde a nepáruje se s JPG.
+  - Podsložka, kde RAWy tvoří většinu souborů, se při ponechání
+    přejmenuje na `RAW.ignored` bez ohledu na původní název (`raw`,
+    `RAWy`, …).
+  - RAWy v kořeni průvodce nabídne přesunout do `RAW.ignored`.
+- Přesun nikdy nepřepíše existující soubor; při shodě názvů se zastaví
+  a nahlásí ji. Pokud `RAW.ignored` už existuje, soubory se do ní
+  přidají.
+- Přesuny a přejmenování mění cesty, které by Immich bral jako nové
+  assety. Proto se mají udělat před napojením archivu do Immiche.
 
 ## Datový model
 
@@ -91,6 +120,9 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
   - K ověření: jak Immich načítá osoby ze sidecaru. Nejspíš z oblastí
     obličejů, ne z `Iptc4xmpExt:PersonInImage`; osoby proto možná
     exportovat i jako tagy.
+- **Immich** bude archiv číst jako externí knihovnu jen pro čtení
+  s výjimkami `**/*.ignored/**` a nezpracovávanými složkami první úrovně
+  (`přetřídit`, `přednášky SKLEP TIC`). Zatím nenapojeno.
 - **Index** celého archivu (CSV, jeden řádek na akci) nahrazuje ručně
   vedený `_metadata.xlsx`. Generuje se, needituje.
 
@@ -102,6 +134,9 @@ Lokální webová aplikace spouštěná nad složkou archivu:
 - formulář vedle mřížky pro akci, skupinu nebo vybrané soubory;
 - našeptávání a kontrola jmen (viz výše);
 - uložení do `_metadata.json`, export sidecarů a indexu.
+
+Metadata (JPG, mp4) čte a XMP sidecary zapisuje `exiftool`. Náhledy se
+cachují lokálně mimo archiv — archiv leží na SMB.
 
 Primárně Linux (Fedora). Kolegové na Windows jsou žádoucí, ale ne
 priorita: snadné spuštění na Windows se řeší, jen pokud nebude stát

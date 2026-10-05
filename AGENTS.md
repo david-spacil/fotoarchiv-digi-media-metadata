@@ -27,8 +27,11 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
 - Jména v kanonickém tvaru `Příjmení, Jméno`; seznam návrhů se skládá ze
   všech `_metadata.json` v archivu, žádný pevný číselník. Porovnání ignoruje
   diakritiku, velikost písmen a pořadí slov.
-- Zpracovávají se jen složky akcí na první úrovni (`YYYY-MM-DD název`);
-  `přetřídit`, `přednášky SKLEP TIC` a `Thumbs.db` se přeskakují.
+- Zpracovávají se jen složky akcí na první úrovni (`YYYY-MM-DD název`)
+  a v nich jen kořen. Podsložky se buď sloučí s kořenem, nebo dostanou
+  příponu `.ignored` — ta je jediným záznamem o ignorování. RAWy do
+  Immiche nejdou (`RAW.ignored`). `Thumbs.db` se přeskakuje.
+- Přesun souborů nikdy nepřepíše existující soubor.
 - Datum u WhatsApp fotek (`IMG-YYYYMMDD-WA*`) jen z názvu souboru, EXIF
   nemají.
 
@@ -37,6 +40,8 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
 - Jak Immich načítá osoby ze sidecaru (`Iptc4xmpExt:PersonInImage` vs.
   oblasti obličejů vs. tagy) — ověřit dřív, než se zafixuje formát XMP.
 - Zdroj souborů `IMG_####.jpg` a jejich EXIF.
+- Immich zatím není napojený; přesuny a přejmenování dělat před
+  napojením (změna cesty = nový asset).
 
 ## Prostředí
 
