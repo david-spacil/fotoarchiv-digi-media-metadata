@@ -128,3 +128,21 @@ def test_adopt_skips_existing(ws):
         before[f"{EVENT}/_metadata.json"]
     assert json.loads((ws.archiv / "2025-01-02 starší" /
                        "_metadata.json").read_text()) == {"n": "work2"}
+
+
+def test_list_events_skips_sidecars_and_flags_changes(ws):
+    from fotoarchiv import xmp
+    event_dir = ws.archiv / EVENT
+    (event_dir / "a.jpg.xmp").write_text("")
+    (event_dir / ".xmp-abc.tmp").write_text("")
+    assert ws.list_events()[0]["souboru"] == 2
+    v = ws.save(EVENT, {"schema": "x", "dokonceno": "2026-05-01",
+                        "soubory": {"a.jpg": {}}}, None)
+    # Bez záznamu o exportu je stav neznámý, žádná poznámka.
+    assert ws.list_events()[0]["zmeneno_po_exportu"] is False
+    xmp.export(ws, EVENT)
+    assert ws.list_events()[0]["zmeneno_po_exportu"] is False
+    ws.save(EVENT, {"schema": "x", "dokonceno": "2026-05-01",
+                    "soubory": {"a.jpg": {"popis": "x"}}}, v)
+    event = ws.list_events()[0]
+    assert event["stav"] == "hotovo" and event["zmeneno_po_exportu"]

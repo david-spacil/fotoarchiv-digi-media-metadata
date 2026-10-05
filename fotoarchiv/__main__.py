@@ -1,13 +1,15 @@
 """Spuštění: python -m fotoarchiv --archiv CESTA [--work .work]
-[--zapis-do-archivu], převzetí: python -m fotoarchiv prevzit --archiv …."""
+[--zapis-do-archivu], převzetí: python -m fotoarchiv prevzit --archiv …,
+export XMP: python -m fotoarchiv exportovat [AKCE] --archiv …."""
 
 import argparse
 import logging
 import sys
 from pathlib import Path
 
+from . import xmp
 from .app import create_app
-from .archive import adopt
+from .archive import Workspace, adopt
 
 
 def paths(args):
@@ -44,14 +46,52 @@ def prevzit(argv):
     print(f"Převzato {len(adopted)}, přeskočeno {len(skipped)}.")
 
 
+def exportovat(argv):
+    parser = argparse.ArgumentParser(
+        prog="python -m fotoarchiv exportovat",
+        description="Zapíše XMP sidecary zadané akce, nebo všech akcí "
+                    "s _metadata.json (jen chybějící a změněné). Zámky "
+                    "akcí nekontroluje.")
+    common(parser)
+    parser.add_argument("akce", nargs="?",
+                        help="název složky akce (bez něj všechny)")
+    parser.add_argument("--zapis-do-archivu", action="store_true",
+                        help="produkční režim: sidecary vedle souborů "
+                             "v archivu (jinak do pracovního adresáře)")
+    args = parser.parse_args(argv)
+    archiv, work = paths(args)
+    ws = Workspace(archiv, work, args.zapis_do_archivu)
+    if args.akce:
+        try:
+            ws.event_dir(args.akce)
+        except KeyError:
+            sys.exit(f"Akce nenalezena: {args.akce}")
+    failed = False
+    for name in [args.akce] if args.akce else ws.event_names():
+        result = xmp.export(ws, name)
+        if result is None:
+            print(f"přeskočeno: {name} (bez _metadata.json)")
+            continue
+        print(f"{name}: zapsáno {result['zapsano']}, nezměněno "
+              f"{result['nezmeneno']}, selhalo {len(result['chyby'])}")
+        for error in result["chyby"]:
+            print(f"  {error['soubor']}: {error['chyba']}")
+        failed = failed or bool(result["chyby"])
+    if failed:
+        sys.exit(1)
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["prevzit"]:
         return prevzit(argv[1:])
+    if argv[:1] == ["exportovat"]:
+        return exportovat(argv[1:])
     parser = argparse.ArgumentParser(
         prog="python -m fotoarchiv",
         description="Průvodce metadaty fotoarchivu. Převzetí metadat "
-                    "z pracovního adresáře: python -m fotoarchiv prevzit.")
+                    "z pracovního adresáře: python -m fotoarchiv prevzit, "
+                    "export XMP: python -m fotoarchiv exportovat.")
     common(parser)
     parser.add_argument("--zapis-do-archivu", action="store_true",
                         help="produkční režim: _metadata.json ve složkách "

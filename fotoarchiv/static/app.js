@@ -109,6 +109,9 @@ const state = {
   readonly: null,    // držitel cizího zámku otevřené akce, nebo null
   placeOpen: null,   // místo, jehož volba souřadnic je otevřená
   geo: {},           // název místa → odpověď /api/geokodovani
+  exporting: false,  // běží export nebo dokončení
+  exportVersion: null, // verze `_metadata.json` posledního exportu
+  exportNote: "",    // stav exportu u tlačítka
 };
 
 // --- uživatel a zámek akce ---------------------------------------------------
@@ -306,7 +309,9 @@ async function showList() {
       h("td", {}, h("a", { href: `#/akce/${encodeURIComponent(e.nazev)}` },
         e.nazev.slice(11))),
       h("td", { class: "num" }, e.souboru),
-      h("td", {}, h("span", { class: "badge" }, STAV[e.stav]))));
+      h("td", {}, h("span", { class: "badge" }, STAV[e.stav]),
+        e.zmeneno_po_exportu
+          ? h("span", { class: "warn" }, " změněno po exportu") : null)));
   app.replaceChildren(header(), h("main", { class: "list" },
     h("h1", {}, "Akce"),
     h("table", {},
@@ -322,7 +327,7 @@ async function openEvent(name) {
     name, detail: null, doc: null, version: null, mode: null,
     sel: new Set(), group: null, anchor: null, dirty: false,
     conflict: false, view: "grid", current: null, readonly: null,
-    placeOpen: null,
+    placeOpen: null, exporting: false, exportVersion: null, exportNote: "",
   });
   // Stav akce se mohl změnit u jiného uživatele.
   const events = state.events = await api("/api/akce");
@@ -374,6 +379,8 @@ async function loadDetail() {
   state.version = d.version;
   state.present = new Set(d.soubory.map((f) => f.nazev));
   state.scan = Object.fromEntries(d.soubory.map((f) => [f.nazev, f]));
+  state.exportVersion = d.export.version;
+  state.exportNote = checkNote(d.export.kontrola);
   if (!d.novy && d.nove.length) state.dirty = true;
 }
 
@@ -406,7 +413,8 @@ function setStatus(text) {
 
 async function save() {
   if (state.conflict || !state.doc || state.readonly) return;
-  if (state.saving) {
+  // Export mění verzi na serveru; uloží se až po něm.
+  if (state.saving || state.exporting) {
     state.dirty = true;
     return;
   }
@@ -419,7 +427,13 @@ async function save() {
       method: "PUT",
       body: { metadata: state.doc, version: state.version, relace: session() },
     });
-    if (name === state.name) state.version = r.version;
+    if (name === state.name) {
+      state.version = r.version;
+      if (r.version !== state.exportVersion) {
+        state.exportNote = "neexportované změny";
+        renderExportStatus();
+      }
+    }
     for (const n of collectNames(state.doc)) state.sessionNames.add(n);
   } catch (err) {
     state.dirty = true;
@@ -1403,6 +1417,114 @@ function normalize(name) {
     .toLowerCase().match(/[\p{L}\p{N}_]+/gu)?.sort().join(" ") || "";
 }
 
+// --- export a dokončení -----------------------------------------------------
+
+function exportTarget() {
+  return state.info?.zapis ? "Sidecary se zapíšou vedle souborů v archivu."
+    : `Vývojový režim: sidecary jdou do ${state.info?.work || "…"}/xmp, ` +
+      "ne do archivu.";
+}
+
+function checkNote(kontrola) {
+  if (!kontrola) return "";
+  const n = kontrola.zapsano + kontrola.chyby.length;
+  return n ? plural(n, "sidecar neaktuální", "sidecary neaktuální",
+    "sidecarů neaktuálních") : "sidecary aktuální";
+}
+
+function exportResult(r) {
+  let text = `zapsáno ${r.zapsano}, nezměněno ${r.nezmeneno}`;
+  if (r.chyby.length) text += `, selhalo ${r.chyby.length}`;
+  if (!state.info?.zapis) text += " (vývojový režim: do pracovního adresáře)";
+  return text;
+}
+
+function renderExportStatus(errors = []) {
+  const el = document.getElementById("export-status");
+  if (!el) return;
+  const done = state.doc?.dokonceno;
+  el.textContent = state.exporting ? "Exportuji…"
+    : [done ? `Dokončeno ${done}` : "", state.exportNote]
+      .filter(Boolean).join(" · ");
+  el.className = errors.length ? "error"
+    : /neaktuál|neexport|selhal/.test(state.exportNote) ? "pending" : "";
+  el.title = errors.map((e) => `${e.soubor}: ${e.chyba}`).join("\n");
+}
+
+function confirmDialog(title, lines, ok) {
+  return new Promise((resolve) => {
+    const close = (value) => {
+      dialog.close();
+      dialog.remove();
+      resolve(value);
+    };
+    const dialog = h("dialog", { class: "conflict" },
+      h("h2", {}, title),
+      h("ul", {}, lines.map((l) => h("li", {}, l))),
+      h("div", { class: "buttons" },
+        h("button", { class: "primary", onclick: () => close(true) }, ok),
+        h("button", { onclick: () => close(false) }, "Zrušit")));
+    dialog.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      close(false);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+}
+
+// Uloží neuložené změny; false, když uložit nejde (konflikt, zámek).
+async function flushSave() {
+  while (state.saving) await new Promise((r) => setTimeout(r, 100));
+  if (state.dirty) await save();
+  return !state.dirty && !state.conflict && !state.readonly;
+}
+
+async function runExport(finish) {
+  if (state.exporting || state.readonly) return;
+  if (!(await flushSave())) return;
+  if (finish) {
+    const lines = missingItems().map((i) => i.text);
+    if (lines.length && !(await confirmDialog(
+      "Akci něco chybí", lines, "Přesto dokončit"))) return;
+  }
+  const name = state.name;
+  state.exporting = true;
+  renderExportStatus();
+  let errors = [];
+  try {
+    const r = await api(eventUrl(name, finish ? "/dokoncit" : "/export"), {
+      method: "POST", body: { relace: session(), version: state.version },
+    });
+    if (name !== state.name) return;
+    errors = r.chyby;
+    if (finish) {
+      state.version = r.version;
+      state.doc.dokonceno = r.dokonceno;
+    }
+    state.exportVersion = r.export_version;
+    state.exportNote = (finish && !r.dokonceno
+      ? "Export selhal, akce není dokončená: " : "Exportováno: ") +
+      exportResult(r);
+  } catch (err) {
+    if (name !== state.name) return;
+    if (err.status === 409 && err.data?.chyba === "konflikt") {
+      state.conflict = true;
+      conflictDialog();
+    } else if (err.status === 423) {
+      state.readonly = err.data?.drzitel;
+      state.locked = null;
+      clearInterval(heartbeatTimer);
+      lostLock();
+    }
+    state.exportNote = `Export selhal: ${err.message}`;
+  } finally {
+    state.exporting = false;
+  }
+  renderExportStatus(errors);
+  if (state.dirty && !state.conflict) scheduleSave();
+}
+
 // --- pracovní plocha -------------------------------------------------------
 
 function renderWorkspace() {
@@ -1419,8 +1541,12 @@ function renderWorkspace() {
         h("button", { dataset: { view: "loupe" },
           title: "Enter nebo dvojklik", onclick: () => setView("loupe") },
         "Lupa")),
-      h("span", { class: "proto" }, "Prototyp: dokončení akce a export " +
-        "XMP zatím nejsou, změny se ukládají průběžně.")),
+      h("span", { class: "export" },
+        h("span", { id: "export-status" }),
+        h("button", { disabled: !!state.readonly, title: exportTarget(),
+          onclick: () => runExport(false) }, "Exportovat"),
+        h("button", { class: "primary", disabled: !!state.readonly,
+          onclick: () => runExport(true) }, "Dokončit akci"))),
     lockNotice(),
     h("div", { id: "bar", class: "bar" }),
     h("div", { class: "workspace" },
@@ -1436,16 +1562,15 @@ function renderWorkspace() {
   renderBar();
   renderPanel();
   setStatus();
+  renderExportStatus();
   if (state.dirty) scheduleSave();
 }
 
-function renderBar() {
-  const bar = document.getElementById("bar");
-  if (!bar || !state.doc) return;
+// Chybějící údaje jako [{text, onclick}] pro lištu i dokončení akce.
+function missingItems() {
   const m = missing(state.doc, state.present);
   const items = [];
-  const item = (text, onclick) =>
-    items.push(h("button", { class: "miss", onclick }, text));
+  const item = (text, onclick) => items.push({ text, onclick });
   if (m.akce.length) {
     const names = {
       nazev: "název", datum_od: "datum od", datum_do: "datum do",
@@ -1482,6 +1607,14 @@ function renderBar() {
     item(`${plural(places.length, "místo", "místa", "míst")} bez souřadnic`,
       () => openPlace(places[0], m.mistaBezSouradnic[places[0]]));
   }
+  return items;
+}
+
+function renderBar() {
+  const bar = document.getElementById("bar");
+  if (!bar || !state.doc) return;
+  const items = missingItems().map(({ text, onclick }) =>
+    h("button", { class: "miss", onclick }, text));
   const chyb = state.detail?.chybejici || [];
   if (chyb.length) {
     items.push(h("span", { class: "info" },

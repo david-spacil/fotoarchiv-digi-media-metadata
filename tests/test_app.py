@@ -236,3 +236,87 @@ def test_geocoding_endpoint(tmp_path, monkeypatch):
     r = c.get("/api/geokodovani?q=nedostupne")
     assert r.status_code == 502 and r.json["chyba"] == "sluzba_nedostupna"
     assert (tmp_path / "work" / "cache" / "geokodovani.json").exists()
+
+
+def saved(c):
+    """Uloží nový dokument akce pod zámkem r1; vrátí (dokument, verze)."""
+    doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    c.post(f"/api/akce/{EVENT}/zamek", json=R1)
+    r = c.put(f"/api/akce/{EVENT}/metadata",
+              json={"metadata": doc, "version": None, "relace": "r1"})
+    return doc, r.json["version"]
+
+
+def test_export_endpoint(client, tmp_path):
+    c, archiv = client
+    before = snapshot(archiv)
+    _, version = saved(c)
+    d = c.get(f"/api/akce/{EVENT}").json["export"]
+    assert d == {"kontrola": {"zapsano": 3, "nezmeneno": 0, "chyby": []},
+                 "version": None}
+    url = f"/api/akce/{EVENT}/export"
+    assert c.post(url, json={"relace": "r2"}).status_code == 423
+    r = c.post(url, json={"relace": "r1"})
+    assert r.status_code == 200
+    assert r.json == {"zapsano": 3, "nezmeneno": 0, "chyby": [],
+                      "export_version": version}
+    assert (tmp_path / "work" / "xmp" / EVENT / "foto.jpg.xmp").exists()
+    assert c.get(f"/api/akce/{EVENT}").json["export"]["kontrola"][
+        "zapsano"] == 0
+    assert c.get("/api/akce").json[0]["stav"] == "rozpracovano"
+    assert snapshot(archiv) == before
+
+
+def test_finish(prod):
+    c, archiv = prod
+    doc, version = saved(c)
+    url = f"/api/akce/{EVENT}/dokoncit"
+    assert c.post(url, json={"relace": "r2", "version": version}) \
+        .status_code == 423
+    r = c.post(url, json={"relace": "r1", "version": "stará"})
+    assert r.status_code == 409 and r.json["version"] == version
+    r = c.post(url, json={"relace": "r1", "version": version})
+    assert r.status_code == 200 and r.json["dokonceno"]
+    assert r.json["zapsano"] == 3
+    assert r.json["export_version"] == r.json["version"]
+    assert (archiv / EVENT / "foto.jpg.xmp").exists()
+    event = c.get("/api/akce").json[0]
+    assert event["stav"] == "hotovo" and not event["zmeneno_po_exportu"]
+    # Sidecary nejsou nezpracované soubory ani se nepočítají.
+    assert event["souboru"] == 5
+    d = c.get(f"/api/akce/{EVENT}").json
+    assert not any(n.endswith(".xmp") for n in d["nezpracovane"])
+
+
+def test_finish_export_error(prod, monkeypatch):
+    c, archiv = prod
+    _, version = saved(c)
+
+    def failing(path, data):
+        raise OSError("zápis selhal")
+
+    monkeypatch.setattr("fotoarchiv.xmp.write_atomic", failing)
+    r = c.post(f"/api/akce/{EVENT}/dokoncit",
+               json={"relace": "r1", "version": version})
+    assert r.status_code == 200 and r.json["dokonceno"] is None
+    assert len(r.json["chyby"]) == 3
+    assert json.loads((archiv / EVENT / "_metadata.json").read_text())[
+        "dokonceno"] is None
+    assert c.get("/api/akce").json[0]["stav"] == "rozpracovano"
+
+
+def test_cli_export(tmp_path, monkeypatch, capsys):
+    c, archiv = make_client(tmp_path, monkeypatch)
+    saved(c)
+    (archiv / "2020-01-01 bez metadat").mkdir()
+    before = snapshot(archiv)
+    work = str(tmp_path / "work")
+    main(["exportovat", "--archiv", str(archiv), "--work", work])
+    out = capsys.readouterr().out
+    assert f"{EVENT}: zapsáno 3, nezměněno 0, selhalo 0" in out
+    assert "přeskočeno: 2020-01-01 bez metadat" in out
+    assert snapshot(archiv) == before
+    main(["exportovat", EVENT, "--archiv", str(archiv), "--work", work])
+    assert "zapsáno 0, nezměněno 3" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        main(["exportovat", "2020-01-02 neni", "--archiv", str(archiv)])

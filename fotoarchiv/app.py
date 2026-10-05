@@ -5,11 +5,12 @@ ze které vycházel. Jediný stav serveru jsou zámky akcí v paměti (`lock`),
 proto server smí běžet jen jako jeden proces.
 """
 
+from datetime import date
 from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_file
 
-from . import cleanup, geocode, lock, model, names, scan, thumbs
+from . import cleanup, geocode, lock, model, names, scan, thumbs, xmp
 from .archive import SCHEMA, Conflict, Workspace
 
 STATIC = Path(__file__).parent / "static"
@@ -72,6 +73,12 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
             "chybejici": chybejici,
             "pracovni_soubor": str(ws.metadata_path(nazev).resolve()),
             "zamek": locks.holder(nazev),
+            # Kontrola nanečisto a verze `_metadata.json` posledního exportu.
+            "export": {
+                "kontrola": None if novy else xmp.export(ws, nazev,
+                                                         nanecisto=True),
+                "version": ws.export_version(nazev),
+            },
         }
 
     def body_field(body, key):
@@ -128,6 +135,43 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         except Conflict as e:
             return {"chyba": "konflikt", "version": e.current_version}, 409
         return {"version": version}
+
+    @app.post("/api/akce/<nazev>/export")
+    def akce_export(nazev):
+        event_dir(nazev)
+        body = request.get_json(force=True)
+        denied = require_lock(nazev, body)
+        if denied:
+            return denied
+        result = xmp.export(ws, nazev)
+        if result is None:
+            return {"chyba": "bez_metadat"}, 409
+        return dict(result, export_version=ws.export_version(nazev))
+
+    @app.post("/api/akce/<nazev>/dokoncit")
+    def akce_finish(nazev):
+        """Uloží `dokonceno`, exportuje; při chybě exportu ho vrátí."""
+        event_dir(nazev)
+        body = request.get_json(force=True)
+        denied = require_lock(nazev, body)
+        if denied:
+            return denied
+        doc, version = ws.load(nazev)
+        if doc is None:
+            return {"chyba": "bez_metadat"}, 409
+        if body.get("version") != version:
+            return {"chyba": "konflikt", "version": version}, 409
+        doc["dokonceno"] = date.today().isoformat()
+        try:
+            version = ws.save(nazev, doc, version)
+            result = xmp.export(ws, nazev)
+            if result["chyby"]:
+                doc["dokonceno"] = None
+                version = ws.save(nazev, doc, version)
+        except Conflict as e:
+            return {"chyba": "konflikt", "version": e.current_version}, 409
+        return dict(result, dokonceno=doc["dokonceno"], version=version,
+                    export_version=ws.export_version(nazev))
 
     @app.post("/api/akce/<nazev>/uklid")
     def akce_cleanup(nazev):

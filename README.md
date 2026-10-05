@@ -8,8 +8,7 @@ jednotlivě nebo po skupinách.
 Stav: **prototyp** se dvěma režimy. Výchozí vývojový archiv jen čte
 a `_metadata.json` ukládá do pracovního adresáře `.work/` mimo archiv;
 produkční (`--zapis-do-archivu`) ukládá `_metadata.json` do složky akce
-a úklid provádí. Export XMP a dokončení akce zatím chybí. Spuštění
-a testy viz `AGENTS.md`.
+a úklid provádí. Spuštění a testy viz `AGENTS.md`.
 
 ## Archiv
 
@@ -157,6 +156,15 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
   | `gps`, jinak souřadnice `misto` | `exif:GPSLatitude` + `exif:GPSLongitude` |
   | `autori`         | `digiKam:TagsList` > `autor/…` |
   | `osoby`          | `digiKam:TagsList` > `osoba/…` |
+  | název složky akce | `digiKam:TagsList` > `akce/…` |
+
+  Datum s časem dostane zónu Europe/Prague platnou v daný okamžik
+  (`+01:00` / `+02:00`; při podzimní dvojí hodině letní čas), samotné
+  datum (WhatsApp) zůstane bez času a zóny. GPS ve formátu XMP
+  `DDD,MM.mmmmmmK` (např. `49,24.378000N`). Prázdná pole se
+  nezapisují; místo, přístroj, účastníci ani skupina do sidecaru
+  nejdou. Sidecar skládá aplikace sama (ne exiftool), takže obsah
+  závisí jen na `_metadata.json` a názvu složky akce.
 
   Ověřeno na Immichi 3.2 (5. 10. 2026): osoby (`Person`) vznikají jen
   z obličejů se souřadnicemi, které nemáme — `PersonInImage` se
@@ -196,7 +204,13 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    přepínají aktuální soubor a vyberou jen jej, Shift+šipky výběr
    rozšiřují; klik do pásu vybírá jako v mřížce. Výběr i formulář jsou
    s mřížkou společné.
-4. **Dokončení akce** zkontroluje úplnost a zapíše sidecary.
+4. **Dokončení akce** uloží změny, zkontroluje úplnost (co chybí,
+   ukáže a dokončí až po potvrzení), zapíše sidecary a nastaví
+   `dokonceno`. Selže-li zápis některého sidecaru, akce dokončená
+   není. Tlačítko **Exportovat** zapíše sidecary bez kontroly
+   a bez dokončení. U tlačítka plocha ukazuje, kolik sidecarů je
+   neaktuálních, a po úpravě „neexportované změny“; seznam akcí
+   u dokončené akce upravené po exportu uvede „změněno po exportu“.
 
 Našeptávání a kontrola jmen viz výše.
 
@@ -207,11 +221,18 @@ Našeptávání a kontrola jmen viz výše.
   `.work/metadata/<akce>/`. Rozpracovaná metadata z `.work` převezme do
   archivu jednorázově `python -m fotoarchiv prevzit` (jen u akcí, které
   `_metadata.json` v archivu ještě nemají).
-- XMP sidecary se zapisují při dokončení akce a samostatným tlačítkem
-  Exportovat. **Přepisují se jen změněné:** obsah sidecaru se generuje
-  deterministicky (bez časových razítek) a jeho `sha256` se ukládá
-  k souboru do `_metadata.json`; sidecar se zapíše, jen když chybí nebo
-  se hash liší.
+- XMP sidecary se zapisují při dokončení akce, samostatným tlačítkem
+  Exportovat a dávkově `python -m fotoarchiv exportovat [AKCE]` (bez
+  akce všechny s `_metadata.json`; zámky nekontroluje). **Přepisují se
+  jen změněné:** obsah sidecaru se generuje deterministicky (bez
+  časových razítek) a porovná s obsahem na disku; zapíše se atomicky,
+  jen když chybí nebo se liší. Sidecar vznikne jen k souborům se
+  záznamem, v kořeni a neoznačeným k vyřazení; jiné `.xmp` se nemažou.
+  Ve vývojovém režimu jdou sidecary do `.work/xmp/<akce>/`.
+- Po exportu bez chyb se do `.work/export/<akce>.json` zapíše verze
+  (sha256) `_metadata.json`, ze které export vznikl. Liší-li se od
+  aktuální, akce má neexportované změny; bez záznamu je stav neznámý.
+  Do archivu ani do `_metadata.json` se nic z toho nezapisuje.
 - Před uložením `_metadata.json` aplikace ověří, že ho mezitím nezměnil
   někdo jiný; jinak uložení odmítne a nabídne znovunačtení.
 
@@ -234,7 +255,7 @@ workerů ne). Do archivu se žádný soubor zámku nezapisuje.
   znovu, pokud je akce volná.
 - „Kdo“ je do zavedení přihlašování jméno zadané v prohlížeči.
 
-Metadata (JPG, mp4) čte a XMP sidecary zapisuje `exiftool`. Náhledy
+Metadata (JPG, mp4) čte `exiftool`. Náhledy
 (320 px do mřížky, 1600 px do lupy) se cachují lokálně mimo archiv —
 archiv leží na SMB; lupa si sousední fotky načítá předem. Videa se do
 lupy posílají přímo z archivu, jen ke čtení.

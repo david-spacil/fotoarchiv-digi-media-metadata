@@ -18,6 +18,7 @@ SCHEMA = "fotoarchiv-digi-media-metadata/1"
 EVENT_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (.+)$")
 METADATA_NAME = "_metadata.json"
 TMP_PREFIX = ".metadata-"
+XMP_TMP_PREFIX = ".xmp-"
 
 
 def is_skipped(name):
@@ -26,8 +27,11 @@ def is_skipped(name):
 
 
 def is_metadata(name):
-    """`_metadata.json` a jeho dočasný soubor při ukládání (ne média)."""
-    return name == METADATA_NAME or name.startswith(TMP_PREFIX)
+    """`_metadata.json`, sidecary `.xmp` a jejich dočasné soubory (ne
+    média)."""
+    return (name == METADATA_NAME or name.startswith(TMP_PREFIX)
+            or name.startswith(XMP_TMP_PREFIX)
+            or name.lower().endswith(".xmp"))
 
 
 class Conflict(Exception):
@@ -78,11 +82,14 @@ class Workspace:
                     if (entry.is_file() and not is_skipped(entry.name)
                             and not is_metadata(entry.name)):
                         count += 1
-            doc, _ = self.load(name)
+            doc, version = self.load(name)
+            zmeneno = False
             if doc is None:
                 stav = "nezpracovano"
             elif doc.get("dokonceno"):
                 stav = "hotovo"
+                exported = self.export_version(name)
+                zmeneno = exported is not None and exported != version
             else:
                 stav = "rozpracovano"
             events.append({
@@ -90,6 +97,7 @@ class Workspace:
                 "datum": EVENT_RE.match(name).group(1),
                 "souboru": count,
                 "stav": stav,
+                "zmeneno_po_exportu": zmeneno,
             })
         return events
 
@@ -111,6 +119,31 @@ class Workspace:
             if path.is_file():
                 paths.append(path)
         return paths
+
+    # --- export -----------------------------------------------------------
+
+    def sidecar_path(self, name, soubor):
+        """Sidecar vedle souboru, ve vývojovém režimu v `work/xmp/<akce>/`."""
+        if self.zapis:
+            return self.archiv / name / f"{soubor}.xmp"
+        return self.work / "xmp" / name / f"{soubor}.xmp"
+
+    def export_record_path(self, name):
+        return self.work / "export" / f"{name}.json"
+
+    def export_version(self, name):
+        """Verze `_metadata.json` posledního exportu bez chyb, nebo None.
+
+        Záznam z druhého režimu se nepočítá (jiný `_metadata.json`
+        i jiné sidecary).
+        """
+        try:
+            record = json.loads(self.export_record_path(name).read_bytes())
+        except (FileNotFoundError, ValueError):
+            return None
+        if record.get("zapis") != self.zapis:
+            return None
+        return record.get("version")
 
     def load(self, name):
         """Vrátí (dokument, verze), nebo (None, None), když soubor není."""

@@ -27,6 +27,9 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 #   --kontakt E-MAIL (zapne geokódování míst přes Nominatim)
 .venv/bin/python -m fotoarchiv prevzit --archiv … --work .work
 # → jednorázově převezme _metadata.json z .work do archivu
+.venv/bin/python -m fotoarchiv exportovat [AKCE] --archiv … --work .work
+# → XMP sidecary jedné/všech akcí (jen změněné); bez --zapis-do-archivu
+#   do .work/xmp/
 
 .venv/bin/python -m pytest -q                       # testy Pythonu
 .venv/bin/python -m pytest tests/test_cleanup.py::test_collision_blocks
