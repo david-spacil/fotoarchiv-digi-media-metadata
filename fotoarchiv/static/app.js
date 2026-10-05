@@ -216,7 +216,9 @@ function releaseLock() {
 
 function lockNotice() {
   const r = state.readonly;
-  if (!r) return null;
+  // Prázdný řetězec, ne null: jde přímo do replaceChildren, který by
+  // null vypsal jako text.
+  if (!r) return "";
   return h("p", { class: "notice readonly" },
     `Akci upravuje ${r.jmeno}. Jen ke čtení – změny se neukládají.`,
     " ", h("button", { class: "link", onclick: () => route() },
