@@ -10,8 +10,9 @@ from .archive import EVENT_RE, SCHEMA
 
 # Klíče, které patří jen své úrovni a nedědí se.
 LOCAL_KEYS = {
-    # Účastníci akce jsou výčet lidí na akci, ne osoby na každé fotce.
-    "akce": {"ucastnici"},
+    # Účastníci a místa akce jsou výčty pro celou akci, ne údaje každé
+    # fotky. Jediné místo akce se ale jako `misto` dědí (viz resolve).
+    "akce": {"ucastnici", "mista"},
     "skupina": {"nazev"},
     "soubor": {"skupina", "sha256"},
 }
@@ -24,6 +25,7 @@ def resolve(doc, filename):
 
     Vrací {pole: {"hodnota": …, "uroven": "akce"|"skupina"|"soubor"}}.
     Pole přítomné na nižší úrovni přepisuje vyšší, i když je prázdné.
+    `misto` se z akce dědí, jen když má akce v `mista` právě jedno místo.
     """
     record = doc.get("soubory", {}).get(filename, {})
     group = doc.get("skupiny", {}).get(record.get("skupina"), {})
@@ -33,6 +35,9 @@ def resolve(doc, filename):
         ("soubor", record),
     ]
     result = {}
+    mista = doc.get("akce", {}).get("mista") or []
+    if len(mista) == 1:
+        result["misto"] = {"hodnota": mista[0], "uroven": "akce"}
     for level, values in levels:
         for key, value in values.items():
             if key in LOCAL_KEYS[level]:

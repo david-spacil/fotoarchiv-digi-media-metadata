@@ -6,14 +6,21 @@
 
 // Klíče, které patří jen své úrovni a nedědí se.
 export const LOCAL_KEYS = {
-  // Účastníci akce jsou výčet lidí na akci, ne osoby na každé fotce.
-  akce: new Set(["ucastnici"]),
+  // Účastníci a místa akce jsou výčty pro celou akci, ne údaje každé
+  // fotky. Jediné místo akce se ale jako `misto` dědí (viz collect).
+  akce: new Set(["ucastnici", "mista"]),
   skupina: new Set(["nazev"]),
   soubor: new Set(["skupina", "sha256"]),
 };
 
+// `levels` začíná vždy akcí. `misto` se z akce dědí, jen když má akce
+// v `mista` právě jedno místo.
 function collect(levels) {
   const result = {};
+  const mista = levels[0][1]?.mista || [];
+  if (mista.length === 1) {
+    result.misto = { hodnota: mista[0], uroven: "akce" };
+  }
   for (const [level, values] of levels) {
     for (const [key, value] of Object.entries(values || {})) {
       if (LOCAL_KEYS[level].has(key)) continue;
@@ -48,7 +55,8 @@ function isEmpty(value) {
 }
 
 // Co chybí: akce bez názvu nebo data, skupiny bez autorů (a ne všechny
-// jejich soubory autory přepisují), soubory bez data a bez skupiny.
+// jejich soubory autory přepisují), soubory bez data, bez skupiny a bez
+// místa (jen když má akce víc míst — jedno místo se dědí).
 // `present` = názvy souborů, které v kořeni akce skutečně jsou.
 export function missing(doc, present) {
   const akce = doc.akce || {};
@@ -57,7 +65,9 @@ export function missing(doc, present) {
     skupinyBezAutoru: [],
     souboryBezData: [],
     souboryBezSkupiny: [],
+    souboryBezMista: [],
   };
+  const viceMist = (akce.mista || []).length > 1;
   const groups = doc.skupiny || {};
   const files = Object.keys(doc.soubory || {})
     .filter((f) => !present || present.has(f));
@@ -75,6 +85,9 @@ export function missing(doc, present) {
     }
     if (!record.skupina || !groups[record.skupina]) {
       result.souboryBezSkupiny.push(f);
+    }
+    if (viceMist && isEmpty(resolve(doc, f).misto?.hodnota)) {
+      result.souboryBezMista.push(f);
     }
   }
   return result;

@@ -33,5 +33,17 @@ test("skupina bez autorů", () => {
     skupinyBezAutoru: ["a"],
     souboryBezData: ["2.jpg", "3.jpg"],
     souboryBezSkupiny: ["4.jpg"],
+    souboryBezMista: [],
   });
+});
+
+test("soubory bez místa jen při víc místech akce", () => {
+  const doc = (mista) => ({
+    akce: { mista },
+    skupiny: {},
+    soubory: { "a.jpg": {}, "b.jpg": { misto: "Housko" } },
+  });
+  assert.deepEqual(missing(doc(["Holštejn"])).souboryBezMista, []);
+  assert.deepEqual(missing(doc(["Molenburk", "Housko"])).souboryBezMista,
+    ["a.jpg"]);
 });

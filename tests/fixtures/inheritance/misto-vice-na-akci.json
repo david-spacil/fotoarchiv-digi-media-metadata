@@ -1,0 +1,16 @@
+{
+  "popis": "Víc míst akce se nedědí; místo se doplňuje u skupiny nebo souboru",
+  "metadata": {
+    "schema": "fotoarchiv-digi-media-metadata/1",
+    "akce": {"mista": ["Molenburk", "Housko", "Holštejn"]},
+    "skupiny": {"s": {"nazev": "S"}},
+    "soubory": {
+      "a.jpg": {"skupina": "s"},
+      "b.jpg": {"skupina": "s", "misto": "Holštejn"}
+    }
+  },
+  "ocekavano": {
+    "a.jpg": {},
+    "b.jpg": {"misto": {"hodnota": "Holštejn", "uroven": "soubor"}}
+  }
+}

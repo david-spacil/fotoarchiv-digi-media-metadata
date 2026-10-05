@@ -59,8 +59,8 @@ ostatní (XMP sidecary, index) se z něj generuje.
 
 Hodnoty se dědí **akce → skupina → soubor**; nižší úroveň přepisuje
 vyšší. **Každé pole jde přepsat na kterékoli nižší úrovni**, včetně
-autorů u jednotlivé fotky. Výjimkou jsou účastníci akce, kteří se
-nedědí (viz níže). Skupiny průvodce navrhne automaticky podle
+autorů u jednotlivé fotky. Výjimkou jsou účastníci a místa akce (viz
+níže). Skupiny průvodce navrhne automaticky podle
 přístroje a vzoru názvu, uživatel je může upravit.
 
 ```json
@@ -71,7 +71,7 @@ přístroje a vzoru názvu, uživatel je může upravit.
     "popis": "…",
     "datum_od": "2026-04-28",
     "datum_do": "2026-04-28",
-    "misto": ["Vysočany", "Holštejn"],
+    "mista": ["Vysočany", "Holštejn"],
     "ucastnici": ["Spáčil, David", "Kopáčová, Zuzana"]
   },
   "skupiny": {
@@ -85,6 +85,7 @@ přístroje a vzoru názvu, uživatel je může upravit.
       "skupina": "g9",
       "datum": "2026-04-28T09:44:36",
       "gps": null,
+      "misto": "Holštejn",
       "popis": "…",
       "osoby": ["…"],
       "sha256": "…"
@@ -97,6 +98,9 @@ přístroje a vzoru názvu, uživatel je může upravit.
   kteří byli na akci, a přednostní návrhy při označování osob na
   fotkách — ne předpoklad, že jsou na každé fotce. Osoby na fotkách
   (`osoby`) se zadávají u souborů, případně u skupiny.
+- **Místa akce (`mista`) jsou výčet**, fotka nebo skupina má jedno
+  `misto`. Jediné místo akce se na fotky dědí; při víc místech se místo
+  doplňuje u skupiny nebo fotky (návrhy z míst akce).
 - **Autorů může být víc.** `autori` znamená „fotil někdo z uvedených“;
   zpětně se nedá zjistit, kdo kdy držel foťák.
 - Údaje z EXIF (datum, přístroj, GPS) zapisuje průvodce, u WhatsAppu

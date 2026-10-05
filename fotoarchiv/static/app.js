@@ -577,7 +577,9 @@ const F = {
   datum_od: { label: "Datum od", type: "date" },
   datum_do: { label: "Datum do", type: "date" },
   datum: { label: "Datum pořízení", type: "datetime" },
-  misto: { label: "Místo", type: "tags" },
+  misto: { label: "Místo", type: "place" },
+  mista: { label: "Místa akce (jediné místo se dědí na fotky)",
+    type: "tags" },
   osoby: { label: "Osoby na fotce", type: "names" },
   ucastnici: { label: "Účastníci akce (nedědí se na fotky)", type: "names" },
   autori: { label: "Autoři (fotil někdo z nich)", type: "names" },
@@ -586,7 +588,7 @@ const F = {
 };
 
 const FIELDS = {
-  akce: ["nazev", "datum_od", "datum_do", "popis", "misto", "ucastnici",
+  akce: ["nazev", "datum_od", "datum_do", "popis", "mista", "ucastnici",
     "autori"],
   skupina: ["autori", "pristroj", "popis", "misto", "osoby", "datum_od",
     "datum_do"],
@@ -716,6 +718,15 @@ function editor(type, value, placeholder, update, inheritedValue) {
         e.target.classList.toggle("invalid", !!v && !ok);
         if (!v || ok) update(v);
       } });
+  }
+  if (type === "place") {
+    // Jedno místo; návrhy z míst akce.
+    const id = `mista-${Math.random().toString(36).slice(2)}`;
+    return h("div", {},
+      h("input", { value: value || "", placeholder, list: id,
+        oninput: (e) => update(e.target.value.trim()) }),
+      h("datalist", { id },
+        (state.doc.akce.mista || []).map((m) => h("option", { value: m }))));
   }
   return h("input", { value: value || "", placeholder,
     oninput: (e) => update(e.target.value) });
@@ -918,6 +929,7 @@ function renderBar() {
   };
   files(m.souboryBezData, "bez data");
   files(m.souboryBezSkupiny, "bez skupiny");
+  files(m.souboryBezMista, "bez místa");
   const chyb = state.detail?.chybejici || [];
   if (chyb.length) {
     items.push(h("span", { class: "info" },

@@ -23,7 +23,8 @@ přepsat na nižší úrovni, včetně `autori`. Do `_metadata.json` se SHALL
 ukládat jen hodnoty zadané na dané úrovni, ne zděděné.
 
 Výjimky, které se nedědí: `ucastnici` akce (výčet lidí na akci, ne
-osoby na každé fotce), `nazev` skupiny (čitelný název skupiny, ne
+osoby na každé fotce), `mista` akce (výčet míst akce; skupina a soubor
+mají jedno `misto`), `nazev` skupiny (čitelný název skupiny, ne
 název akce) a u souboru `skupina` a `sha256`. Název akce proto nejde
 přepsat na úrovni skupiny, jen u souboru.
 
@@ -46,6 +47,21 @@ přepsat na úrovni skupiny, jen u souboru.
 - **WHEN** akce má `nazev` = `kontrola Stezky` a skupina `nazev`
   = `Panasonic DC-G9`
 - **THEN** výsledný `nazev` souborů skupiny je `kontrola Stezky`
+
+### Requirement: Místo
+Skupina a soubor SHALL mít nejvýš jedno `misto`. Pokud ho nemají a akce
+má v `mista` právě jedno místo, výsledné `misto` SHALL být toto místo
+akce. Pokud má akce víc míst, místo se MUST NOT z akce dědit.
+
+#### Scenario: Jedno místo akce
+- **WHEN** akce má `mista` = [`Holštejn`] a soubor ani skupina místo
+  nemají
+- **THEN** výsledné místo souboru je `Holštejn`
+
+#### Scenario: Víc míst akce
+- **WHEN** akce má `mista` = [`Molenburk`, `Housko`] a soubor ani
+  skupina místo nemají
+- **THEN** soubor nemá žádné místo
 
 ### Requirement: Technické a ruční údaje
 Technické údaje ze skenu (datum, přístroj, GPS) SHALL být uloženy

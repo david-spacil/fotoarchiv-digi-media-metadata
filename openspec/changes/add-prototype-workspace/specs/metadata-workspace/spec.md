@@ -47,12 +47,18 @@ s jinou, vytvořit novou a přesunout do ní vybrané soubory.
 ### Requirement: Údaje akce
 Údaje akce SHALL být název, datum od–do, popis, místa, účastníci
 a autoři. Místa a účastníci SHALL být seznamy zadávané jako štítky.
+Místo skupiny a souboru SHALL být jedna hodnota s návrhy z míst akce.
 Účastníci jsou výčet důležitých lidí na akci a přednostní návrhy při
 označování osob; MUST NOT se dědit na skupiny ani soubory.
 
 #### Scenario: Více míst
 - **WHEN** uživatel do pole místo napíše `Molenburk, Housko`
 - **THEN** akce má dvě místa `Molenburk` a `Housko`
+
+#### Scenario: Místo u fotky
+- **WHEN** akce má místa `Molenburk` a `Housko` a uživatel u fotky
+  zadává místo
+- **THEN** formulář nabídne `Molenburk` a `Housko`
 
 ### Requirement: Předvyplnění údajů akce
 Krok údaje akce SHALL předvyplnit název z názvu složky (bez data)
@@ -107,9 +113,14 @@ průběžně.
 
 ### Requirement: Lišta chybějících údajů
 Pracovní plocha SHALL průběžně ukazovat, co chybí: akce bez názvu nebo
-data, skupiny bez autorů, soubory bez data a soubory bez skupiny.
-Kliknutí na položku SHALL vybrat dotčené soubory nebo skupiny.
+data, skupiny bez autorů, soubory bez data, soubory bez skupiny
+a soubory bez místa, pokud má akce víc míst. Kliknutí na položku SHALL vybrat dotčené soubory nebo skupiny.
 
 #### Scenario: Skupina bez autorů
 - **WHEN** skupina nemá autory a žádný její soubor je nepřepisuje
 - **THEN** lišta ukáže „1 skupina bez autorů“
+
+#### Scenario: Soubory bez místa
+- **WHEN** akce má dvě místa a 30 souborů nemá místo zadané u sebe ani
+  u skupiny
+- **THEN** lišta ukáže „30 souborů bez místa“

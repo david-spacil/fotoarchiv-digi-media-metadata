@@ -2,26 +2,55 @@
   "popis": "Pole zadané jen u akce dědí všechny soubory, i soubor bez skupiny",
   "metadata": {
     "schema": "fotoarchiv-digi-media-metadata/1",
-    "akce": {"popis": "kontrola", "misto": ["Vysočany", "Holštejn"]},
-    "skupiny": {"s": {"nazev": "S"}},
+    "akce": {
+      "popis": "kontrola",
+      "datum_od": "2026-04-28"
+    },
+    "skupiny": {
+      "s": {
+        "nazev": "S"
+      }
+    },
     "soubory": {
-      "a.jpg": {"skupina": "s"},
-      "b.jpg": {"skupina": null},
+      "a.jpg": {
+        "skupina": "s"
+      },
+      "b.jpg": {
+        "skupina": null
+      },
       "c.jpg": {}
     }
   },
   "ocekavano": {
     "a.jpg": {
-      "popis": {"hodnota": "kontrola", "uroven": "akce"},
-      "misto": {"hodnota": ["Vysočany", "Holštejn"], "uroven": "akce"}
+      "popis": {
+        "hodnota": "kontrola",
+        "uroven": "akce"
+      },
+      "datum_od": {
+        "hodnota": "2026-04-28",
+        "uroven": "akce"
+      }
     },
     "b.jpg": {
-      "popis": {"hodnota": "kontrola", "uroven": "akce"},
-      "misto": {"hodnota": ["Vysočany", "Holštejn"], "uroven": "akce"}
+      "popis": {
+        "hodnota": "kontrola",
+        "uroven": "akce"
+      },
+      "datum_od": {
+        "hodnota": "2026-04-28",
+        "uroven": "akce"
+      }
     },
     "c.jpg": {
-      "popis": {"hodnota": "kontrola", "uroven": "akce"},
-      "misto": {"hodnota": ["Vysočany", "Holštejn"], "uroven": "akce"}
+      "popis": {
+        "hodnota": "kontrola",
+        "uroven": "akce"
+      },
+      "datum_od": {
+        "hodnota": "2026-04-28",
+        "uroven": "akce"
+      }
     }
   }
 }
