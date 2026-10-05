@@ -73,7 +73,10 @@ se videa řadila s fotkami. Výsledek se cachuje v `.work/cache/` podle
 
 Vzory: `P\d{7}` (Panasonic), `\d{8}_\d{6}` (Samsung), `IMG-\d{8}-WA\d+`
 (WhatsApp), `IMG_\d{4}`, jinak „ostatní“. Klíč skupiny = (model, vzor);
-id je slug modelu nebo vzoru (`dc-g9`, `sm-a528b`, `whatsapp`).
+id je slug modelu nebo vzoru (`dc-g9`, `sm-a528b`, `whatsapp`). Soubor
+bez přístroje dostane přístroj, pokud jeho vzor používá jediný přístroj —
+mp4 ze Samsungu nemá Make/Model a jinak by skončilo v samostatné
+skupině.
 
 ### Náhledy: Pillow s `draft`, video přes `ffmpeg`
 

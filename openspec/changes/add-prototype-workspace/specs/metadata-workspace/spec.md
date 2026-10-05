@@ -60,7 +60,9 @@ a vybrat celou skupinu kliknutím na její hlavičku.
 Formulář vedle mřížky SHALL upravovat akci, když není nic vybráno,
 skupinu, když je vybrána hlavička skupiny, a vybrané soubory, když je
 vybrán jeden nebo více souborů. Zděděné hodnoty SHALL být viditelně
-odlišené od zadaných a MUST jít přepsat i vrátit na zděděné.
+odlišené od zadaných a MUST jít přepsat i vrátit na zděděné. Vyprázdnění
+pole SHALL znamenat vrácení na zděděné (pole se smaže); přepsání na
+prázdnou hodnotu prototyp nepodporuje.
 
 #### Scenario: Hromadné přepsání
 - **WHEN** uživatel vybere 12 souborů a zadá popis
@@ -70,6 +72,10 @@ odlišené od zadaných a MUST jít přepsat i vrátit na zděděné.
 - **WHEN** vybrané soubory mají v poli různé hodnoty
 - **THEN** formulář to u pole vyznačí a pole nezmění, dokud do něj
   uživatel nezapíše
+
+#### Scenario: Vyprázdnění pole
+- **WHEN** uživatel u souboru smaže celý zadaný popis
+- **THEN** pole zmizí ze záznamu souboru a zobrazí se zděděný popis
 
 ### Requirement: Lišta chybějících údajů
 Pracovní plocha SHALL průběžně ukazovat, co chybí: akce bez názvu nebo

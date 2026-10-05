@@ -31,14 +31,25 @@ z názvu (jen den, bez času).
 
 ### Requirement: Návrh skupin
 Sken SHALL navrhnout skupiny tak, že soubory se stejným přístrojem
-a stejným vzorem názvu patří do jedné skupiny. Soubory bez přístroje
-SHALL být seskupeny podle vzoru názvu. Každá skupina SHALL dostat
-krátký identifikátor a čitelný název.
+a stejným vzorem názvu patří do jedné skupiny. Soubor bez přístroje
+SHALL patřit ke skupině se stejným vzorem názvu, pokud soubory s tímto
+vzorem pocházejí z jediného přístroje; jinak SHALL být seskupen podle
+vzoru názvu. Každá skupina SHALL dostat krátký identifikátor a čitelný
+název.
 
 #### Scenario: Dva přístroje
 - **WHEN** akce obsahuje fotky `P*.JPG` z DC-G9 a `YYYYMMDD_HHMMSS.jpg`
   ze SM-A528B
 - **THEN** sken navrhne dvě skupiny
+
+#### Scenario: Video bez přístroje
+- **WHEN** akce obsahuje `20260428_150641.jpg` ze SM-A528B
+  a `20260428_144812.mp4` bez údaje o přístroji
+- **THEN** obě patří do skupiny SM-A528B
+
+#### Scenario: WhatsApp bez přístroje
+- **WHEN** akce obsahuje `IMG-20260428-WA0003.jpg` bez EXIF
+- **THEN** soubor patří do skupiny WhatsApp
 
 ### Requirement: Náhledy
 Aplikace SHALL zobrazit náhled každé fotky a videa. Náhledy MUST být
