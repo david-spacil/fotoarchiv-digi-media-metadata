@@ -56,8 +56,9 @@ Zdroj pravdy je **jeden `_metadata.json` v každé složce akce**. Vše
 ostatní (XMP sidecary, index) se z něj generuje.
 
 Hodnoty se dědí **akce → skupina → soubor**; nižší úroveň přepisuje
-vyšší. Skupiny průvodce navrhne automaticky podle přístroje a vzoru
-názvu, uživatel je může upravit.
+vyšší. **Každé pole jde přepsat na kterékoli nižší úrovni**, včetně
+autorů u jednotlivé fotky. Skupiny průvodce navrhne automaticky podle
+přístroje a vzoru názvu, uživatel je může upravit.
 
 ```json
 {
@@ -128,12 +129,46 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
 
 ## Aplikace
 
-Lokální webová aplikace spouštěná nad složkou archivu:
+Lokální webová aplikace spouštěná nad složkou archivu.
 
-- mřížka náhledů akce, výběr jednotlivě, myší nebo celé skupiny;
-- formulář vedle mřížky pro akci, skupinu nebo vybrané soubory;
-- našeptávání a kontrola jmen (viz výše);
-- uložení do `_metadata.json`, export sidecarů a indexu.
+### Tok práce
+
+1. **Seznam akcí** se stavem (nezpracováno / rozpracováno / hotovo)
+   a chybějícími údaji.
+2. **Při prvním otevření akce průvodce:** úklid (podsložky, RAW) →
+   načtení a skupiny → údaje akce.
+3. **Pak pracovní plocha** (i při každém dalším otevření): vlevo mřížka
+   náhledů po skupinách, vpravo formulář podle výběru — nic vybráno =
+   akce, hlavička skupiny = skupina, vybrané soubory = soubory. Zděděné
+   hodnoty jsou ve formuláři vidět a jdou přepsat. Lišta ukazuje, co
+   chybí („2 skupiny bez autorů, 14 souborů bez data“).
+4. **Dokončení akce** zkontroluje úplnost a zapíše sidecary.
+
+Našeptávání a kontrola jmen viz výše.
+
+### Ukládání a export
+
+- `_metadata.json` se ukládá průběžně.
+- XMP sidecary se zapisují při dokončení akce a samostatným tlačítkem
+  Exportovat. **Přepisují se jen změněné:** obsah sidecaru se generuje
+  deterministicky (bez časových razítek) a jeho `sha256` se ukládá
+  k souboru do `_metadata.json`; sidecar se zapíše, jen když chybí nebo
+  se hash liší.
+- Před uložením `_metadata.json` aplikace ověří, že ho mezitím nezměnil
+  někdo jiný; jinak uložení odmítne a nabídne znovunačtení.
+
+### Souběh
+
+Otevřená akce se zamyká souborem `_metadata.lock` ve složce akce (kdo,
+na jakém stroji, od kdy, počitadlo). Druhý uživatel dostane upozornění.
+
+- Držitel zámku průběžně zvyšuje počitadlo (heartbeat, ~1 min), dokud
+  je akce otevřená v prohlížeči; při zavření akce zámek smaže.
+- Zámek, jehož počitadlo se nezměnilo ~5 min **podle hodin pozorovatele**,
+  je opuštěný a jde převzít. Porovnává se obsah, ne čas souboru —
+  hodiny strojů a SMB serveru se mohou rozcházet.
+- Zavření prohlížeče bez odhlášení: server po výpadku heartbeatu
+  z prohlížeče zámek sám uvolní.
 
 Metadata (JPG, mp4) čte a XMP sidecary zapisuje `exiftool`. Náhledy se
 cachují lokálně mimo archiv — archiv leží na SMB.
