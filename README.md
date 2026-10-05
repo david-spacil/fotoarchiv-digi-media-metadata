@@ -125,12 +125,28 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
 ## Výstupy
 
 - **XMP sidecary** pro import do Immich: `foto.jpg.xmp` vedle souboru,
-  s rozepsanými zděděnými hodnotami (`dc:creator`, `dc:description`,
-  datum, GPS, osoby). Generují se z `_metadata.json`, ručně se
-  needitují.
-  - K ověření: jak Immich načítá osoby ze sidecaru. Nejspíš z oblastí
-    obličejů, ne z `Iptc4xmpExt:PersonInImage`; osoby proto možná
-    exportovat i jako tagy.
+  s rozepsanými zděděnými hodnotami. Generují se z `_metadata.json`,
+  ručně se needitují. Co Immich nemá vlastní pole, jde do hierarchických
+  tagů `digiKam:TagsList` podle konvencí repa
+  [arubrno/archiv-immich](https://github.com/arubrno/archiv-immich)
+  (kořen malými písmeny, `/` v názvu → `-`):
+
+  | `_metadata.json` | XMP sidecar |
+  |------------------|-------------|
+  | `popis`          | `dc:description` |
+  | `datum`          | `xmp:CreateDate` s časovou zónou |
+  | `gps`, jinak souřadnice `misto` | `exif:GPSLatitude` + `exif:GPSLongitude` |
+  | `autori`         | `digiKam:TagsList` > `autor/…` |
+  | `osoby`          | `digiKam:TagsList` > `osoba/…` |
+
+  Ověřeno na Immichi 3.2 (5. 10. 2026): osoby (`Person`) vznikají jen
+  z obličejů se souřadnicemi, které nemáme — `PersonInImage` se
+  ignoruje. Autora Immich nezobrazuje (autor = kdo nahrál). Místo
+  (`photoshop:City`, `Iptc4xmpCore:Location`) Immich zahodí i u fotek
+  bez GPS a obec bere jen z GPS. Fotky bez GPS proto dostanou
+  souřadnice svého místa, geokódované přes Nominatim (OSM) s cache
+  a volbou kandidáta (OpenSpec změna `add-place-geocoding`); název
+  místa se do sidecaru nezapisuje.
 - **Immich** bude archiv číst jako externí knihovnu jen pro čtení
   s výjimkami `**/*.ignored/**` a nezpracovávanými složkami první úrovně
   (`přetřídit`, `přednášky SKLEP TIC`). Zatím nenapojeno.

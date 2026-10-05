@@ -50,13 +50,13 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
   příponu `.ignored` — ta je jediným záznamem o ignorování. RAWy do
   Immiche nejdou (`RAW.ignored`). `Thumbs.db` se přeskakuje.
 - Přesun souborů nikdy nepřepíše existující soubor.
+- Formát XMP: co Immich nemá vlastní pole, jde do tagů podle konvencí
+  `arubrno/archiv-immich` (viz README, Výstupy).
 - Datum u WhatsApp fotek (`IMG-YYYYMMDD-WA*`) jen z názvu souboru, EXIF
   nemají.
 
 ## Otevřené otázky
 
-- Jak Immich načítá osoby ze sidecaru (`Iptc4xmpExt:PersonInImage` vs.
-  oblasti obličejů vs. tagy) — ověřit dřív, než se zafixuje formát XMP.
 - Zdroj souborů `IMG_####.jpg` a jejich EXIF.
 - Immich zatím není napojený; přesuny a přejmenování dělat před
   napojením (změna cesty = nový asset).
