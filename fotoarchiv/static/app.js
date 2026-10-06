@@ -117,6 +117,9 @@ const STAV = {
   hotovo: "hotovo",
 };
 
+// Pole, která chybí dokončené akci (`chybi` v seznamu akcí).
+const CHYBI = { autori: "autoři", datum: "data", misto: "místa" };
+
 // --- stav ----------------------------------------------------------------
 
 const state = {
@@ -379,6 +382,9 @@ async function showList() {
         e.nazev.slice(11))),
       h("td", { class: "num" }, e.souboru),
       h("td", {}, h("span", { class: "badge" }, STAV[e.stav]),
+        e.chybi.length ? h("span", { class: "badge nekompletni",
+          title: "Chybí: " + e.chybi.map((k) => CHYBI[k]).join(", ") },
+          "nekompletní") : null,
         e.zmeneno_po_exportu
           ? h("span", { class: "warn" }, " změněno po exportu") : null)));
   app.replaceChildren(header(), h("main", { class: "list" },

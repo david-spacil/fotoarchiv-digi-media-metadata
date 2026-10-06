@@ -76,30 +76,34 @@ class Workspace:
         return path
 
     def list_events(self):
+        from .model import incomplete  # model importuje archive
         events = []
         for name in self.event_names():
-            count = 0
+            present = set()
             with os.scandir(self.archiv / name) as it:
                 for entry in it:
                     if (entry.is_file() and not is_skipped(entry.name)
                             and not is_metadata(entry.name)):
-                        count += 1
+                        present.add(entry.name)
             doc, version = self.load(name)
             zmeneno = False
+            chybi = []
             if doc is None:
                 stav = "nezpracovano"
             elif doc.get("dokonceno"):
                 stav = "hotovo"
                 exported = self.export_version(name)
                 zmeneno = exported is not None and exported != version
+                chybi = incomplete(doc, present)
             else:
                 stav = "rozpracovano"
             events.append({
                 "nazev": name,
                 "datum": EVENT_RE.match(name).group(1),
-                "souboru": count,
+                "souboru": len(present),
                 "stav": stav,
                 "zmeneno_po_exportu": zmeneno,
+                "chybi": chybi,
             })
         return events
 

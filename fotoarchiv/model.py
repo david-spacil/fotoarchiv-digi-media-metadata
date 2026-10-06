@@ -53,6 +53,26 @@ def resolve(doc, filename):
     return result
 
 
+# Pole, bez kterých je dokončená akce nekompletní (seznam akcí).
+REQUIRED_KEYS = ("autori", "datum", "misto")
+
+
+def incomplete(doc, present):
+    """Povinná pole, která po zdědění chybí aspoň jednomu souboru.
+
+    `present` = názvy souborů v kořeni akce; soubory označené k vyřazení
+    (`vyradit`) se nepočítají. Vrací klíče v pořadí `REQUIRED_KEYS`.
+    """
+    missing = set()
+    for name, record in (doc.get("soubory") or {}).items():
+        if name not in present or record.get("vyradit"):
+            continue
+        fields = resolve(doc, name)
+        missing.update(k for k in REQUIRED_KEYS
+                       if not (fields.get(k) or {}).get("hodnota"))
+    return [k for k in REQUIRED_KEYS if k in missing]
+
+
 def _place_gps(doc, result):
     """GPS z `souradnice_mist`, jen pokud soubor nemá žádné vlastní."""
     if (result.get("gps") or {}).get("hodnota"):

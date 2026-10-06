@@ -146,3 +146,26 @@ def test_list_events_skips_sidecars_and_flags_changes(ws):
                     "soubory": {"a.jpg": {"popis": "x"}}}, v)
     event = ws.list_events()[0]
     assert event["stav"] == "hotovo" and event["zmeneno_po_exportu"]
+
+
+def test_list_events_flags_incomplete_finished(ws):
+    doc = {"schema": "x", "dokonceno": None,
+           "akce": {"datum": "2026-04-28", "mista": ["Brno"]},
+           "skupiny": {"g": {"autori": ["Novák, Jan"]}},
+           "soubory": {"a.jpg": {"skupina": "g"}, "b.mp4": {},
+                       "chybi.jpg": {}}}
+    v = ws.save(EVENT, doc, None)
+    # Rozpracovaná akce se nehodnotí.
+    assert ws.list_events()[0]["chybi"] == []
+    doc["dokonceno"] = "2026-05-01"
+    v = ws.save(EVENT, doc, v)
+    # b.mp4 nemá autory; chybi.jpg v kořeni není, nepočítá se.
+    assert ws.list_events()[0]["chybi"] == ["autori"]
+    doc["soubory"]["b.mp4"] = {"vyradit": True}
+    doc["akce"]["mista"] = ["Brno", "Praha"]
+    v = ws.save(EVENT, doc, v)
+    # Dvě místa se nedědí.
+    assert ws.list_events()[0]["chybi"] == ["misto"]
+    doc["soubory"]["a.jpg"]["misto"] = "Brno"
+    ws.save(EVENT, doc, v)
+    assert ws.list_events()[0]["chybi"] == []

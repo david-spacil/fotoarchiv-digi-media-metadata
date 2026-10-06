@@ -281,7 +281,9 @@ Lokální webová aplikace spouštěná nad složkou archivu.
 ### Tok práce
 
 1. **Seznam akcí** se stavem (nezpracováno / rozpracováno / hotovo)
-   a chybějícími údaji. Nové fotky a videa se do archivu dostanou
+   a chybějícími údaji. Dokončená akce, jejímž souborům v kořeni (kromě
+   označených k vyřazení) po zdědění chybí autoři, datum nebo místo,
+   má navíc štítek „nekompletní“. Nové fotky a videa se do archivu dostanou
    **importem** (viz Import) do nové nebo stávající akce.
 2. **Při prvním otevření akce průvodce:** úklid (podsložky, RAW) →
    načtení a skupiny → údaje akce → autoři skupin. Průvodce provede
