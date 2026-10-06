@@ -65,6 +65,32 @@ def test_flow_new_save_conflict(client):
     assert snapshot(archiv) == before
 
 
+def test_save_drops_people_and_keeps_stored_faces(tmp_path, client):
+    c, _ = client
+    doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    c.post(f"/api/akce/{EVENT}/zamek", json=R1)
+    version = c.put(f"/api/akce/{EVENT}/metadata", json={
+        "metadata": doc, "version": None, "relace": "r1"}).json["version"]
+    # Obličeje zapsala synchronizace; klient je nemá a posílá starší osoby.
+    face = {"jmeno": "Hlava, Miloš", "oblast": [0.5, 0.4, 0.08, 0.06]}
+    path = tmp_path / "work" / "metadata" / EVENT / "_metadata.json"
+    stored = json.loads(path.read_text())
+    stored["soubory"]["foto.jpg"]["obliceje"] = [face]
+    path.write_text(json.dumps(stored))
+    version = c.get(f"/api/akce/{EVENT}").json["version"]
+    doc["akce"]["osoby"] = ["A, B"]
+    doc["soubory"]["foto.jpg"]["osoby"] = ["A, B"]
+    doc["soubory"]["v.mp4"]["obliceje"] = [face]
+    r = c.put(f"/api/akce/{EVENT}/metadata", json={
+        "metadata": doc, "version": version, "relace": "r1"})
+    assert r.status_code == 200
+    saved = json.loads(path.read_text())
+    assert "osoby" not in saved["akce"]
+    assert saved["soubory"]["foto.jpg"] == dict(
+        stored["soubory"]["foto.jpg"], obliceje=[face])
+    assert "obliceje" not in saved["soubory"]["v.mp4"]
+
+
 def test_cleanup_endpoint(client):
     c, _ = client
     plan = c.post(f"/api/akce/{EVENT}/uklid", json={}).json

@@ -85,3 +85,23 @@ def test_unknown_technical_values_not_stored():
     doc2 = {"soubory": {}}
     model.merge_scan(doc2, files)
     assert doc2["soubory"]["v.mp4"] == {"datum": "2026-04-28T14:49:02"}
+
+
+def test_clean_drops_legacy_people_and_misplaced_faces():
+    face = {"jmeno": "Hlava, Miloš", "oblast": [0.5, 0.4, 0.08, 0.06]}
+    doc = {"akce": {"nazev": "x", "osoby": ["A, B"], "obliceje": [face]},
+           "skupiny": {"g": {"osoby": ["A, B"], "obliceje": [face]}},
+           "soubory": {"a.jpg": {"osoby": ["A, B"], "obliceje": [face]}}}
+    model.clean(doc)
+    assert doc == {"akce": {"nazev": "x"}, "skupiny": {"g": {}},
+                   "soubory": {"a.jpg": {"obliceje": [face]}}}
+
+
+def test_keep_faces_from_stored_version():
+    face = {"jmeno": "Hlava, Miloš", "oblast": [0.5, 0.4, 0.08, 0.06]}
+    stored = {"soubory": {"a.jpg": {"obliceje": [face]}, "b.jpg": {}}}
+    doc = {"soubory": {"a.jpg": {"popis": "x"},
+                       "b.jpg": {"obliceje": [face]}}}
+    model.keep_faces(doc, stored)
+    assert doc == {"soubory": {"a.jpg": {"popis": "x", "obliceje": [face]},
+                               "b.jpg": {}}}

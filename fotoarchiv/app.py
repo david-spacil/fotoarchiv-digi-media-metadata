@@ -11,16 +11,20 @@ from pathlib import Path
 
 from flask import Flask, Response, abort, jsonify, request, send_file
 
-from . import (cleanup, geocode, importer, lock, model, names, scan, thumbs,
-               xmp)
+from . import (cleanup, geocode, immich, importer, lock, model, names, scan,
+               thumbs, xmp)
 from .archive import SCHEMA, Conflict, Workspace
 
 STATIC = Path(__file__).parent / "static"
 
 
 def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
-               geocoder=None):
-    """`kontakt` zapne geokódování (User-Agent pro Nominatim)."""
+               geocoder=None, immich_fetch=None, immich_interval=None):
+    """`kontakt` zapne geokódování (User-Agent pro Nominatim).
+
+    `immich_interval` (s) zapne pravidelnou synchronizaci obličejů
+    z Immiche, jakmile je nastavené připojení; None = jen na požádání.
+    """
     ws = Workspace(archiv, work, zapis)
     locks = locks or lock.Locks()
     cache_dir = ws.work / "cache"
@@ -28,10 +32,16 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         geocoder = geocode.Geocoder(cache_dir, kontakt)
     name_index = names.NameIndex(ws.metadata_files)
     imports = importer.Imports(ws.work)
+    immich_settings = immich.Settings(ws.work)
+    sync = immich.Sync(ws, locks, immich_settings, name_index.names,
+                       fetch=immich_fetch, interval=immich_interval)
+    if immich_interval and immich_settings.load():
+        sync.start()
     app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
     app.config["WORKSPACE"] = ws
     app.config["LOCKS"] = locks
     app.config["IMPORTS"] = imports
+    app.config["IMMICH"] = sync
 
     def event_dir(nazev):
         try:
@@ -49,6 +59,7 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
                 "work": str(ws.work.resolve()),
                 "zapis": ws.zapis,
                 "geokodovani": geocoder is not None,
+                "immich": immich_settings.load() is not None,
                 "import_limit": importer.MAX_FILE}
 
     @app.get("/api/akce")
@@ -138,6 +149,10 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         doc = body.get("metadata")
         if not isinstance(doc, dict) or doc.get("schema") != SCHEMA:
             abort(400)
+        # Obličeje jen z uložené verze; ta odpovídá `version`, jinak
+        # uložení stejně skončí konfliktem.
+        stored, _ = ws.load(nazev)
+        model.clean(model.keep_faces(doc, stored))
         try:
             version = ws.save(nazev, doc, body.get("version"))
         except Conflict as e:
@@ -509,6 +524,58 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
     def jmena_kontrola():
         return names.check(request.args.get("jmeno", ""),
                            name_index.names())
+
+    # --- Immich ------------------------------------------------------------
+
+    def immich_state():
+        s = immich_settings.load()
+        return {"nastaveno": s is not None,
+                "adresa": s["adresa"] if s else None,
+                "klic": immich.key_hint(s["klic"]) if s else None,
+                "synchronizace": sync.status()}
+
+    @app.get("/api/immich")
+    def immich_get():
+        return immich_state()
+
+    @app.put("/api/immich")
+    def immich_put():
+        """Adresa a klíč; bez klíče jen beze změny adresy (klíč zůstane)."""
+        body = request.get_json(force=True)
+        adresa = str(body.get("adresa") or "").strip().rstrip("/")
+        klic = str(body.get("klic") or "").strip()
+        if not adresa.startswith(("http://", "https://")):
+            return {"chyba": "spatna_adresa"}, 400
+        current = immich_settings.load()
+        if not klic:
+            if not current or current["adresa"] != adresa:
+                return {"chyba": "klic_povinny"}, 400
+            klic = current["klic"]
+        immich_settings.save(adresa, klic)
+        if immich_interval:
+            sync.start()
+        return immich_state()
+
+    @app.delete("/api/immich")
+    def immich_delete():
+        immich_settings.delete()
+        return immich_state()
+
+    @app.post("/api/immich/test")
+    def immich_test():
+        client = sync.client()
+        if client is None:
+            return {"chyba": "nenastaveno"}, 409
+        try:
+            return dict(immich.test_connection(client), ok=True)
+        except immich.ImmichError as e:
+            return {"ok": False, "chyba": str(e)}, 502
+
+    @app.post("/api/immich/sync")
+    def immich_sync():
+        if immich_settings.load() is None:
+            return {"chyba": "nenastaveno"}, 409
+        return {"synchronizace": sync.trigger()}
 
     @app.get("/api/geokodovani")
     def geokodovani():

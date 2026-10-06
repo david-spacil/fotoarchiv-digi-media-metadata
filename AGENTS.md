@@ -30,7 +30,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 # → jednorázově převezme _metadata.json z .work do archivu
 .venv/bin/python -m fotoarchiv exportovat [AKCE] --archiv … --work .work
 # → XMP sidecary jedné/všech akcí (jen změněné); bez --zapis-do-archivu
-#   do .work/xmp/
+#   do .work/xmp/; --obliceje přidá oblasti obličejů pro obnovu Immiche
 
 .venv/bin/python -m pytest -q                       # testy Pythonu
 .venv/bin/python -m pytest tests/test_cleanup.py::test_collision_blocks
@@ -38,7 +38,9 @@ node --test tests/js                                # dědění v JS
 ```
 
 Systémově: `exiftool`, `ffmpeg` (bez něj video bez náhledu), `node` jen
-na testy. Geokódování potřebuje `--kontakt` (User-Agent, podmínka
+na testy. Synchronizace obličejů potřebuje `.work/immich.json`
+(nastavení v aplikaci) a HTTP na server Immich; testy na něj nesahají
+(podvržený `fetch`). Geokódování potřebuje `--kontakt` (User-Agent, podmínka
 Nominatimu) a odchozí HTTPS na `nominatim.openstreetmap.org`; bez nich
 jdou souřadnice míst zadat jen ručně. Testy na službu nesahají
 (podvržený `fetch`); skutečné dotazy jen jednotlivě, nikdy hromadně. Dědění je v Pythonu (`model.py`) i JS (`static/inherit.js`);
@@ -56,6 +58,12 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
   obsahuje hodnoty už rozepsané (zděděné), JSON jen to, co je na dané úrovni
   zadané.
 - `autori` = „fotil někdo z uvedených“, ne přiřazení konkrétní osoby.
+- **`obliceje` zapisuje jen synchronizace z Immiche** (`immich.py`), jen
+  u souboru, nedědí se. Klient je při ukládání neposílá, server je bere
+  z uložené verze; starší `osoby` se ignorují a při uložení mažou.
+  Klíč Immiche jen v `.work/immich.json`, nikdy v archivu ani
+  v odpovědi API. MWG oblasti v exportu pro obnovu jsou vůči uloženému
+  (neotočenému) obrázku, `oblast` v JSONu vůči otočenému.
 - Jména v kanonickém tvaru `Příjmení, Jméno`; seznam návrhů se skládá ze
   všech `_metadata.json` v archivu, žádný pevný číselník. Porovnání ignoruje
   diakritiku, velikost písmen a pořadí slov.
@@ -72,8 +80,9 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
 ## Otevřené otázky
 
 - Zdroj souborů `IMG_####.jpg` a jejich EXIF.
-- Immich zatím není napojený; přesuny a přejmenování dělat před
-  napojením (změna cesty = nový asset).
+- Immich je napojený jen ke čtení obličejů; přesuny a přejmenování
+  dělat před importem do produkčního Immiche (změna cesty = nový asset
+  bez obličejů).
 
 ## Prostředí
 

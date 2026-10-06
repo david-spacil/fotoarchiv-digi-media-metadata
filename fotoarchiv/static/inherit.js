@@ -4,13 +4,15 @@
 // ověřují proti fixturám v `tests/fixtures/inheritance/` (JS přes
 // `node --test tests/js`).
 
-// Klíče, které patří jen své úrovni a nedědí se.
+// Klíče, které patří jen své úrovni a nedědí se. `obliceje` (jen
+// u souboru, zapisuje synchronizace z Immiche) a starší `osoby` se do
+// výsledných hodnot nedostanou na žádné úrovni.
 export const LOCAL_KEYS = {
   // Účastníci a místa akce jsou výčty pro celou akci, ne údaje každé
   // fotky. Jediné místo akce se ale jako `misto` dědí (viz collect).
-  akce: new Set(["ucastnici", "mista"]),
-  skupina: new Set(["nazev"]),
-  soubor: new Set(["skupina", "sha256"]),
+  akce: new Set(["ucastnici", "mista", "obliceje", "osoby"]),
+  skupina: new Set(["nazev", "obliceje", "osoby"]),
+  soubor: new Set(["skupina", "sha256", "obliceje", "osoby"]),
 };
 
 // `levels` začíná vždy akcí. `misto` se z akce dědí, jen když má akce

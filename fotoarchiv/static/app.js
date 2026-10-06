@@ -332,7 +332,9 @@ async function route() {
   const im = location.hash.match(/^#\/import(?:\/([^?]*))?(?:\?(.*))?$/);
   const name = m ? decodeURIComponent(m[1]) : null;
   if (state.locked && state.locked !== name) releaseLock();
-  if (im) {
+  if (location.hash === "#/nastaveni") {
+    await showSettings();
+  } else if (im) {
     await openImport(im[1] ? decodeURIComponent(im[1]) : null,
       new URLSearchParams(im[2] || ""));
   } else if (name) await openEvent(name);
@@ -353,6 +355,7 @@ function header(...right) {
     h("a", { href: "#/", class: "brand" }, "Fotoarchiv – metadata"),
     paths,
     ...right,
+    h("a", { href: "#/nastaveni", class: "settings-link" }, "Nastavení"),
     userName() ? h("button", { class: "link user", title: "Změnit jméno",
       onclick: async () => { await askName(); route(); } }, userName())
       : null);
@@ -548,7 +551,8 @@ async function save() {
   try {
     const r = await api(eventUrl(name, "/metadata"), {
       method: "PUT",
-      body: { metadata: state.doc, version: state.version, relace: session() },
+      body: { metadata: savedDoc(state.doc), version: state.version,
+        relace: session() },
     });
     if (name === state.name) {
       state.version = r.version;
@@ -606,14 +610,28 @@ function conflictDialog() {
   dialog.showModal();
 }
 
+// Dokument k uložení: bez `obliceje` (zapisuje je jen synchronizace
+// z Immiche, server je vezme z uložené verze) a bez starších `osoby`.
+function savedDoc(doc) {
+  const copy = structuredClone(doc);
+  const records = [copy.akce || {}, ...Object.values(copy.skupiny || {}),
+    ...Object.values(copy.soubory || {})];
+  for (const r of records) {
+    delete r.obliceje;
+    delete r.osoby;
+  }
+  return copy;
+}
+
 function collectNames(doc) {
   const out = new Set();
   const records = [doc.akce || {}, ...Object.values(doc.skupiny || {}),
     ...Object.values(doc.soubory || {})];
   for (const r of records) {
-    for (const k of ["osoby", "autori", "ucastnici"]) {
+    for (const k of ["autori", "ucastnici"]) {
       for (const n of r[k] || []) out.add(n);
     }
+    for (const f of r.obliceje || []) if (f.jmeno) out.add(f.jmeno);
   }
   return out;
 }
@@ -1171,7 +1189,7 @@ const F = {
   misto: { label: "Místo", type: "place" },
   mista: { label: "Místa akce (jediné místo se dědí na fotky)",
     type: "tags" },
-  osoby: { label: "Osoby na fotce", type: "names" },
+  osoby: { label: "Osoby na fotce", type: "faces" },
   ucastnici: { label: "Účastníci akce (nedědí se na fotky)", type: "names" },
   autori: { label: "Autoři (fotil někdo z nich)", type: "names" },
   pristroj: { label: "Přístroj", type: "text" },
@@ -1181,8 +1199,7 @@ const F = {
 const FIELDS = {
   akce: ["nazev", "datum_od", "datum_do", "popis", "mista", "ucastnici",
     "autori"],
-  skupina: ["autori", "pristroj", "popis", "misto", "osoby", "datum_od",
-    "datum_do"],
+  skupina: ["autori", "pristroj", "popis", "misto", "datum_od", "datum_do"],
   soubor: ["datum", "autori", "popis", "osoby", "misto", "pristroj", "gps"],
 };
 
@@ -1200,7 +1217,7 @@ function targetsFor(level, ids) {
     return ids.map((g) => ({ obj: state.doc.skupiny[g], level,
       eff: (k) => resolveGroup(state.doc, g)[k] }));
   }
-  return ids.map((f) => ({ obj: state.doc.soubory[f], level,
+  return ids.map((f) => ({ obj: state.doc.soubory[f], level, file: f,
     eff: (k) => resolve(state.doc, f)[k] }));
 }
 
@@ -1225,8 +1242,30 @@ function setField(targets, key, value) {
   }
 }
 
+// Osoby na fotce: jména z `obliceje` (z Immiche), jen pro čtení.
+function facesRow(files) {
+  const note = h("span", { class: "note" }, "z Immiche");
+  let text;
+  if (!state.info?.immich) {
+    text = "Immich není napojen";
+  } else {
+    const names = new Set();
+    for (const f of files) {
+      for (const face of state.doc.soubory[f]?.obliceje || []) {
+        names.add(face.jmeno);
+      }
+    }
+    text = [...names].sort((a, b) => a.localeCompare(b, "cs")).join("; ") ||
+      "nikdo pojmenovaný";
+  }
+  return h("div", { class: "field readonly" },
+    h("label", {}, F.osoby.label, " ", note),
+    h("div", { class: "readonly-value" }, text));
+}
+
 function fieldRow(targets, key, onChange) {
   const def = F[key];
+  if (def.type === "faces") return facesRow(targets.map((t) => t.file));
   const st = fieldState(targets, key);
   const inherited = !st.anyOwn && !isEmpty(st.value);
   const row = h("div", {
@@ -3056,6 +3095,106 @@ function renderImportResult() {
       location.hash = `#/akce/${encodeURIComponent(r.cil)}`;
     } }, "Otevřít akci"),
   ]));
+}
+
+// --- nastavení (Immich) ----------------------------------------------------
+
+// Klíč se do prohlížeče nevrací; server ukáže jen jeho poslední 4 znaky.
+let settingsTimer = null;
+
+async function showSettings() {
+  state.mode = "settings";
+  state.name = null;
+  clearTimeout(settingsTimer);
+  const s = await api("/api/immich");
+  const msg = h("p", { class: "status" });
+  const say = (text, error = false) => {
+    msg.textContent = text;
+    msg.className = error ? "status error" : "status";
+  };
+  const adresa = h("input", { value: s.adresa || "",
+    placeholder: "http://10.10.1.51:2283" });
+  const klic = h("input", { type: "password", autocomplete: "off",
+    placeholder: s.nastaveno ? `klíč nastaven (${s.klic}) – vyplňte jen ` +
+      "pro změnu" : "API klíč (jen pro čtení)" });
+  const refresh = async () => {
+    state.info = await api("/api/info");
+    await showSettings();
+  };
+  const saveSettings = async () => {
+    try {
+      await api("/api/immich", { method: "PUT",
+        body: { adresa: adresa.value, klic: klic.value } });
+      await refresh();
+    } catch (err) {
+      say({ klic_povinny: "Při změně adresy zadejte klíč znovu.",
+        spatna_adresa: "Adresa musí začínat http:// nebo https://." }[
+        err.data?.chyba] || `Uložení selhalo: ${err.message}`, true);
+    }
+  };
+  const test = async () => {
+    say("Zkouším připojení…");
+    try {
+      const r = await api("/api/immich/test", { method: "POST" });
+      say(`Připojení funguje: Immich ${r.verze}, osob ${r.osob}.`);
+    } catch (err) {
+      say(`Připojení nefunguje: ${err.data?.chyba || err.message}`, true);
+    }
+  };
+  const remove = async () => {
+    await api("/api/immich", { method: "DELETE" });
+    await refresh();
+  };
+  const sync = async () => {
+    await api("/api/immich/sync", { method: "POST" });
+    await showSettings();
+  };
+  app.replaceChildren(header(), h("main", { class: "list settings" },
+    h("h1", {}, "Nastavení"),
+    h("h2", {}, "Immich"),
+    h("p", {}, "Osoby na fotkách se přebírají z pojmenovaných obličejů " +
+      "v Immichi. Stačí klíč jen pro čtení (osoby, assety, obličeje)."),
+    h("div", { class: "field" }, h("label", {}, "Adresa serveru"), adresa),
+    h("div", { class: "field" }, h("label", {}, "API klíč"), klic),
+    h("div", { class: "row" },
+      h("button", { class: "primary", onclick: saveSettings }, "Uložit"),
+      s.nastaveno ? h("button", { onclick: test }, "Otestovat") : null,
+      s.nastaveno ? h("button", { onclick: remove }, "Smazat") : null),
+    msg,
+    s.nastaveno ? syncBlock(s.synchronizace, sync) : null));
+  if (s.synchronizace.bezi) {
+    settingsTimer = setTimeout(() => {
+      if (state.mode === "settings") showSettings();
+    }, 2000);
+  }
+}
+
+function syncBlock(st, sync) {
+  const last = st.posledni;
+  const lines = [];
+  if (st.bezi) lines.push("Načítám osoby z Immiche…");
+  if (last && !last.ok) {
+    lines.push(`Poslední běh ${last.cas} selhal: ${last.chyba}`);
+    lines.push(st.posledni_uspesny
+      ? `Poslední úspěšný běh: ${st.posledni_uspesny.cas}`
+      : "Zatím žádný úspěšný běh.");
+  } else if (last) {
+    lines.push(`Poslední běh: ${last.cas}`);
+    lines.push(last.zmenene.length
+      ? `Změněné akce: ${last.zmenene.join(", ")}` : "Beze změn.");
+  } else if (!st.bezi) {
+    lines.push("Synchronizace zatím neproběhla.");
+  }
+  if (last?.preskocene?.length) {
+    lines.push(`Přeskočené (otevřené se zámkem): ` +
+      last.preskocene.join(", "));
+  }
+  return h("section", {},
+    h("h2", {}, "Osoby z Immiche"),
+    h("p", { class: "meta" }, "Načítají se po startu serveru a pak každých " +
+      "15 minut; akce otevřená se zámkem se přeskočí."),
+    ...lines.map((l) => h("p", { class: last && !last.ok ? "warn" : "" }, l)),
+    h("button", { onclick: sync, disabled: st.bezi }, "Načíst osoby"));
 }
 
 // --- start ------------------------------------------------------------------

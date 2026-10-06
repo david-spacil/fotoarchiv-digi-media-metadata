@@ -1,0 +1,364 @@
+"""Pojmenované obličeje z Immiche do `_metadata.json` (pole `obliceje`).
+
+Immich osoby rozpoznává a pojmenovává autoritativně; synchronizace je
+jen čte (API klíč jen pro čtení) a zapisuje do souborů akcí, které už
+mají `_metadata.json`. Nastavení (adresa, klíč) je v pracovním adresáři
+(`immich.json`, práva 0600), nikdy v archivu ani v prohlížeči.
+"""
+
+import json
+import logging
+import os
+import tempfile
+import threading
+import unicodedata
+import urllib.error
+import urllib.parse
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from pathlib import Path, PurePosixPath
+
+from . import model, names, xmp
+
+TIMEOUT = 30
+PAGE = 1000
+WORKERS = 4
+INTERVAL = 15 * 60
+RELACE = "immich-sync"
+JMENO = "Immich (synchronizace)"
+
+log = logging.getLogger(__name__)
+
+
+class ImmichError(Exception):
+    """Immich neodpověděl nebo vrátil chybu."""
+
+
+# --- nastavení -------------------------------------------------------------
+
+class Settings:
+    """`<work>/immich.json` = {adresa, klic}."""
+
+    def __init__(self, work):
+        self.path = Path(work) / "immich.json"
+
+    def load(self):
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        if not data.get("adresa") or not data.get("klic"):
+            return None
+        return {"adresa": data["adresa"].rstrip("/"), "klic": data["klic"]}
+
+    def save(self, adresa, klic):
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=".immich-",
+                                   suffix=".tmp")
+        try:
+            os.chmod(tmp, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump({"adresa": adresa, "klic": klic}, f)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, self.path)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
+
+    def delete(self):
+        self.path.unlink(missing_ok=True)
+
+
+def key_hint(klic):
+    return f"…{klic[-4:]}"
+
+
+# --- klient ----------------------------------------------------------------
+
+def fetch_json(method, url, klic, body=None):
+    data = None if body is None else json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(url, data=data, method=method, headers={
+        "x-api-key": klic, "Accept": "application/json",
+        "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            return json.load(resp)
+    except urllib.error.HTTPError as e:
+        raise ImmichError(f"HTTP {e.code} {url}") from e
+    except (OSError, ValueError) as e:
+        raise ImmichError(f"{e} ({url})") from e
+
+
+class Client:
+    def __init__(self, adresa, klic, fetch=None):
+        self.adresa = adresa.rstrip("/")
+        self.klic = klic
+        self.fetch = fetch or fetch_json
+
+    def _call(self, method, path, body=None):
+        return self.fetch(method, self.adresa + path, self.klic, body)
+
+    def version(self):
+        v = self._call("GET", "/api/server/version")
+        text = f"{v['major']}.{v['minor']}.{v['patch']}"
+        if v.get("prerelease"):
+            text += f"-rc{v['prerelease']}"
+        return text
+
+    def people(self, size=PAGE, page=1, all_pages=True):
+        """(osoby, celkem) včetně skrytých."""
+        result, total = [], None
+        while True:
+            query = urllib.parse.urlencode(
+                {"page": page, "size": size, "withHidden": "true"})
+            r = self._call("GET", f"/api/people?{query}")
+            result += r.get("people") or []
+            total = r.get("total", total)
+            if not all_pages or not r.get("hasNextPage"):
+                return result, total
+            page += 1
+
+    def assets(self, person_id=None, size=PAGE, all_pages=True):
+        """Assety osoby (nebo libovolné bez `person_id`)."""
+        result, page = [], 1
+        while page:
+            body = {"page": page, "size": size}
+            if person_id:
+                body["personIds"] = [person_id]
+            r = self._call("POST", "/api/search/metadata", body)["assets"]
+            result += r.get("items") or []
+            if not all_pages:
+                break
+            page = int(r["nextPage"]) if r.get("nextPage") else None
+        return result
+
+    def faces(self, asset_id):
+        query = urllib.parse.urlencode({"id": asset_id})
+        return self._call("GET", f"/api/faces?{query}")
+
+
+def test_connection(client):
+    """Verze a oprávnění (osoby, assety, obličeje).
+
+    Vrací {"verze", "osob"}; selhání → ImmichError s krokem v textu.
+    """
+    def step(label, fn):
+        try:
+            return fn()
+        except ImmichError as e:
+            raise ImmichError(f"{label}: {e}") from e
+    verze = step("verze", client.version)
+    people, total = step("osoby", lambda: client.people(
+        size=1, all_pages=False))
+    found = step("assety", lambda: client.assets(
+        people[0]["id"] if people else None, size=1, all_pages=False))
+    if found:
+        step("obličeje", lambda: client.faces(found[0]["id"]))
+    return {"verze": verze, "osob": total}
+
+
+# --- převod ----------------------------------------------------------------
+
+def area(face):
+    """Oblast MWG `[x, y, w, h]` (střed a velikost, podíly 0–1).
+
+    Immich vztahuje obdélník ke zmenšenině už otočené fotky
+    (`imageWidth/Height`), takže podíly platí pro fotku zobrazenou se
+    správnou orientací v libovolném rozlišení.
+    """
+    w, h = face["imageWidth"], face["imageHeight"]
+    x1, y1 = face["boundingBoxX1"], face["boundingBoxY1"]
+    x2, y2 = face["boundingBoxX2"], face["boundingBoxY2"]
+    return [round((x1 + x2) / 2 / w, 4), round((y1 + y2) / 2 / h, 4),
+            round((x2 - x1) / w, 4), round((y2 - y1) / h, 4)]
+
+
+def _nfc(text):
+    return unicodedata.normalize("NFC", text)
+
+
+def file_key(original_path):
+    """(složka akce, soubor) z posledních dvou částí cesty v Immichi."""
+    parts = PurePosixPath(original_path).parts
+    if len(parts) < 2:
+        return None
+    return _nfc(parts[-2]), _nfc(parts[-1])
+
+
+def collect(client, workers=WORKERS):
+    """{(akce, soubor): [{jmeno, oblast}]} pojmenovaných obličejů.
+
+    Jakákoli chyba dotazu propadne jako ImmichError: neúplná mapa by
+    obličeje mazala.
+    """
+    people, _ = client.people()
+    named = [p for p in people if (p.get("name") or "").strip()]
+    paths = {}
+    for person in named:
+        for asset in client.assets(person["id"]):
+            paths[asset["id"]] = asset["originalPath"]
+    ids = sorted(paths)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        all_faces = list(pool.map(client.faces, ids))
+    result = {}
+    for asset_id, faces in zip(ids, all_faces):
+        key = file_key(paths[asset_id])
+        if key is None:
+            continue
+        for face in faces:
+            jmeno = ((face.get("person") or {}).get("name") or "").strip()
+            if jmeno:
+                result.setdefault(key, []).append(
+                    {"jmeno": jmeno, "oblast": area(face)})
+    return result
+
+
+def faces_for(found, akce, record_names, known):
+    """{název záznamu: obličeje} akce; jména v tvaru ze seznamu jmen."""
+    result = {}
+    for name in record_names:
+        faces = found.get((_nfc(akce), _nfc(name)))
+        if faces:
+            faces = [{"jmeno": names.known_form(f["jmeno"], known),
+                      "oblast": f["oblast"]} for f in faces]
+            result[name] = sorted(faces, key=lambda f: (f["jmeno"],
+                                                        f["oblast"][0]))
+    return result
+
+
+def apply(doc, faces):
+    """Zapíše obličeje do dokumentu; vrátí True, když se něco změnilo."""
+    changed = False
+    for name, record in (doc.get("soubory") or {}).items():
+        new = faces.get(name)
+        if (record.get("obliceje") or None) == new:
+            continue
+        changed = True
+        if new:
+            record["obliceje"] = new
+        else:
+            record.pop("obliceje", None)
+    return changed
+
+
+# --- synchronizace ---------------------------------------------------------
+
+def _now():
+    return datetime.now().isoformat(timespec="seconds")
+
+
+class Sync:
+    """Synchronizace v serveru: jeden běh najednou, stav posledního běhu."""
+
+    def __init__(self, ws, locks, settings, known_names, fetch=None,
+                 interval=INTERVAL):
+        self.ws = ws
+        self.locks = locks
+        self.settings = settings
+        self.known_names = known_names
+        self.fetch = fetch
+        self.interval = interval
+        self._running = threading.Lock()
+        self._thread = None
+        self._start_lock = threading.Lock()
+        self.last = None
+        self.last_ok = None
+
+    def status(self):
+        return {"bezi": self._running.locked(), "posledni": self.last,
+                "posledni_uspesny": self.last_ok}
+
+    def client(self):
+        s = self.settings.load()
+        return Client(s["adresa"], s["klic"], self.fetch) if s else None
+
+    def run(self):
+        """Jeden běh; když už běží jiný, jen vrátí stav."""
+        if not self._running.acquire(blocking=False):
+            return self.status()
+        try:
+            client = self.client()
+            if client is None:
+                return self.status()
+            started = _now()
+            try:
+                found = collect(client)
+            except ImmichError as e:
+                log.warning("immich: synchronizace selhala: %s", e)
+                self.last = {"cas": started, "ok": False, "chyba": str(e),
+                             "zmenene": [], "preskocene": []}
+                return self.status()
+            changed, skipped = self.write(found)
+            self.last = self.last_ok = {
+                "cas": started, "ok": True, "chyba": None,
+                "zmenene": changed, "preskocene": skipped}
+            if changed or skipped:
+                log.info("immich: změněno %s, přeskočeno %s", changed,
+                         skipped)
+        finally:
+            self._running.release()
+        return self.status()
+
+    def write(self, found):
+        """Zapíše obličeje do akcí; vrátí (změněné, přeskočené)."""
+        known = self.known_names()
+        changed, skipped = [], []
+        for akce in self.ws.event_names():
+            doc, _ = self.ws.load(akce)
+            if doc is None:
+                continue
+            records = list((doc.get("soubory") or {}))
+            if not apply(doc, faces_for(found, akce, records, known)):
+                continue
+            ok, _ = self.locks.acquire(akce, RELACE, JMENO)
+            if not ok:
+                skipped.append(akce)
+                continue
+            try:
+                # Pod zámkem znovu z aktuální verze.
+                doc, version = self.ws.load(akce)
+                records = list((doc.get("soubory") or {}))
+                apply(doc, faces_for(found, akce, records, known))
+                model.clean(doc)
+                exported = self.ws.export_version(akce) == version
+                new_version = self.ws.save(akce, doc, version)
+                if exported:
+                    # Obličeje běžné sidecary nemění.
+                    record = {"version": new_version, "zapis": self.ws.zapis}
+                    xmp.write_atomic(self.ws.export_record_path(akce),
+                                     json.dumps(record).encode("utf-8"))
+                changed.append(akce)
+            except Exception as e:  # noqa: BLE001 — jiná akce může projít
+                log.warning("immich: zápis %s selhal: %s", akce, e)
+                skipped.append(akce)
+            finally:
+                self.locks.release(akce, RELACE)
+        return changed, skipped
+
+    def trigger(self):
+        """Běh na pozadí na požádání; vrátí stav."""
+        if not self._running.locked():
+            threading.Thread(target=self.run, daemon=True).start()
+        status = self.status()
+        status["bezi"] = True
+        return status
+
+    def start(self):
+        """Pravidelné běhy (hned a pak po `interval`), nejvýš jedno vlákno."""
+        with self._start_lock:
+            if self._thread and self._thread.is_alive():
+                return
+            self._thread = threading.Thread(target=self._loop, daemon=True,
+                                            name="immich-sync")
+            self._thread.start()
+
+    def _loop(self):
+        stop = threading.Event()
+        while True:
+            try:
+                self.run()
+            except Exception:  # noqa: BLE001 — vlákno nesmí umřít
+                log.exception("immich: neočekávaná chyba synchronizace")
+            stop.wait(self.interval)

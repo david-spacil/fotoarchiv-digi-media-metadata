@@ -35,7 +35,9 @@ def test_check_new_name_conversion():
 def test_index_collects_all_levels(tmp_path):
     doc = {"akce": {"ucastnici": ["A, B"]},
            "skupiny": {"g": {"autori": ["C, D"]}},
-           "soubory": {"x.jpg": {"osoby": ["E, F"], "autori": []}}}
+           "soubory": {"x.jpg": {"osoby": ["X, Y"], "autori": [],
+                                 "obliceje": [{"jmeno": "E, F",
+                                               "oblast": [0, 0, 0, 0]}]}}}
     path = tmp_path / "_metadata.json"
     path.write_text(json.dumps(doc))
     index = names.NameIndex(lambda: [path])
@@ -45,3 +47,10 @@ def test_index_collects_all_levels(tmp_path):
     import os
     os.utime(path, (1, 1))
     assert "Nový, Člověk" in index.names()
+
+
+def test_known_form():
+    known = ["Hlava, Miloš", "Miloš Hlava", "Spáčil, David"]
+    assert names.known_form("Miloš Hlava", known) == "Hlava, Miloš"
+    assert names.known_form("milos  hlava", known) == "Hlava, Miloš"
+    assert names.known_form("Rudolf Tichý", known) == "Rudolf Tichý"

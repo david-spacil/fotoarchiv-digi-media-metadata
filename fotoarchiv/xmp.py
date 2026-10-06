@@ -15,6 +15,8 @@ from pathlib import Path
 from xml.sax.saxutils import escape
 from zoneinfo import ZoneInfo
 
+from PIL import Image
+
 from .archive import XMP_TMP_PREFIX
 from .model import resolve
 
@@ -29,6 +31,14 @@ HEAD = """\
     xmlns:exif="http://ns.adobe.com/exif/1.0/"
     xmlns:digiKam="http://www.digikam.org/ns/1.0/">
 """
+# Hlavička sidecaru s oblastmi obličejů (export pro obnovu).
+HEAD_REGIONS = HEAD.replace(
+    'xmlns:digiKam="http://www.digikam.org/ns/1.0/">',
+    'xmlns:digiKam="http://www.digikam.org/ns/1.0/"\n'
+    '    xmlns:mwg-rs="http://www.metadataworkinggroup.com/schemas/'
+    'regions/"\n'
+    '    xmlns:stDim="http://ns.adobe.com/xap/1.0/sType/Dimensions#"\n'
+    '    xmlns:stArea="http://ns.adobe.com/xmp/sType/Area#">')
 TAIL = """\
   </rdf:Description>
  </rdf:RDF>
@@ -65,17 +75,77 @@ def tag(root, name):
 
 
 def tags(akce, values):
-    """Tagy v pořadí akce, autoři, osoby; uvnitř skupiny jako v dokumentu."""
+    """Tagy v pořadí akce, autoři (jako v dokumentu).
+
+    Osoby do tagů nejdou: Immich z nich osoby nevytvoří a své má
+    z rozpoznávání obličejů.
+    """
     result = [tag("akce", akce)]
-    for key, root in (("autori", "autor"), ("osoby", "osoba")):
-        for name in values.get(key) or []:
-            if isinstance(name, str) and name.strip():
-                result.append(tag(root, name.strip()))
+    for name in values.get("autori") or []:
+        if isinstance(name, str) and name.strip():
+            result.append(tag("autor", name.strip()))
     return list(dict.fromkeys(result))
 
 
-def sidecar(doc, akce, soubor):
-    """Text XMP sidecaru souboru `soubor` z akce ve složce `akce`."""
+def stored_area(oblast, orientation):
+    """Oblast vůči otočené fotce → vůči fotce v uloženém tvaru.
+
+    Immich čte `mwg-rs:Regions` vůči uloženému obrázku a sám je otočí
+    podle EXIF Orientation (ověřeno, viz README, Obnova obličejů).
+    """
+    x, y, w, h = oblast
+    point = {
+        1: (x, y), 2: (1 - x, y), 3: (1 - x, 1 - y), 4: (x, 1 - y),
+        5: (y, x), 6: (y, 1 - x), 7: (1 - y, 1 - x), 8: (1 - y, x),
+    }.get(orientation, (x, y))
+    size = (h, w) if orientation in (5, 6, 7, 8) else (w, h)
+    return [round(v, 4) for v in (*point, *size)]
+
+
+def image_geometry(path):
+    """(šířka, výška, EXIF Orientation) uloženého obrázku, jinak None."""
+    try:
+        with Image.open(path) as img:
+            return img.width, img.height, img.getexif().get(0x0112, 1)
+    except (OSError, ValueError, Image.DecompressionBombError):
+        return None
+
+
+def regions(faces, geometry):
+    """Řádky `mwg-rs:Regions` pro obličeje souboru."""
+    width, height, orientation = geometry
+    lines = ['   <mwg-rs:Regions rdf:parseType="Resource">',
+             '    <mwg-rs:AppliedToDimensions rdf:parseType="Resource">',
+             f"     <stDim:w>{width}</stDim:w>",
+             f"     <stDim:h>{height}</stDim:h>",
+             "     <stDim:unit>pixel</stDim:unit>",
+             "    </mwg-rs:AppliedToDimensions>",
+             "    <mwg-rs:RegionList>",
+             "     <rdf:Bag>"]
+    for face in faces:
+        x, y, w, h = stored_area(face["oblast"], orientation)
+        lines += ['      <rdf:li rdf:parseType="Resource">',
+                  '       <mwg-rs:Area rdf:parseType="Resource">',
+                  f"        <stArea:x>{x}</stArea:x>",
+                  f"        <stArea:y>{y}</stArea:y>",
+                  f"        <stArea:w>{w}</stArea:w>",
+                  f"        <stArea:h>{h}</stArea:h>",
+                  "        <stArea:unit>normalized</stArea:unit>",
+                  "       </mwg-rs:Area>",
+                  "       <mwg-rs:Type>Face</mwg-rs:Type>",
+                  f"       <mwg-rs:Name>{escape(face['jmeno'])}</mwg-rs:Name>",
+                  "      </rdf:li>"]
+    lines += ["     </rdf:Bag>", "    </mwg-rs:RegionList>",
+              "   </mwg-rs:Regions>"]
+    return lines
+
+
+def sidecar(doc, akce, soubor, geometry=None):
+    """Text XMP sidecaru souboru `soubor` z akce ve složce `akce`.
+
+    S `geometry` (viz image_geometry) navíc oblasti pojmenovaných
+    obličejů pro obnovu Immiche; bez obličejů je sidecar běžný.
+    """
     values = {k: v["hodnota"] for k, v in resolve(doc, soubor).items()}
     lines = []
     popis = values.get("popis")
@@ -99,6 +169,10 @@ def sidecar(doc, akce, soubor):
     lines += ["   <digiKam:TagsList>", "    <rdf:Bag>"]
     lines += [f"     <rdf:li>{escape(t)}</rdf:li>" for t in tags(akce, values)]
     lines += ["    </rdf:Bag>", "   </digiKam:TagsList>"]
+    faces = doc.get("soubory", {}).get(soubor, {}).get("obliceje")
+    if geometry and faces:
+        lines += regions(faces, geometry)
+        return HEAD_REGIONS + "\n".join(lines) + "\n" + TAIL
     return HEAD + "\n".join(lines) + "\n" + TAIL
 
 
@@ -137,13 +211,14 @@ def targets(ws, akce, doc):
     return result
 
 
-def export(ws, akce, nanecisto=False):
+def export(ws, akce, nanecisto=False, obliceje=False):
     """Exportuje sidecary akce; zapisuje jen chybějící a změněné.
 
     Vrací None, když akce nemá `_metadata.json`, jinak počty
     `zapsano`, `nezmeneno` a seznam `chyby` ({soubor, chyba}).
     Nanečisto nic nezapíše a `zapsano` je počet chybějících nebo
-    neaktuálních. Po exportu bez chyb zapíše záznam o exportu.
+    neaktuálních. Po exportu bez chyb zapíše záznam o exportu, kromě
+    exportu pro obnovu (`obliceje`), jehož sidecary běžné nejsou.
     """
     doc, version = ws.load(akce)
     if doc is None:
@@ -151,7 +226,10 @@ def export(ws, akce, nanecisto=False):
     written, unchanged, errors = 0, 0, []
     for disk_name, name in targets(ws, akce, doc):
         try:
-            data = sidecar(doc, akce, name).encode("utf-8")
+            geometry = None
+            if obliceje and doc["soubory"][name].get("obliceje"):
+                geometry = image_geometry(ws.event_dir(akce) / disk_name)
+            data = sidecar(doc, akce, name, geometry).encode("utf-8")
             path = ws.sidecar_path(akce, disk_name)
             try:
                 current = path.read_bytes()
@@ -165,7 +243,7 @@ def export(ws, akce, nanecisto=False):
             written += 1
         except (OSError, ValueError, TypeError) as e:
             errors.append({"soubor": name, "chyba": str(e)})
-    if not nanecisto and not errors:
+    if not nanecisto and not errors and not obliceje:
         record = {"version": version, "zapis": ws.zapis}
         write_atomic(ws.export_record_path(akce),
                      json.dumps(record).encode("utf-8"))

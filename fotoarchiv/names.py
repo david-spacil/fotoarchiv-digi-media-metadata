@@ -9,7 +9,7 @@ import os
 import re
 import unicodedata
 
-NAME_KEYS = ("osoby", "autori", "ucastnici")
+NAME_KEYS = ("autori", "ucastnici")
 
 
 def _plain(text):
@@ -28,7 +28,7 @@ def normalize(name):
 
 
 def names_in(doc):
-    """Všechna jména z polí `osoby`, `autori` a `ucastnici` (všechny úrovně)."""
+    """Jména z `autori` a `ucastnici` (všechny úrovně) a z `obliceje`."""
     records = [doc.get("akce", {})]
     records += doc.get("skupiny", {}).values()
     records += doc.get("soubory", {}).values()
@@ -38,6 +38,11 @@ def names_in(doc):
             for name in record.get(key) or []:
                 if isinstance(name, str) and name.strip():
                     found.add(name.strip())
+    for record in doc.get("soubory", {}).values():
+        for face in record.get("obliceje") or []:
+            name = face.get("jmeno") if isinstance(face, dict) else None
+            if isinstance(name, str) and name.strip():
+                found.add(name.strip())
     return found
 
 
@@ -112,3 +117,17 @@ def check(name, names):
         if normalize(known) == key:
             return {"znamo": False, "mysleli_jste": known, "prevod": None}
     return {"znamo": False, "mysleli_jste": None, "prevod": canonical(name)}
+
+
+def known_form(name, names):
+    """Tvar jména ze seznamu, jinak jméno beze změny.
+
+    Shoda podle `normalize`; má-li jméno v seznamu víc tvarů, přednost
+    má kanonický `Příjmení, Jméno`.
+    """
+    name = " ".join(name.split())
+    key = normalize(name)
+    found = [known for known in names if normalize(known) == key]
+    if not found:
+        return name
+    return sorted(found, key=lambda n: ("," not in n, n != name, n))[0]

@@ -66,15 +66,22 @@ zahodí — neúplná mapa by obličeje mazala.
 odstraní problém s měřítkem z #15107 a dává přímo tvar MWG `stArea`.
 Zaokrouhlení brání přepisu kvůli šumu po přepočtu ML.
 
-**Orientace — ověřit jako první úkol.** Immich hledá obličeje na
-náhledu s aplikovanou EXIF orientací; u MWG oblastí se programy liší
-v tom, zda platí pro otočený, nebo uložený obrázek. Ověří se na fotce
-na výšku s EXIF Orientation ≠ 1: (a) k čemu se vztahují obdélníky
-z `/api/faces` (porovnat `imageWidth/Height` s rozměry originálu),
-(b) jak Immich čte `mwg-rs:Regions` u takové fotky (zkušební sidecar
-v testovací knihovně). Podle výsledku se oblast ukládá vždy ke
-správně otočené fotce (požadavek specifikace) a případný přepočet se
-dělá při exportu MWG.
+**Orientace (ověřeno 6. 10. 2026, Immich 3.3.0-rc2).** Na
+`20260909_132018.jpg` (EXIF Orientation 6, uloženo 4624 × 3468):
+(a) ML obličeje z `/api/faces` mají `imageWidth/Height` 1440 × 1920,
+tedy zmenšenina už otočené fotky; oblast přepočtená vzorcem výše
+a nanesená na otočený originál trefí obličej. Oblast v `obliceje` je
+proto přímo vůči otočené fotce, bez další úpravy.
+(b) `mwg-rs:Regions` čte Immich vůči fotce v **uloženém** tvaru
+a sám je otočí: oblast zapsaná vůči otočené fotce (s rozměry
+3468 × 4624) skončila mimo obličej; oblast převedená do uloženého
+tvaru (`x = y_d`, `y = 1 − x_d`, `w`/`h` prohozené) s rozměry
+4624 × 3468 skončila na obličeji ML s odchylkou do 0,0002. Export pro
+obnovu proto převádí oblast do uloženého tvaru podle EXIF Orientation
+(1–8) a `AppliedToDimensions` jsou rozměry uloženého obrázku (Pillow
+bez `exif_transpose`).
+Obličej z metadat se přiřadil ke stávající osobě stejného jména
+a ML obličej zůstal vedle něj (duplicita podle #15107).
 
 **Párování.** Poslední dvě části `originalPath` = (složka akce, soubor);
 bere se jen složka, která je akcí s `_metadata.json`, a soubor, který

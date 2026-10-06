@@ -7,7 +7,7 @@ import logging
 import sys
 from pathlib import Path
 
-from . import importer, xmp
+from . import immich, importer, xmp
 from .app import create_app
 from .archive import Workspace, adopt
 
@@ -58,6 +58,10 @@ def exportovat(argv):
     parser.add_argument("--zapis-do-archivu", action="store_true",
                         help="produkční režim: sidecary vedle souborů "
                              "v archivu (jinak do pracovního adresáře)")
+    parser.add_argument("--obliceje", action="store_true",
+                        help="obnova Immiche: přidá oblasti pojmenovaných "
+                             "obličejů (MWG); záznam o exportu nemění, "
+                             "běžný export pak sidecary vrátí")
     args = parser.parse_args(argv)
     archiv, work = paths(args)
     ws = Workspace(archiv, work, args.zapis_do_archivu)
@@ -68,7 +72,7 @@ def exportovat(argv):
             sys.exit(f"Akce nenalezena: {args.akce}")
     failed = False
     for name in [args.akce] if args.akce else ws.event_names():
-        result = xmp.export(ws, name)
+        result = xmp.export(ws, name, obliceje=args.obliceje)
         if result is None:
             print(f"přeskočeno: {name} (bez _metadata.json)")
             continue
@@ -113,7 +117,7 @@ def main(argv=None):
         print(f"Smazané importy neaktivní přes 7 dní: {len(removed)}")
 
     app = create_app(archiv, work, zapis=args.zapis_do_archivu,
-                     kontakt=args.kontakt)
+                     kontakt=args.kontakt, immich_interval=immich.INTERVAL)
     print(f"Archiv: {archiv.resolve()}")
     print(f"Pracovní adresář: {work.resolve()}")
     if args.zapis_do_archivu:

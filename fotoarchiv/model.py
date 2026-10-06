@@ -8,13 +8,15 @@ import unicodedata
 
 from .archive import EVENT_RE, SCHEMA
 
-# Klíče, které patří jen své úrovni a nedědí se.
+# Klíče, které patří jen své úrovni a nedědí se. `obliceje` (jen
+# u souboru, zapisuje synchronizace z Immiche) a starší `osoby` se do
+# výsledných hodnot nedostanou na žádné úrovni.
 LOCAL_KEYS = {
     # Účastníci a místa akce jsou výčty pro celou akci, ne údaje každé
     # fotky. Jediné místo akce se ale jako `misto` dědí (viz resolve).
-    "akce": {"ucastnici", "mista"},
-    "skupina": {"nazev"},
-    "soubor": {"skupina", "sha256"},
+    "akce": {"ucastnici", "mista", "obliceje", "osoby"},
+    "skupina": {"nazev", "obliceje", "osoby"},
+    "soubor": {"skupina", "sha256", "obliceje", "osoby"},
 }
 
 TECHNICAL_KEYS = ("datum", "pristroj", "gps")
@@ -58,6 +60,35 @@ def _place_gps(doc, result):
     misto = (result.get("misto") or {}).get("hodnota")
     place = (doc.get("souradnice_mist") or {}).get(misto) if misto else None
     return (place or {}).get("gps")
+
+
+def clean(doc):
+    """Před uložením: `osoby` pryč ze všech úrovní, `obliceje` jen u souborů.
+
+    Osoby na fotce jsou jména z `obliceje`, které zapisuje jen
+    synchronizace z Immiche. Dokument mění na místě a vrací ho.
+    """
+    for record in [doc.get("akce") or {}, *(doc.get("skupiny") or {}).values()]:
+        record.pop("osoby", None)
+        record.pop("obliceje", None)
+    for record in (doc.get("soubory") or {}).values():
+        record.pop("osoby", None)
+    return doc
+
+
+def keep_faces(doc, stored):
+    """Do dokumentu od klienta vrátí `obliceje` z uložené verze.
+
+    Klient obličeje neposílá, takže nemůže přepsat, co zapsala
+    synchronizace. Dokument mění na místě a vrací ho.
+    """
+    stored_files = (stored or {}).get("soubory") or {}
+    for name, record in (doc.get("soubory") or {}).items():
+        record.pop("obliceje", None)
+        faces = (stored_files.get(name) or {}).get("obliceje")
+        if faces:
+            record["obliceje"] = faces
+    return doc
 
 
 def technical(scanned):

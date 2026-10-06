@@ -104,7 +104,8 @@ přístroje a vzoru názvu, uživatel je může upravit.
       "gps": null,
       "misto": "Holštejn",
       "popis": "…",
-      "osoby": ["…"],
+      "obliceje": [{"jmeno": "Hlava, Miloš",
+                    "oblast": [0.2725, 0.432, 0.041, 0.0747]}],
       "sha256": "…"
     },
     "P1503713.JPG": {"skupina": "g9", "vyradit": true}
@@ -113,9 +114,16 @@ přístroje a vzoru názvu, uživatel je může upravit.
 ```
 
 - **Účastníci akce (`ucastnici`) se nedědí.** Jsou to důležití lidé,
-  kteří byli na akci, a přednostní návrhy při označování osob na
-  fotkách — ne předpoklad, že jsou na každé fotce. Osoby na fotkách
-  (`osoby`) se zadávají u souborů, případně u skupiny.
+  kteří byli na akci, a přednostní návrhy jmen — ne předpoklad, že jsou
+  na každé fotce.
+- **Osoby na fotkách jsou pojmenované obličeje z Immiche
+  (`obliceje`).** Jen u souboru, nedědí se a v aplikaci se nezadávají:
+  zapisuje je jen synchronizace (viz Aplikace, Immich). Položka je
+  `{jmeno, oblast}`; `oblast` = `[x, y, w, h]` jako podíly rozměrů
+  fotky zobrazené se správnou orientací (střed a velikost, tvar MWG),
+  zaokrouhlené na 4 místa. Je to i záloha pojmenovaných obličejů,
+  ze které jde Immich obnovit (viz Výstupy). Starší pole `osoby` se
+  ignoruje a při uložení odstraní.
 - **Místa akce (`mista`) jsou výčet**, fotka nebo skupina má jedno
   `misto`. Jediné místo akce se na fotky dědí; při víc místech se místo
   doplňuje u skupiny nebo fotky (návrhy z míst akce).
@@ -151,7 +159,10 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
   pole (např. pro `Spacil, David` nebo `David Spáčil`).
 - Nové jméno, které nic nepřipomíná, se přijme a od té doby je
   v seznamu.
-- Platí pro osoby na fotkách i pro autory.
+- Platí pro autory a účastníky. Jména obličejů z Immiche jsou
+  v seznamu taky; jméno z Immiche, které se se jménem ze seznamu shoduje
+  podle tohoto porovnání, synchronizace zapíše v tvaru ze seznamu,
+  jinak tak, jak je v Immichi.
 
 ## Výstupy
 
@@ -168,29 +179,46 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
   | `datum`          | `xmp:CreateDate` s časovou zónou |
   | `gps`, jinak souřadnice `misto` | `exif:GPSLatitude` + `exif:GPSLongitude` |
   | `autori`         | `digiKam:TagsList` > `autor/…` |
-  | `osoby`          | `digiKam:TagsList` > `osoba/…` |
   | název složky akce | `digiKam:TagsList` > `akce/…` |
 
   Datum s časem dostane zónu Europe/Prague platnou v daný okamžik
   (`+01:00` / `+02:00`; při podzimní dvojí hodině letní čas), samotné
   datum (WhatsApp) zůstane bez času a zóny. GPS ve formátu XMP
   `DDD,MM.mmmmmmK` (např. `49,24.378000N`). Prázdná pole se
-  nezapisují; místo, přístroj, účastníci ani skupina do sidecaru
-  nejdou. Sidecar skládá aplikace sama (ne exiftool), takže obsah
+  nezapisují; místo, přístroj, účastníci, osoby ani skupina do
+  sidecaru nejdou (osoby má Immich z vlastního rozpoznávání obličejů;
+  obličeje jen při obnově, viz níže). Sidecar skládá aplikace sama (ne exiftool), takže obsah
   závisí jen na `_metadata.json` a názvu složky akce.
 
   Ověřeno na Immichi 3.2 (5. 10. 2026): osoby (`Person`) vznikají jen
-  z obličejů se souřadnicemi, které nemáme — `PersonInImage` se
-  ignoruje. Autora Immich nezobrazuje (autor = kdo nahrál). Místo
+  z obličejů se souřadnicemi — `PersonInImage` ani tagy se jmény se
+  neberou. Autora Immich nezobrazuje (autor = kdo nahrál). Místo
   (`photoshop:City`, `Iptc4xmpCore:Location`) Immich zahodí i u fotek
   bez GPS a obec bere jen z GPS. Fotky bez GPS proto dostanou
   souřadnice svého místa, geokódované přes Nominatim (OSM) s cache
   a volbou kandidáta (OpenSpec změna `add-place-geocoding`); název
   místa se do sidecaru nezapisuje. U výsledků Nominatimu aplikace
   uvádí „© OpenStreetMap contributors“.
+- **Obnova obličejů:** `python -m fotoarchiv exportovat --obliceje`
+  přidá do sidecarů souborů s `obliceje` oblasti MWG
+  (`mwg-rs:Regions`, `Type` `Face`, `Name` = jméno). Immich se
+  zapnutým „Import faces from metadata“ z nich po obnovení metadat
+  (Refresh metadata u fotky; hromadná úloha nově nalezené sidecary
+  nenačte) vytvoří obličeje přiřazené osobě daného jména (stávající
+  osobě stejného jména, jinak nové). Ověřeno na Immichi 3.3.0-rc2
+  (6. 10. 2026): Immich čte oblasti MWG vůči obrázku **v uloženém
+  tvaru** a sám je otočí podle EXIF Orientation; export proto
+  `oblast` převádí podle orientace (1–8) a `AppliedToDimensions` jsou
+  uložené rozměry originálu. Obličej z metadat se neslučuje
+  s obličejem z rozpoznávání (diskuze immich-app/immich #15107), ve
+  stejném Immichi tak vznikne duplicita — obnova je pro nový nebo
+  poškozený Immich. Export pro obnovu nemění záznam o exportu; běžný
+  export pak sidecary vrátí do běžného tvaru.
 - **Immich** bude archiv číst jako externí knihovnu jen pro čtení
   s výjimkami `**/*.ignored/**` a nezpracovávanými složkami první úrovně
-  (`přetřídit`, `přednášky SKLEP TIC`). Zatím nenapojeno.
+  (`přetřídit`, `přednášky SKLEP TIC`). Testovací knihovna vidí
+  archiv pod `/mnt/media/fotoarchiv/…`; aplikace z ní čte jen
+  pojmenované obličeje (viz Aplikace, Immich).
 - **Index** celého archivu (CSV, jeden řádek na akci) nahrazuje ručně
   vedený `_metadata.xlsx`. Generuje se, needituje.
 
@@ -331,6 +359,45 @@ plán → výsledek.
   uživatel import nezahodí. Importy neaktivní přes 7 dní server smaže
   při startu. Průvodce nabídne otevřít akci; nové soubory jsou mezi
   „novými od posledního otevření“, metadata se doplňují běžně.
+
+### Immich
+
+Stránka **Nastavení** (odkaz v hlavičce) drží adresu serveru Immich
+a API klíč. Stačí klíč jen pro čtení s oprávněními ke čtení osob,
+assetů a obličejů (`face.read`). Ukládá se do `.work/immich.json`
+(práva 0600), nikdy do archivu; klíč se do prohlížeče nevrací (jen
+„klíč nastaven (…W4No)“) a změna adresy vyžaduje zadat ho znovu.
+Otestovat ověří verzi, osoby a čtení obličejů. Do zavedení
+přihlašování může nastavení změnit kdokoli, kdo na server dosáhne.
+
+**Synchronizace obličejů** běží v serveru po startu, pak každých
+15 minut a na tlačítko Načíst osoby:
+
+- Z Immiche se načtou pojmenované osoby (i skryté), jejich assety
+  a obličeje na nich; nepojmenované obličeje se ignorují.
+- Asset se páruje se souborem podle posledních dvou částí cesty
+  (složka akce, soubor), kořen archivu v Immichi se nenastavuje.
+  Zpracují se jen akce, které už mají `_metadata.json`.
+- `oblast` se počítá z obdélníku a rozměru, ke kterému ho Immich
+  vztahuje (zmenšenina už otočené fotky), takže na měřítku nezáleží.
+- `_metadata.json` se přepíše, jen když se obličeje některého souboru
+  změnily; soubor bez pojmenovaného obličeje `obliceje` ztratí.
+  Synchronizace při zápisu drží zámek akce („Immich (synchronizace)“);
+  akci otevřenou uživatelem se zámkem přeskočí a zkusí příště.
+- Selže-li kterýkoli dotaz, běh nic nezapíše (neúplná data by obličeje
+  mazala). Nastavení ukazuje poslední běh (změněné a přeskočené akce,
+  chybu) a čas posledního úspěšného.
+- Odpovídal-li záznam o exportu verzi před zápisem, posune se na novou:
+  obličeje běžné sidecary nemění.
+
+Ve formuláři souboru jsou osoby jen pro čtení (zašedlá jména
+„z Immiche“, u výběru všech souborů); skupina ani akce pole osob nemají.
+Bez nastavení pole uvádí „Immich není napojen“. Klient obličeje při
+ukládání neposílá, server je převezme z uložené verze.
+
+Přejmenování nebo přesun souboru je v Immichi nový asset bez obličejů;
+záloha v `_metadata.json` jde s přejmenováním a obnoví se exportem pro
+obnovu.
 
 ### Ukládání a export
 
