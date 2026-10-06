@@ -67,3 +67,21 @@ test("místa bez souřadnic jen u souborů bez GPS", () => {
   doc.souradnice_mist.Vysočany = { gps: [49.43, 16.804] };
   assert.deepEqual(missing(doc).mistaBezSouradnic, {});
 });
+
+test("soubory k vyřazení se nepočítají", () => {
+  const doc = {
+    akce: { mista: ["Housko", "Holštejn"] },
+    skupiny: { a: {}, b: {} },
+    soubory: {
+      "1.jpg": { skupina: "a", vyradit: true },
+      "2.jpg": { skupina: "b", vyradit: true },
+      "3.jpg": { skupina: "b", datum: "2026-04-28", misto: "Housko" },
+      "4.jpg": { vyradit: true },
+    },
+  };
+  const m = missing(doc);
+  assert.deepEqual(m.skupinyBezAutoru, ["b"]);
+  assert.deepEqual(m.souboryBezData, []);
+  assert.deepEqual(m.souboryBezSkupiny, []);
+  assert.deepEqual(m.souboryBezMista, []);
+});

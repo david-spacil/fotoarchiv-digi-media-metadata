@@ -47,10 +47,19 @@ prohlížení: jen fotky a videa, která patří do Immiche.
     přejmenuje na `RAW.ignored` bez ohledu na původní název (`raw`,
     `RAWy`, …).
   - RAWy v kořeni průvodce nabídne přesunout do `RAW.ignored`.
+- **Vyřazené soubory** (nepovedené fotky, duplicity) se nemažou: soubory
+  označené na pracovní ploše úklid přesune do `k_odstraneni.ignored`
+  v kořeni akce. Před přesunem zapíše vedle cíle sidecar s rozepsanými
+  údaji souboru (bez tagu o vyřazení — vyřazení značí jen složka),
+  sidecar v kořeni odstraní a po přesunu smaže záznam souboru
+  z `_metadata.json`. Blokuje i existující `<soubor>.xmp` v cíli;
+  selže-li zápis sidecaru, soubor zůstane v kořeni i se záznamem.
+  Vrácení: soubor ručně přesunout zpět, příští načtení ho přidá jako
+  nový soubor bez ručních údajů.
 - Přesun nikdy nepřepíše existující soubor; operace se shodou názvů se
   přeskočí a nahlásí, ostatní proběhnou a podsložka, ze které něco
-  zbylo, se nesmaže. Pokud `RAW.ignored` už existuje, soubory se do ní
-  přidají.
+  zbylo, se nesmaže. Pokud `RAW.ignored` nebo `k_odstraneni.ignored` už
+  existuje, soubory se do ní přidají.
 - Přesuny a přejmenování mění cesty, které by Immich bral jako nové
   assety. Proto se mají udělat před napojením archivu do Immiche.
 
@@ -97,7 +106,8 @@ přístroje a vzoru názvu, uživatel je může upravit.
       "popis": "…",
       "osoby": ["…"],
       "sha256": "…"
-    }
+    },
+    "P1503713.JPG": {"skupina": "g9", "vyradit": true}
   }
 }
 ```
@@ -124,6 +134,9 @@ přístroje a vzoru názvu, uživatel je může upravit.
 - Údaje z EXIF (datum, přístroj, GPS) zapisuje průvodce, u WhatsAppu
   datum z názvu souboru. Ruční údaje doplňuje uživatel.
 - `sha256` slouží k odhalení přejmenovaných nebo změněných souborů.
+- **`vyradit: true`** označuje soubor k vyřazení (jen u souboru, nedědí
+  se). Do XMP exportu takový soubor nejde, do lišty chybějících údajů se
+  nepočítá; úklid ho přesune do `k_odstraneni.ignored` a záznam smaže.
 - Originály se nemění.
 
 ## Jména osob
@@ -205,6 +218,14 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    přepínají aktuální soubor a vyberou jen jej, Shift+šipky výběr
    rozšiřují; klik do pásu vybírá jako v mřížce. Výběr i formulář jsou
    s mřížkou společné.
+
+   **Vyřazení:** klávesa Del nebo tlačítko „Vyřadit“ v panelu označí
+   vybrané soubory k vyřazení (jsou-li už všechny označené, označení
+   zruší). Označené dlaždice zůstávají na místě, zašedlé a přeškrtnuté.
+   Lišta ukazuje počet souborů k vyřazení a tlačítko **Uklidit…**: to
+   uloží změny, ukáže plán přesunu do `k_odstraneni.ignored`
+   a v produkčním režimu ho po potvrzení provede (viz Podsložky a RAW);
+   ve vývojovém jen ukáže plán.
 4. **Dokončení akce** uloží změny, zkontroluje úplnost (co chybí,
    ukáže a dokončí až po potvrzení), zapíše sidecary a nastaví
    `dokonceno`. Selže-li zápis některého sidecaru, akce dokončená

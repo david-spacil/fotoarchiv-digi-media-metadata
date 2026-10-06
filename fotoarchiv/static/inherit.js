@@ -71,7 +71,9 @@ function isEmpty(value) {
 // jejich soubory autory přepisují), soubory bez data, bez skupiny a bez
 // místa (jen když má akce víc míst — jedno místo se dědí) a místa bez
 // rozhodnutých souřadnic (`mistaBezSouradnic`: místo → soubory bez GPS).
-// `present` = názvy souborů, které v kořeni akce skutečně jsou.
+// `present` = názvy souborů, které v kořeni akce skutečně jsou. Soubory
+// označené k vyřazení (`vyradit`) se nepočítají; skupina, jejíž všechny
+// soubory jsou označené, tak nechybí ani autorům.
 export function missing(doc, present) {
   const akce = doc.akce || {};
   const result = {
@@ -86,7 +88,7 @@ export function missing(doc, present) {
   const viceMist = (akce.mista || []).length > 1;
   const groups = doc.skupiny || {};
   const files = Object.keys(doc.soubory || {})
-    .filter((f) => !present || present.has(f));
+    .filter((f) => (!present || present.has(f)) && !doc.soubory[f].vyradit);
   for (const gid of Object.keys(groups)) {
     if (!isEmpty(resolveGroup(doc, gid).autori?.hodnota)) continue;
     const own = files.filter((f) => doc.soubory[f].skupina === gid);

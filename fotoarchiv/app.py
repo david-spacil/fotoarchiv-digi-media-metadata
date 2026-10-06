@@ -178,15 +178,31 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         return dict(result, dokonceno=doc["dokonceno"], version=version,
                     export_version=ws.export_version(nazev))
 
+    def cleanup_args(path, doc, body):
+        """(volby, RAWy z kořene, k vyřazení) pro plán úklidu.
+
+        Označení k vyřazení se čte z uloženého `_metadata.json`.
+        `jen_vyradit` (úklid z pracovní plochy) vynechá podsložky a RAWy.
+        """
+        discard = [name for name, record in
+                   ((doc or {}).get("soubory") or {}).items()
+                   if record.get("vyradit")]
+        if body.get("jen_vyradit"):
+            return ({f["nazev"]: None for f in cleanup.subfolders(path)},
+                    False, discard)
+        return body.get("volby"), body.get("raw_v_koreni", True), discard
+
     @app.post("/api/akce/<nazev>/uklid")
     def akce_cleanup(nazev):
         path = event_dir(nazev)
         body = request.get_json(silent=True) or {}
-        return cleanup.plan(path, body.get("volby"),
-                            body.get("raw_v_koreni", True))
+        doc, _ = ws.load(nazev)
+        return cleanup.plan(path, *cleanup_args(path, doc, body))
 
     @app.post("/api/akce/<nazev>/uklid/provest")
     def akce_cleanup_execute(nazev):
+        """Provede úklid; záznamy vyřazených souborů odstraní
+        z `_metadata.json` a vrátí jeho novou verzi."""
         path = event_dir(nazev)
         if not ws.zapis:
             return {"chyba": "vyvojovy_rezim"}, 403
@@ -194,8 +210,25 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         denied = require_lock(nazev, body)
         if denied:
             return denied
-        return cleanup.execute(path, body.get("volby"),
-                               body.get("raw_v_koreni", True))
+        doc, version = ws.load(nazev)
+        result = cleanup.execute(
+            path, *cleanup_args(path, doc, body),
+            sidecar=lambda name: xmp.sidecar(doc, nazev, name))
+        gone = [o["soubor"] for o in result["operace"]
+                if o.get("vyradit") and o["stav"] == cleanup.DONE]
+        if gone:
+            # Ukládání drží klient se zámkem; konflikt = jeho souběžné
+            # uložení, záznamy se odstraní z aktuální verze.
+            while True:
+                doc, version = ws.load(nazev)
+                for name in gone:
+                    doc["soubory"].pop(name, None)
+                try:
+                    version = ws.save(nazev, doc, version)
+                    break
+                except Conflict:
+                    continue
+        return dict(result, version=version)
 
     def root_file(nazev, soubor):
         """Soubor v kořeni akce; podsložky a skryté soubory nejsou."""

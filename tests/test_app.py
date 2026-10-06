@@ -320,3 +320,64 @@ def test_cli_export(tmp_path, monkeypatch, capsys):
     assert "zapsáno 0, nezměněno 3" in capsys.readouterr().out
     with pytest.raises(SystemExit):
         main(["exportovat", "2020-01-02 neni", "--archiv", str(archiv)])
+
+
+def marked(c, names, popis=None):
+    """Uloží dokument s označenými soubory; vrátí verzi."""
+    doc, version = saved(c)
+    for name in names:
+        doc["soubory"][name]["vyradit"] = True
+    if popis:
+        doc["soubory"][names[0]]["popis"] = popis
+    r = c.put(f"/api/akce/{EVENT}/metadata",
+              json={"metadata": doc, "version": version, "relace": "r1"})
+    return r.json["version"]
+
+
+DISCARD = {"jen_vyradit": True, "relace": "r1"}
+
+
+def test_discard_plan_from_saved(client):
+    c, archiv = client
+    before = snapshot(archiv)
+    marked(c, ["foto.jpg"])
+    plan = c.post(f"/api/akce/{EVENT}/uklid", json=DISCARD).json
+    assert [(o["z"], o["do"]) for o in plan["operace"]] == [
+        ("foto.jpg", "k_odstraneni.ignored/foto.jpg")]
+    r = c.post(f"/api/akce/{EVENT}/uklid/provest", json=DISCARD)
+    assert r.status_code == 403
+    assert snapshot(archiv) == before
+
+
+def test_discard_execute(prod):
+    c, archiv = prod
+    marked(c, ["foto.jpg", "v.mp4"], popis="Nepovedená")
+    (archiv / EVENT / "foto.jpg.xmp").write_text("starý")
+    (archiv / EVENT / "k_odstraneni.ignored").mkdir()
+    (archiv / EVENT / "k_odstraneni.ignored" / "v.mp4").write_text("jiné")
+    r = c.post(f"/api/akce/{EVENT}/uklid/provest", json=DISCARD)
+    assert r.status_code == 200
+    assert [(o["z"], o["stav"]) for o in r.json["operace"]] == [
+        ("foto.jpg", "hotovo"), ("v.mp4", "blokovano")]
+    target = archiv / EVENT / "k_odstraneni.ignored"
+    assert (target / "foto.jpg").is_file()
+    xmp = (target / "foto.jpg.xmp").read_text()
+    assert "Nepovedená" in xmp and "vyrad" not in xmp
+    assert not (archiv / EVENT / "foto.jpg.xmp").exists()
+    # Podsložka RAW a RAW v kořeni se při úklidu z plochy nehýbou.
+    assert (archiv / EVENT / "RAW").is_dir()
+    assert (archiv / EVENT / "a.rw2").exists()
+    d = c.get(f"/api/akce/{EVENT}").json
+    assert d["version"] == r.json["version"]
+    assert "foto.jpg" not in d["metadata"]["soubory"]
+    assert d["metadata"]["soubory"]["v.mp4"]["vyradit"] is True
+    assert d["chybejici"] == []
+
+
+def test_discard_execute_requires_lock(prod):
+    c, archiv = prod
+    marked(c, ["foto.jpg"])
+    r = c.post(f"/api/akce/{EVENT}/uklid/provest",
+               json=dict(DISCARD, relace="r2"))
+    assert r.status_code == 423
+    assert (archiv / EVENT / "foto.jpg").exists()

@@ -70,6 +70,10 @@ main.list, main.loading, main.wizard { padding: 12px 16px; overflow: auto; }
   color: #555; font-size: 12px; }
 .tile.selected { border-color: #3182ce; background: #ebf8ff; }
 .tile.missing { opacity: 0.6; }
+.tile.discard img, .tile.discard .ph, .ftile.discard img { opacity: 0.35; }
+.tile.discard .fn { text-decoration: line-through; color: #c53030; }
+.tile.discard { background: #fff5f5; }
+.ftile.discard { background: #742a2a; }
 .tile .cap { font-size: 11px; padding: 1px 3px; display: flex;
   flex-direction: column; }
 .tile .fn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -133,6 +137,8 @@ main.wizard.form { max-width: 600px; }
 .ops tr.blocked { color: #c53030; }
 
 dialog.conflict { max-width: 460px; }
+dialog.cleanup { max-width: 760px; }
+.bar .info.discard { color: #c53030; }
 dialog .buttons { display: flex; gap: 8px; justify-content: flex-end; }
 
 .strip { display: flex; gap: 4px; margin: 4px 0 6px; overflow: hidden; }

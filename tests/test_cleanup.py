@@ -179,3 +179,90 @@ def test_execute_delete_refuses_non_empty(tree):
     with pytest.raises(OSError):
         cleanup._delete(root, "Video")
     assert (root / "Video" / "a.mp4").exists()
+
+
+# --- vyřazení ---------------------------------------------------------------
+
+def test_discard_planned(tree):
+    root = tree({"P1503712.JPG": "", "a.jpg": ""})
+    plan = cleanup.plan(root, raw_from_root=False, discard=["P1503712.JPG"])
+    assert ops(plan) == [("move", "P1503712.JPG",
+                          "k_odstraneni.ignored/P1503712.JPG")]
+    assert plan["operace"][0]["vyradit"]
+    assert plan["operace"][0]["soubor"] == "P1503712.JPG"
+
+
+def test_discard_missing_file_skipped(tree):
+    root = tree({"a.jpg": ""})
+    assert ops(cleanup.plan(root, discard=["neni.jpg"])) == []
+
+
+def test_discard_collision(tree):
+    root = tree({"k_odstraneni.ignored/": {"A.JPG": "", "b.jpg.xmp": ""},
+                 "a.jpg": "", "b.jpg": "", "c.jpg": ""})
+    plan = cleanup.plan(root, discard=["a.jpg", "b.jpg", "c.jpg"])
+    assert ops(plan, blocked=True) == [
+        ("move", "a.jpg", "k_odstraneni.ignored/a.jpg"),
+        ("move", "b.jpg", "k_odstraneni.ignored/b.jpg")]
+    assert ops(plan, blocked=False) == [
+        ("move", "c.jpg", "k_odstraneni.ignored/c.jpg")]
+
+
+def test_discard_existing_folder_not_a_subfolder(tree):
+    root = tree({"k_odstraneni.ignored/": {"x.jpg": ""}, "a.jpg": ""})
+    plan = cleanup.plan(root, discard=["a.jpg"])
+    assert plan["podslozky"] == []
+    assert ops(plan) == [("move", "a.jpg", "k_odstraneni.ignored/a.jpg")]
+
+
+def xmp_of(name):
+    return f"<xmp>{name}</xmp>"
+
+
+@pytest.mark.parametrize("existing", [False, True])
+def test_execute_discard(tree, existing):
+    spec = {"a.jpg": "A", "a.jpg.xmp": "starý", "b.jpg": "B"}
+    if existing:
+        spec["k_odstraneni.ignored/"] = {"x.jpg": "X"}
+    root = tree(spec)
+    result = cleanup.execute(root, discard=["a.jpg"], sidecar=xmp_of)
+    assert states(result) == [("move", "a.jpg", "hotovo")]
+    target = root / "k_odstraneni.ignored"
+    assert (target / "a.jpg").read_text() == "A"
+    assert (target / "a.jpg.xmp").read_text() == "<xmp>a.jpg</xmp>"
+    assert not (root / "a.jpg").exists()
+    assert not (root / "a.jpg.xmp").exists()
+    assert (root / "b.jpg").exists()
+
+
+def test_execute_discard_xmp_collision(tree):
+    root = tree({"k_odstraneni.ignored/": {"a.jpg.xmp": "cizí"},
+                 "a.jpg": "A"})
+    result = cleanup.execute(root, discard=["a.jpg"], sidecar=xmp_of)
+    assert states(result) == [("move", "a.jpg", "blokovano")]
+    assert (root / "a.jpg").read_text() == "A"
+    assert (root / "k_odstraneni.ignored" / "a.jpg.xmp").read_text() == "cizí"
+
+
+def test_execute_discard_sidecar_fails(tree):
+    root = tree({"a.jpg": "A", "a.jpg.xmp": "starý"})
+
+    def failing(name):
+        raise ValueError("neplatné datum")
+    result = cleanup.execute(root, discard=["a.jpg"], sidecar=failing)
+    assert states(result) == [("move", "a.jpg", "chyba")]
+    assert (root / "a.jpg").read_text() == "A"
+    assert (root / "a.jpg.xmp").read_text() == "starý"
+    assert not (root / "k_odstraneni.ignored").exists()
+
+
+def test_execute_discard_move_fails_removes_sidecar(tree, monkeypatch):
+    root = tree({"a.jpg": "A"})
+
+    def rename(src, dst):
+        raise PermissionError(13, "Permission denied", src)
+    monkeypatch.setattr(cleanup.os, "rename", rename)
+    result = cleanup.execute(root, discard=["a.jpg"], sidecar=xmp_of)
+    assert states(result) == [("move", "a.jpg", "chyba")]
+    assert (root / "a.jpg").exists()
+    assert list((root / "k_odstraneni.ignored").iterdir()) == []
