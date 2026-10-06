@@ -8,7 +8,37 @@ jednotlivě nebo po skupinách.
 Stav: **prototyp** se dvěma režimy. Výchozí vývojový archiv jen čte
 a `_metadata.json` ukládá do pracovního adresáře `.work/` mimo archiv;
 produkční (`--zapis-do-archivu`) ukládá `_metadata.json` do složky akce
-a úklid provádí. Spuštění a testy viz `AGENTS.md`.
+a úklid provádí. Testy viz `AGENTS.md`.
+
+## Lokální spuštění
+
+Potřeba: Python 3, `exiftool`, `ffmpeg` (bez něj videa nemají náhled)
+a připojený archiv (na Fedoře např. `dnf install perl-Image-ExifTool
+ffmpeg`).
+
+```sh
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m fotoarchiv \
+  --archiv /mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
+```
+
+Aplikace běží na <http://127.0.0.1:5000>. Bez dalších přepínačů je to
+vývojový režim: archiv se jen čte, metadata a cache jdou do `.work/`.
+Server spouštět jen jednou (zámky akcí jsou v paměti procesu).
+
+Volitelné přepínače:
+
+- `--zapis-do-archivu` — produkční režim, `_metadata.json` se ukládá do
+  složek akcí a provádí se úklid a import.
+- `--kontakt E-MAIL` — zapne geokódování míst přes Nominatim.
+- `--work CESTA` — jiný pracovní adresář než `.work`.
+- `--host`, `--port` — adresa a port (výchozí `127.0.0.1:5000`).
+
+Napojení na Immich (obličeje) se nastavuje v aplikaci; uloží se do
+`.work/immich.json`.
+
+Na Windows místo `.venv/bin/` použít `.venv\Scripts\`.
 
 ## Archiv
 
