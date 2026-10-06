@@ -63,8 +63,11 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         novy = doc is None
         nove, chybejici = [], []
         if novy:
-            doc = model.new_document(nazev, files,
-                                     scan.propose_groups(files))
+            # Návrh skupin z importu má přednost před automatickým.
+            proposal = imports.proposal(nazev)
+            doc = model.new_document(
+                nazev, files, importer.apply_proposal(files, proposal)
+                if proposal else scan.propose_groups(files))
         else:
             nove, chybejici = model.merge_scan(doc, files)
         return {
@@ -139,7 +142,22 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
             version = ws.save(nazev, doc, body.get("version"))
         except Conflict as e:
             return {"chyba": "konflikt", "version": e.current_version}, 409
+        if body.get("version") is None:
+            imports.drop_proposal(nazev)  # průvodce ho už použil
         return {"version": version}
+
+    @app.get("/api/akce/<nazev>/skupiny")
+    def akce_groups(nazev):
+        """Skupiny akce bez skenu: z `_metadata.json`, jinak z návrhu
+        importu, jinak `null`."""
+        event_dir(nazev)
+        doc, _ = ws.load(nazev)
+        if doc is not None:
+            return {"skupiny": doc.get("skupiny") or {}, "zdroj": "metadata"}
+        proposal = imports.proposal(nazev)
+        if proposal is not None:
+            return {"skupiny": proposal["skupiny"], "zdroj": "navrh"}
+        return {"skupiny": None, "zdroj": None}
 
     @app.post("/api/akce/<nazev>/export")
     def akce_export(nazev):
@@ -295,6 +313,44 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         response.call_on_close(events.close)
         return response
 
+    def existing_groups(nazev, path):
+        """Skupiny cíle importu: `_metadata.json`, jinak návrh."""
+        if path is None:
+            return {}
+        doc, _ = ws.load(nazev)
+        if doc is not None:
+            return doc.get("skupiny") or {}
+        return (imports.proposal(nazev) or {}).get("skupiny") or {}
+
+    def write_groups(nazev, path, had_doc, groups):
+        """Zapíše skupiny přenesených médií do `_metadata.json` (akce ho
+        má), jinak do návrhu. Vrátí {"zapsano": bool, "navrh": bool,
+        "chyba"?}."""
+        if not groups["prirazeni"]:
+            return {"zapsano": True, "navrh": not had_doc}
+        try:
+            if not had_doc:
+                imports.add_proposal(nazev, groups)
+                return {"zapsano": True, "navrh": True}
+            doc, version = ws.load(nazev)
+            if doc is None:
+                raise Conflict(None)
+            files, _ = scan.scan(path, cache_dir)
+            model.merge_scan(doc, files)
+            skupiny = doc.setdefault("skupiny", {})
+            for gid in groups["nove"]:
+                skupiny[gid] = groups["skupiny"][gid]
+            for name, gid in groups["prirazeni"].items():
+                record = doc["soubory"].get(name)
+                if record is not None and not record.get("skupina"):
+                    record["skupina"] = gid
+            ws.save(nazev, doc, version)
+        except Conflict:
+            return {"zapsano": False, "navrh": False, "chyba": "konflikt"}
+        except (OSError, ValueError) as e:
+            return {"zapsano": False, "navrh": not had_doc, "chyba": str(e)}
+        return {"zapsano": True, "navrh": False}
+
     @app.get("/api/import")
     def import_list():
         return {"importy": imports.owned(request.args.get("jmeno"))}
@@ -346,14 +402,17 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         body = request.get_json(force=True)
         jmeno = body.get("jmeno")
         check_import(id, jmeno)
+        volba = body.get("skupiny")
         try:
             nazev, path = import_target(body)
+            existing = existing_groups(nazev, path)
+            importer.check_groups(volba, existing)
         except importer.Refused as e:
             return refused(e)
-        imports.set_target(id, jmeno, nazev, path is None)
+        imports.set_target(id, jmeno, nazev, path is None, volba)
 
         def events():
-            for event in imports.plan(id, jmeno, path):
+            for event in imports.plan(id, jmeno, path, existing, volba):
                 if event["typ"] == "plan":
                     event.update(cil=nazev, nova=path is None)
                 yield event
@@ -369,9 +428,16 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         if not ws.zapis:
             return {"chyba": "vyvojovy_rezim"}, 403
         relace = body_field(body, "relace")
+        volba = body.get("skupiny")
+        pripojit = body.get("pripojit")
+        if pripojit is not None and not isinstance(pripojit, dict):
+            abort(400)
         try:
             imports.check_idle(id)
             nazev, path = import_target(body)
+            existing = existing_groups(nazev, path)
+            importer.check_groups(volba, existing)
+            had_doc = path is not None and ws.load(nazev)[0] is not None
             created = path is None
             if created:
                 path = importer.create_event(ws.archiv, nazev)
@@ -391,7 +457,8 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
             if created and not finished:
                 locks.release(nazev, relace)
 
-        events = imports.execute(id, jmeno, path, relace)
+        events = imports.execute(id, jmeno, path, relace, existing, volba,
+                                 pripojit)
         try:
             first = next(events)
         except importer.Refused as e:
@@ -406,6 +473,11 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
             for event in events:
                 if event["typ"] == "vysledek":
                     event["cil"] = nazev
+                    # Zámek akce drží tato relace, klient akci nemá
+                    # otevřenou: zápis nesouběží s plochou.
+                    event["skupiny"] = dict(
+                        write_groups(nazev, path, had_doc, event["skupiny"]),
+                        **event["skupiny"])
                 yield event
                 finished = event["typ"] == "vysledek"
         stream = tagged()

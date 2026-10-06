@@ -19,6 +19,7 @@ import shutil
 import tempfile
 import threading
 import time
+import unicodedata
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -34,6 +35,7 @@ FILES_DIR = "soubory"
 # se zablokuje, ale uživatel ho v přehledu uvidí.
 OTHER_DIR = "kolize"
 RECORD = "import.json"
+PROPOSALS = "navrhy-skupin"  # návrhy skupin akcí bez `_metadata.json`
 MAX_FILE = 20 * 2**30
 RESERVE = 2**30          # volné místo, které nahrávání na disku nechá
 MAX_AGE = 7 * 24 * 3600  # neaktivní importy se při startu smažou
@@ -269,6 +271,179 @@ def iter_plan(event_dir, entries, sha_cache=None):
         "nepodporovane": [e["cesta"] for e in entries
                           if kind(e["nazev"]) == "nepodporovany"],
     }
+
+
+# --- skupiny -------------------------------------------------------------------
+
+GROUP_MODES = ("podslozky", "jedna", "auto", "zadne", "existujici")
+
+
+def _dirs(cesta):
+    return re.split(r"[/\\]", cesta)[:-1]
+
+
+def selection_root(entries):
+    """Nejdelší společná složka cest výběru (seznam částí)."""
+    paths = [_dirs(e["cesta"]) for e in entries]
+    if not paths:
+        return []
+    root = paths[0]
+    for p in paths[1:]:
+        n = 0
+        while n < len(root) and n < len(p) and root[n] == p[n]:
+            n += 1
+        root = root[:n]
+    return root
+
+
+def check_groups(volba, existing):
+    """Vyhodí Refused, když volbu skupin nejde použít; None = bez skupin."""
+    if volba is None:
+        return
+    if not isinstance(volba, dict) or volba.get("rezim") not in GROUP_MODES:
+        raise Refused("neplatne_skupiny")
+    if volba["rezim"] == "jedna" and (
+            not isinstance(volba.get("nazev"), str)
+            or not volba["nazev"].strip()):
+        raise Refused("bez_nazvu_skupiny")
+    if volba["rezim"] == "existujici" and \
+            volba.get("skupina") not in (existing or {}):
+        raise Refused("neznama_skupina")
+
+
+def _group_key(name):
+    """Název skupiny k porovnání: bez diakritiky a velikosti písmen."""
+    return names._plain(name).strip()
+
+
+def group_plan(entries, chosen, devices, existing, volba, pripojit=None):
+    """Rozdělení médií `chosen` (cesty výběru) do skupin podle `volba`.
+
+    `entries` = všechny nahrané soubory (kořen výběru), `devices` =
+    {název: přístroj}, `existing` = skupiny akce (z `_metadata.json` nebo
+    návrhu). Vrací {"skupiny": {gid: {nazev, pristroj?}}, "prirazeni":
+    {název: gid}, "nove": [gid…], "shody": {nový gid: [existující gid…]}}.
+    Nová skupina se k existující připojí jen podle `pripojit`
+    ({nový gid: existující gid}); neznámé gid se ignorují.
+    """
+    existing = existing or {}
+    result = {"skupiny": {}, "prirazeni": {}, "nove": [], "shody": {}}
+    rezim = (volba or {}).get("rezim", "zadne")
+    media = [e for e in entries if e["cesta"] in chosen
+             and kind(e["nazev"]) in ("foto", "video")]
+    if rezim == "zadne" or not media:
+        return result
+    if rezim == "existujici":
+        gid = volba["skupina"]
+        result["skupiny"][gid] = existing[gid]
+        result["prirazeni"] = {e["nazev"]: gid for e in media}
+        return result
+
+    # Návrh nových skupin: klíč → (název, přístroj), soubor → klíč.
+    proposed, members = {}, {}
+    if rezim == "auto":
+        auto = scan.propose_groups(
+            [{"nazev": e["nazev"], "pristroj": devices.get(e["nazev"])}
+             for e in media])
+        for name, key in auto["prirazeni"].items():
+            members[name] = key
+        proposed = {k: (g["nazev"], g.get("pristroj"))
+                    for k, g in auto["skupiny"].items()}
+    else:
+        root = selection_root(entries)
+        for e in media:
+            if rezim == "jedna":
+                title = volba["nazev"].strip()
+            else:
+                rest = _dirs(e["cesta"])[len(root):]
+                title = rest[0] if rest else (root[-1] if root else None)
+            if title:
+                members[e["nazev"]] = title
+                proposed[title] = (title, None)
+
+    taken_ids = set(existing)
+    taken_names = {_group_key(g.get("nazev") or "") for g in existing.values()}
+    gids = {}
+    for key in sorted(proposed, key=lambda k: proposed[k][0]):
+        title, device = proposed[key]
+        new_title, n = title, 2
+        while _group_key(new_title) in taken_names:
+            new_title, n = f"{title} {n}", n + 1
+        taken_names.add(_group_key(new_title))
+        base = scan.slug(new_title)
+        gid, n = base, 2
+        while gid in taken_ids:
+            gid, n = f"{base}-{n}", n + 1
+        taken_ids.add(gid)
+        gids[key] = gid
+        group = {"nazev": new_title}
+        if device:
+            group["pristroj"] = device
+        used = {devices.get(name) for name, k in members.items() if k == key}
+        result["shody"][gid] = [
+            old for old, g in existing.items()
+            if _group_key(g.get("nazev") or "") == _group_key(title)
+            or (g.get("pristroj") and g["pristroj"] in used)]
+        target = (pripojit or {}).get(gid)
+        if target in existing:
+            result["skupiny"][target] = existing[target]
+            gids[key] = target
+            del result["shody"][gid]
+        else:
+            result["skupiny"][gid] = group
+            result["nove"].append(gid)
+    result["prirazeni"] = {name: gids[key] for name, key in members.items()}
+    return result
+
+
+def plan_groups(plan, entries, devices, existing, volba, done=OK,
+                pripojit=None):
+    """Skupiny pro média plánu ve stavu `done`; doplní `skupina`
+    k operacím a vrátí výsledek `group_plan`."""
+    chosen = {o["z"] for o in plan["operace"] if o["stav"] == done}
+    groups = group_plan(entries, chosen, devices, existing, volba, pripojit)
+    by_path = {e["cesta"]: e["nazev"] for e in entries}
+    for o in plan["operace"]:
+        o["skupina"] = groups["prirazeni"].get(by_path[o["z"]]) \
+            if o["stav"] == done else None
+    return groups
+
+
+def merge_proposal(proposal, groups):
+    """Doplní návrh skupin (`skupiny`, `prirazeni`) o výsledek
+    `group_plan`; dřívější přiřazení zůstávají."""
+    proposal = proposal or {"skupiny": {}, "prirazeni": {}}
+    for gid, group in groups["skupiny"].items():
+        proposal["skupiny"].setdefault(gid, group)
+    for name, gid in groups["prirazeni"].items():
+        proposal["prirazeni"].setdefault(name, gid)
+    return proposal
+
+
+def apply_proposal(files, proposal):
+    """Návrh skupin akce bez `_metadata.json`: přiřazení z návrhu pro
+    soubory v kořeni, ostatním `scan.propose_groups`. Skupiny bez souborů
+    vypadnou."""
+    def nfc(s):
+        return unicodedata.normalize("NFC", s)
+    given = {nfc(n): gid for n, gid in proposal["prirazeni"].items()
+             if gid in proposal["skupiny"]}
+    assignment = {f["nazev"]: given[nfc(f["nazev"])] for f in files
+                  if nfc(f["nazev"]) in given}
+    auto = scan.propose_groups([f for f in files
+                                if f["nazev"] not in assignment])
+    groups = {gid: proposal["skupiny"][gid]
+              for gid in sorted(set(assignment.values()))}
+    rename = {}
+    for gid, group in auto["skupiny"].items():
+        new, n = gid, 2
+        while new in groups:
+            new, n = f"{gid}-{n}", n + 1
+        rename[gid] = new
+        groups[new] = group
+    for name, gid in auto["prirazeni"].items():
+        assignment[name] = rename[gid]
+    return {"skupiny": groups, "prirazeni": assignment}
 
 
 def purge_tmp(event_dir, max_age=TMP_AGE):
@@ -597,14 +772,22 @@ class Imports:
                 removed.append(path.name)
         return removed
 
-    def overview(self, id, jmeno, exiftool=scan.run_exiftool, relace=None):
+    def _scanned(self, id, exiftool=None):
+        """{název: údaje skenu} souborů ve `soubory/` (cache exiftoolu)."""
+        files, _ = scan.scan(self.dir(id) / FILES_DIR, self.work / "cache",
+                             exiftool or scan.run_exiftool,
+                             cache_name=f"import-{id}")
+        return {f["nazev"]: f for f in files}
+
+    def devices(self, id, exiftool=None):
+        return {n: f["pristroj"] for n, f in self._scanned(id, exiftool)
+                .items() if f.get("pristroj")}
+
+    def overview(self, id, jmeno, exiftool=None, relace=None):
         """Přehled nahraných souborů: typy, data a přístroje z EXIF;
         `jinde` = co s importem dělají jiné záložky než `relace`."""
         record = self.get(id, jmeno)
-        path = self.dir(id)
-        files, _ = scan.scan(path / FILES_DIR, self.work / "cache", exiftool,
-                             cache_name=f"import-{id}")
-        data = {f["nazev"]: f for f in files}
+        data = self._scanned(id, exiftool)
         items = []
         for s in sorted(record["soubory"], key=lambda s: s["cesta"]):
             d = data.get(s["nazev"]) \
@@ -626,6 +809,7 @@ class Imports:
                               if i["typ"] == "nepodporovany"],
             "cil": record.get("cil"),
             "nova": record.get("nova", False),
+            "skupiny": record.get("skupiny"),
             "jinde": self.activity(id, relace),
         }
 
@@ -634,31 +818,46 @@ class Imports:
             return None
         return self.work / "cache" / "sha256" / f"{Path(event_dir).name}.json"
 
-    def set_target(self, id, jmeno, cil, nova):
-        """Uloží zamýšlený cíl (název akce, nová?) pro návrat k importu."""
+    def set_target(self, id, jmeno, cil, nova, skupiny=None):
+        """Uloží zamýšlený cíl (název akce, nová?) a volbu skupin pro
+        návrat k importu."""
         with self._mutex:
             record = self.get(id, jmeno)
-            record.update(cil=cil, nova=bool(nova), aktivita=self.clock())
+            record.update(cil=cil, nova=bool(nova), skupiny=skupiny,
+                          aktivita=self.clock())
             self._write(self.dir(id), record)
 
-    def plan(self, id, jmeno, event_dir):
-        """Generátor průběhu porovnání, nakonec událost `plan`."""
+    def plan(self, id, jmeno, event_dir, existing=None, volba=None):
+        """Generátor průběhu porovnání, nakonec událost `plan` se
+        `skupina` u operací a `skupiny` (`nove` s `shody`, `existujici`)."""
         record = self.get(id, jmeno)
+        devices = self.devices(id) if volba else {}
         result = yield from iter_plan(event_dir, record["soubory"],
                                       self.sha_cache(event_dir))
-        yield dict(result, typ="plan")
+        groups = plan_groups(result, record["soubory"], devices, existing,
+                             volba)
+        yield dict(result, typ="plan", skupiny={
+            "nove": {gid: dict(groups["skupiny"][gid],
+                               shody=groups["shody"][gid])
+                     for gid in groups["nove"]},
+            "existujici": existing or {}})
 
-    def execute(self, id, jmeno, event_dir, relace=None):
+    def execute(self, id, jmeno, event_dir, relace=None, existing=None,
+                volba=None, pripojit=None):
         """Generátor událostí provedení (`execute`); přenesený soubor
         zmizí ze stagingu hned po přenosu, prázdný staging se na konci
-        smaže. Odmítnutí (`probiha`, cizí import) vyhodí už první
-        `next()`; zavření generátoru příznak provádění uvolní."""
+        smaže. `vysledek` nese `skupina` u operací a `skupiny` (výsledek
+        `group_plan` pro přenesená média). Odmítnutí (`probiha`, cizí
+        import) vyhodí už první `next()`; zavření generátoru příznak
+        provádění uvolní."""
         record = self.get(id, jmeno)
         path = self.dir(id)
         with self._mutex:
             self.check_idle(id)
             self._running[id] = relace
         try:
+            # Přístroje před přenosem: přenesené soubory ze stagingu zmizí.
+            devices = self.devices(id) if volba else {}
             by_path = {e["cesta"]: e for e in record["soubory"]}
             for event in execute(event_dir, record["soubory"], path,
                                  self.sha_cache(event_dir)):
@@ -666,6 +865,9 @@ class Imports:
                         event["operace"]["stav"] == DONE:
                     self._moved(id, jmeno, by_path[event["operace"]["z"]])
                 elif event["typ"] == "vysledek":
+                    event["skupiny"] = plan_groups(
+                        event, record["soubory"], devices, existing, volba,
+                        DONE, pripojit)
                     with self._mutex:
                         left = self.get(id, jmeno)["soubory"]
                         event["zahozeno"] = not left
@@ -674,6 +876,33 @@ class Imports:
                 yield event
         finally:
             self._running.pop(id, None)
+
+    # --- návrh skupin akce bez `_metadata.json` ---
+
+    def _proposal_path(self, akce):
+        return self.work / PROPOSALS / f"{akce}.json"
+
+    def proposal(self, akce):
+        """Návrh skupin z importu ({skupiny, prirazeni}), nebo None."""
+        try:
+            return json.loads(self._proposal_path(akce)
+                              .read_text(encoding="utf-8"))
+        except (FileNotFoundError, ValueError):
+            return None
+
+    def add_proposal(self, akce, groups):
+        """Doplní návrh akce o skupiny importu (`group_plan`)."""
+        path = self._proposal_path(akce)
+        with self._mutex:
+            proposal = merge_proposal(self.proposal(akce), groups)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(proposal, ensure_ascii=False, indent=1),
+                           encoding="utf-8")
+            os.replace(tmp, path)
+
+    def drop_proposal(self, akce):
+        self._proposal_path(akce).unlink(missing_ok=True)
 
     def _moved(self, id, jmeno, entry):
         """Odebere přenesený soubor ze stagingu i z `import.json`."""

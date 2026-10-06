@@ -206,6 +206,10 @@ Lokální webová aplikace spouštěná nad složkou archivu.
 2. **Při prvním otevření akce průvodce:** úklid (podsložky, RAW) →
    načtení a skupiny → údaje akce → autoři skupin. Průvodce provede
    vším povinným; údaje jednotlivých souborů se doplňují na ploše.
+   Existuje-li k akci návrh skupin z importu, krok skupin použije jeho
+   skupiny a přiřazení pro soubory v kořeni, které návrh uvádí;
+   ostatní dostanou automatický návrh. Prvním uložením
+   `_metadata.json` se návrh smaže.
 3. **Pak pracovní plocha** (i při každém dalším otevření): vlevo mřížka
    náhledů po skupinách, vpravo formulář podle výběru — nic vybráno =
    akce, hlavička skupiny = skupina, vybrané soubory = soubory. Zděděné
@@ -261,6 +265,18 @@ plán → výsledek.
   `/` a `\` a nesmí existovat (bez ohledu na velikost písmen; jinak
   průvodce nabídne zvolit ji jako stávající). U dokončené akce
   upozorní, že nové soubory budou bez metadat.
+
+  Ve stejném kroku se volí **skupiny** importovaných médií (RAWy
+  skupinu nedostanou): *podle podsložek* (jen má-li výběr podsložky;
+  skupina = podsložka první úrovně pod nejdelší společnou složkou
+  výběru, soubory přímo v ní dostanou skupinu pojmenovanou po ní),
+  *jedna nová skupina* (název předvyplněný kořenem výběru, jinak
+  `Import YYYY-MM-DD`), *automaticky* (přístroj a vzor názvu jako
+  u nové akce), *bez skupiny*, nebo *zařadit do skupiny …* (jen akce,
+  jejíž `_metadata.json` skupiny má). Předvolba: podsložky → podle
+  podsložek; jinak nová akce a akce bez `_metadata.json` →
+  automaticky, ostatní → jedna nová skupina. Volba se uloží k importu
+  spolu s cílem.
 - **Plán:** média do kořene, RAWy do `RAW.ignored/`. Jméno, které
   v cíli existuje nebo ho má víc souborů výběru, se blokuje.
   Duplicita (stejný sha256 jako soubor v kořeni cílové akce nebo jiný
@@ -269,7 +285,14 @@ plán → výsledek.
   může trvat minuty, proto server posílá průběh porovnání (stream
   NDJSON, po souboru a u velkých po 64 MB; hashe z cache jsou hned
   hotové) a tlačítko je do konce výpočtu zablokované. Zvolený cíl se
-  uloží k importu a po návratu se předvyplní.
+  uloží k importu a po návratu se předvyplní. U každého přenášeného
+  média plán ukáže cílovou skupinu (nové označené). Nové skupiny se
+  s existujícími (v `_metadata.json` nebo návrhu) samy nesloučí ani
+  při shodě: název nové dostane případně pořadové číslo a u každé jde
+  zvolit „nová skupina“ nebo „připojit ke skupině …“, existující se
+  shodným názvem (bez diakritiky a velikosti písmen) nebo přístrojem
+  nahoře jako shoda. Volba připojení plán nepřepočítává, posílá se až
+  s provedením.
 - **Provedení** (jen produkční režim, ve vývojovém se plán jen ukáže):
   plán se sestaví znovu, soubor se zkopíruje do dočasného
   `.import-*.tmp` v cílové složce, dostane čas změny originálu
@@ -285,6 +308,16 @@ plán → výsledek.
   SMB), smaže ho další import do téže akce: před kopírováním odstraní
   `.import-*.tmp` starší než hodinu v kořeni a v `RAW.ignored/`
   a uvede je ve výsledku.
+
+  Po přenosu server zapíše skupiny jen pro skutečně přenesená média.
+  Akce s `_metadata.json`: přenesené soubory (s technickými údaji,
+  jako při otevření akce), nové skupiny a přiřazení jdou rovnou do
+  `_metadata.json` pod zámkem importu; stávající záznamy a skupiny se
+  nemění. Akce bez něj: `_metadata.json` nevznikne, skupiny jdou do
+  návrhu `.work/navrhy-skupin/<akce>.json` (i v produkčním režimu;
+  další import ho doplní) a použije ho průvodce akce. Když zápis
+  selže (např. `_metadata.json` mezitím upravený mimo aplikaci),
+  soubory zůstanou v archivu a výsledek uvede, že jsou bez skupiny.
 - **Výsledek:** přenesené, blokované, duplicitní a selhané soubory;
   přenesené zmizí z pracovního adresáře, ostatní tam zůstanou, dokud
   uživatel import nezahodí. Importy neaktivní přes 7 dní server smaže

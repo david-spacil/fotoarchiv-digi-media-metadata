@@ -2219,10 +2219,24 @@ const IMPORT_CHYBA = {
   neplatne_jmeno: "neplatné jméno souboru",
 };
 
+const IMPORT_SKUPINY = {
+  podslozky: "podle podsložek",
+  jedna: "jedna nová skupina",
+  auto: "automaticky podle přístroje a vzoru názvu",
+  zadne: "bez skupiny",
+  existujici: "zařadit do skupiny",
+};
+const IMPORT_SKUPINY_CHYBA = {
+  bez_nazvu_skupiny: "Doplňte název skupiny.",
+  neznama_skupina: "Zvolená skupina v akci není.",
+  neplatne_skupiny: "Neplatná volba skupin.",
+};
+
 const imp = {
   id: null, step: 0, cil: null, picked: [], failed: [], uploading: false,
   overview: null, target: null, targetError: null, plan: null,
   result: null, lockHolder: null, error: null, busy: null,
+  groups: null, targetGroups: null, pripojit: {},
 };
 
 function importUrl(rest = "") {
@@ -2250,6 +2264,7 @@ async function openImport(id, params) {
       id, step: 0, cil: params.get("cil"), picked: [], failed: [],
       uploading: false, overview: null, target: null, targetError: null,
       plan: null, result: null, lockHolder: null, error: null, busy: null,
+      groups: null, targetGroups: null, pripojit: {},
     });
   }
   app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
@@ -2587,6 +2602,91 @@ function renderOverview() {
   ]));
 }
 
+// Nejdelší společná složka cest výběru (jako `importer.selection_root`).
+function selectionRoot(files) {
+  const dirs = files.map((f) => f.cesta.split(/[/\\]/).slice(0, -1));
+  let root = dirs[0] || [];
+  for (const d of dirs.slice(1)) {
+    let n = 0;
+    while (n < root.length && n < d.length && root[n] === d[n]) n++;
+    root = root.slice(0, n);
+  }
+  return root;
+}
+
+// Skupiny cílové akce bez skenu (`_metadata.json`, jinak návrh z importu);
+// načtou se na pozadí a krok cíle se pak překreslí.
+function targetGroups(cil) {
+  if (imp.targetGroups?.cil === cil) return imp.targetGroups;
+  imp.targetGroups = { cil, loading: true };
+  api(`/api/akce/${encodeURIComponent(cil)}/skupiny`)
+    .then((r) => { imp.targetGroups = { cil, ...r }; })
+    .catch(() => { imp.targetGroups = { cil, skupiny: null, zdroj: null }; })
+    .then(() => { if (imp.step === 2) renderTarget(); });
+  return imp.targetGroups;
+}
+
+function importGroupsBlock(t) {
+  const o = imp.overview;
+  const tg = t.mode === "stavajici" ? targetGroups(t.cil)
+    : { skupiny: null, zdroj: null };
+  const root = selectionRoot(o.soubory);
+  const hasSub = o.soubory.some((f) =>
+    f.cesta.split(/[/\\]/).length - 1 > root.length);
+  const own = tg.zdroj === "metadata" ? tg.skupiny || {} : {};
+  const ownIds = Object.keys(own);
+  const avail = ["podslozky", "jedna", "auto", "zadne", "existujici"]
+    .filter((m) => (m !== "podslozky" || hasSub) &&
+      (m !== "existujici" || ownIds.length));
+  const preset = hasSub ? "podslozky"
+    : tg.zdroj === "metadata" ? "jedna" : "auto";
+  // Uložená volba (návrat k importu) platí, dokud je dostupná; jinak
+  // předvolba podle cíle.
+  imp.groups ||= o.skupiny ? { ...o.skupiny, chosen: true }
+    : { chosen: false };
+  const g = imp.groups;
+  if (!tg.loading && (!g.chosen || !avail.includes(g.rezim))) {
+    g.rezim = preset;
+  }
+  g.nazev ??= root.at(-1) ||
+    `Import ${new Date().toLocaleDateString("sv")}`;
+  if (!(g.skupina in own)) g.skupina = ownIds[0];
+  const set = (changes) => {
+    Object.assign(g, changes, { chosen: true });
+    imp.targetError = null;
+    renderTarget();
+  };
+  const radio = (mode) => h("label", {},
+    h("input", { type: "radio", name: "skupiny", checked: g.rezim === mode,
+      onchange: () => set({ rezim: mode }) }), " ", IMPORT_SKUPINY[mode]);
+  return h("fieldset", { class: "folder" }, h("legend", {}, "Skupiny"),
+    tg.loading ? h("p", { class: "meta" }, "Načítám skupiny akce…") : [
+      ...avail.map((m) => h("div", {}, radio(m),
+        m === "jedna" && g.rezim === "jedna" ? [" ", h("input", {
+          type: "text", value: g.nazev, size: 40,
+          oninput: (e) => { g.nazev = e.target.value; g.chosen = true; },
+        })] : null,
+        m === "existujici" && g.rezim === "existujici" ? [" ", h("select", {
+          onchange: (e) => set({ skupina: e.target.value }) },
+        ownIds.map((id) => h("option", { value: id,
+          selected: id === g.skupina }, own[id].nazev || id)))] : null)),
+      g.rezim === "podslozky" ? h("p", { class: "meta" }, "Skupina = " +
+        "podsložka první úrovně" + (root.length ? ` pod ${root.join("/")}`
+          : "") + ". RAWy skupinu nedostanou.") : null,
+    ]);
+}
+
+function importGroupsChoice() {
+  const g = imp.groups;
+  if (!g || imp.targetGroups?.loading && imp.target.mode === "stavajici") {
+    return null;
+  }
+  const volba = { rezim: g.rezim };
+  if (g.rezim === "jedna") volba.nazev = g.nazev.trim();
+  if (g.rezim === "existujici") volba.skupina = g.skupina;
+  return volba;
+}
+
 function renderTarget() {
   const o = imp.overview;
   const events = state.events || [];
@@ -2630,10 +2730,11 @@ function renderTarget() {
       o.od ? "" : " (datum z EXIF nezjištěno, doplňte ho)")) : null;
   const err = imp.targetError;
   const planning = imp.busy === "plan";
+  const groups = importGroupsBlock(t);
   const body = h("main", { class: "wizard" },
     h("div", { class: "row" }, radio("stavajici", "do stávající akce"),
       radio("nova", "do nové akce")),
-    existing, created,
+    existing, created, groups,
     planning ? progressBox("Sestavuji plán…") : null,
     err ? h("p", { class: "notice error" }, err.text,
       err.akce ? [" ", h("button", { class: "link", onclick: () => {
@@ -2649,6 +2750,12 @@ function renderTarget() {
       imp.targetError = { text: "Doplňte datum i název nové akce." };
       return renderTarget();
     } else body.nova = folder();
+    body.skupiny = importGroupsChoice();
+    if (!body.skupiny) return;
+    if (body.skupiny.rezim === "jedna" && !body.skupiny.nazev) {
+      imp.targetError = { text: IMPORT_SKUPINY_CHYBA.bez_nazvu_skupiny };
+      return renderTarget();
+    }
     imp.busy = "plan";
     imp.targetError = null;
     renderTarget();
@@ -2664,7 +2771,8 @@ function renderTarget() {
         }
       });
       if (last?.typ !== "plan") throw new Error("plán nedorazil celý");
-      imp.plan = last;
+      imp.plan = { ...last, volba: body.skupiny };
+      imp.pripojit = {};
     } catch (e) {
       imp.busy = null;
       if (e.status !== 409) {
@@ -2672,7 +2780,9 @@ function renderTarget() {
         return renderTarget();
       }
       const known = events.some((x) => x.nazev === e.data.akce);
-      imp.targetError = e.data.chyba === "existuje"
+      imp.targetError = IMPORT_SKUPINY_CHYBA[e.data.chyba]
+        ? { text: IMPORT_SKUPINY_CHYBA[e.data.chyba] }
+        : e.data.chyba === "existuje"
         ? { text: `Složka ${e.data.akce} v archivu už je.`,
           akce: known ? e.data.akce : null }
         : { text: "Neplatný název: složka musí mít tvar „YYYY-MM-DD " +
@@ -2687,17 +2797,20 @@ function renderTarget() {
   app.replaceChildren(...importFrame(body, [
     h("button", { disabled: planning, onclick: () => goStep(1) }, "← Zpět"),
     h("button", { class: "primary",
-      disabled: planning || (t.mode === "stavajici" && !t.cil),
+      disabled: planning || (t.mode === "stavajici" && !t.cil) ||
+        !importGroupsChoice(),
       onclick: next }, planning ? "Počítám plán…" : "Ukázat plán"),
   ]));
 }
 
-function importOps(ops) {
+// `group(gid)` = popis cílové skupiny (bez ní sloupec chybí).
+function importOps(ops, group) {
   return h("table", { class: "ops" }, ops.map((o) => h("tr", {
     class: o.stav === "hotovo" || o.stav === "ok" ? ""
       : o.stav === "chyba" ? "failed" : o.stav === "duplicita" ? "dup"
         : "blocked" },
   h("td", {}, h("code", {}, o.z)), h("td", {}, h("code", {}, `→ ${o.do}`)),
+  group ? h("td", {}, o.skupina ? group(o.skupina) : "") : null,
   h("td", { class: "num" }, fmtSize(o.velikost)),
   h("td", {}, IMPORT_STAV[o.stav], o.stav === "hotovo" || o.stav === "ok"
     ? "" : `: ${o.chyba || o.duvod}`))));
@@ -2707,6 +2820,34 @@ function countBy(ops) {
   const c = {};
   for (const o of ops) c[o.stav] = (c[o.stav] || 0) + 1;
   return (st) => c[st] || 0;
+}
+
+// Nové skupiny plánu s volbou „nová / připojit ke skupině …“; změna
+// plán nepřepočítává, `pripojit` jde až s provedením.
+function importPlanGroups(p) {
+  const nove = Object.entries(p.skupiny.nove);
+  if (!nove.length) return null;
+  const ex = p.skupiny.existujici;
+  const count = (gid) => p.operace.filter((o) => o.skupina === gid).length;
+  return h("table", { class: "ops" },
+    h("tr", {}, h("th", {}, "Nová skupina"), h("th", {}, "Souborů"),
+      Object.keys(ex).length ? h("th", {}, "Zařazení") : null),
+    nove.map(([gid, g]) => h("tr", {},
+      h("td", {}, g.nazev, g.pristroj ? h("span", { class: "meta" },
+        ` (${g.pristroj})`) : null),
+      h("td", { class: "num" }, String(count(gid))),
+      Object.keys(ex).length ? h("td", {}, h("select", {
+        onchange: (e) => {
+          if (e.target.value) imp.pripojit[gid] = e.target.value;
+          else delete imp.pripojit[gid];
+          renderImportPlan();
+        } },
+      h("option", { value: "" }, "nová skupina"),
+      [...g.shody, ...Object.keys(ex).filter((x) => !g.shody.includes(x))]
+        .map((x) => h("option", { value: x,
+          selected: imp.pripojit[gid] === x },
+        `připojit ke skupině ${ex[x].nazev || x}` +
+          (g.shody.includes(x) ? " (shoda)" : ""))))) : null)));
 }
 
 function renderImportPlan() {
@@ -2731,7 +2872,14 @@ function renderImportPlan() {
       "soubory zůstávají v pracovním adresáři.") : null,
     p.nepodporovane.length ? h("p", { class: "meta" },
       `Nepodporované (nepřenesou se): ${p.nepodporovane.join(", ")}`) : null,
-    importOps(p.operace));
+    importPlanGroups(p),
+    importOps(p.operace, (gid) => {
+      const join = imp.pripojit[gid];
+      if (join) return p.skupiny.existujici[join].nazev || join;
+      const nova = p.skupiny.nove[gid];
+      return nova ? `${nova.nazev} (nová)`
+        : p.skupiny.existujici[gid]?.nazev || gid;
+    }));
   const go = h("button", { class: "primary", onclick: () => {
     if (!go.dataset.confirm) {
       go.dataset.confirm = "1";
@@ -2771,6 +2919,7 @@ async function executeImport(button) {
     const last = await apiStream(importUrl("/provest"), {
       jmeno: userName(), relace: session(),
       [p.nova ? "nova" : "cil"]: p.cil,
+      skupiny: p.volba, pripojit: imp.pripojit,
     }, (ev) => {
       if (ev.typ === "hash") total = ev;
       else if (ev.typ === "hash_prubeh") {
@@ -2841,7 +2990,15 @@ function renderImportResult() {
     r.smazano?.length ? h("p", { class: "meta" }, "Smazány zbytky " +
       `přerušeného importu (starší než hodina): ${r.smazano.join(", ")}`)
       : null,
-    importOps(r.operace));
+    r.skupiny && !r.skupiny.zapsano ? h("p", { class: "notice error" },
+      `Skupiny se nepodařilo zapsat (${r.skupiny.chyba}); přenesené ` +
+      "soubory jsou v akci bez skupiny, rozdělte je na ploše.") : null,
+    r.skupiny?.zapsano && r.skupiny.navrh &&
+      Object.keys(r.skupiny.prirazeni).length
+      ? h("p", { class: "meta" }, "Skupiny se použijí jako návrh při " +
+        "prvním otevření akce.") : null,
+    importOps(r.operace, r.skupiny && ((gid) =>
+      r.skupiny.skupiny[gid]?.nazev || gid)));
   app.replaceChildren(...importFrame(body, [
     r.zahozeno ? h("span") : h("button", { onclick: discardImport },
       "Zahodit nepřenesené"),

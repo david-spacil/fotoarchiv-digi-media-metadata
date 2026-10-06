@@ -502,6 +502,169 @@ def test_owned_and_target(imports):
     assert imports.owned("Novák, Petr") == []
 
 
+# --- skupiny ---------------------------------------------------------------
+
+DOD = ["DOD 2015/DOD 2015_Jana/P1.JPG", "DOD 2015/DOD 2015_Jana/IMG_1.jpg",
+       "DOD 2015/DOD 2015_Jana/RAW/P1.RW2",
+       "DOD 2015/DOD 2015_Pavla/hloubka/a.mp4",
+       "DOD 2015/DOD 2015_Pavla/b.jpg", "DOD 2015/c.jpg"]
+DOD_DEVICES = {"P1.JPG": "Panasonic DC-G9", "IMG_1.jpg": "Apple iPhone 6",
+               "b.jpg": "Samsung SM-A515F"}
+
+
+def groups_of(entries, existing=None, devices=DOD_DEVICES, pripojit=None,
+              **volba):
+    chosen = {e["cesta"] for e in entries}
+    return importer.group_plan(entries, chosen, devices, existing, volba,
+                               pripojit)
+
+
+def members(g):
+    """{název skupiny: [soubory]}."""
+    result = {}
+    for name, gid in sorted(g["prirazeni"].items()):
+        result.setdefault(g["skupiny"][gid]["nazev"], []).append(name)
+    return result
+
+
+def test_groups_by_subfolder():
+    entries = [entry(c, c) for c in DOD]
+    g = groups_of(entries, rezim="podslozky")
+    # Dva přístroje v jedné podsložce = jedna skupina; RAW bez skupiny.
+    assert members(g) == {"DOD 2015": ["c.jpg"],
+                          "DOD 2015_Jana": ["IMG_1.jpg", "P1.JPG"],
+                          "DOD 2015_Pavla": ["a.mp4", "b.jpg"]}
+    assert g["nove"] == ["dod-2015", "dod-2015-jana", "dod-2015-pavla"]
+    assert g["shody"] == {gid: [] for gid in g["nove"]}
+    # Jen vybraná média (např. ok v plánu); kořen ze všech nahraných.
+    g = importer.group_plan(entries, {DOD[1]}, {}, None,
+                            {"rezim": "podslozky"})
+    assert members(g) == {"DOD 2015_Jana": ["IMG_1.jpg"]}
+
+
+def test_groups_without_subfolders_and_empty_root():
+    flat = [entry("a.jpg", "a"), entry("b.jpg", "b")]
+    assert groups_of(flat, rezim="podslozky")["prirazeni"] == {}
+    assert members(groups_of(flat, rezim="jedna", nazev=" Import 2026 ")) \
+        == {"Import 2026": ["a.jpg", "b.jpg"]}
+    # Víc přetažení bez společného kořene.
+    mixed = [entry("A/x.jpg", "x"), entry("B/C/y.jpg", "y"),
+             entry("z.jpg", "z")]
+    assert importer.selection_root(mixed) == []
+    assert members(groups_of(mixed, rezim="podslozky")) == {
+        "A": ["x.jpg"], "B": ["y.jpg"]}
+    assert groups_of(mixed, rezim="zadne")["prirazeni"] == {}
+
+
+def test_groups_auto_and_existing():
+    entries = [entry(c, c) for c in DOD]
+    g = groups_of(entries, rezim="auto")
+    assert members(g)["Panasonic DC-G9"] == ["P1.JPG"]
+    assert "P1.RW2" not in g["prirazeni"]
+    existing = {"g9": {"nazev": "G9"}, "mobil": {"nazev": "Mobil"}}
+    g = groups_of(entries, existing, rezim="existujici", skupina="g9")
+    assert set(g["prirazeni"].values()) == {"g9"} and g["nove"] == []
+    assert len(g["prirazeni"]) == 5
+    for volba, code in (({"rezim": "x"}, "neplatne_skupiny"),
+                        ({"rezim": "jedna", "nazev": " "},
+                         "bez_nazvu_skupiny"),
+                        ({"rezim": "existujici", "skupina": "jina"},
+                         "neznama_skupina")):
+        with pytest.raises(Refused) as e:
+            importer.check_groups(volba, existing)
+        assert e.value.code == code
+    importer.check_groups(None, existing)
+
+
+def test_groups_matches_not_joined():
+    entries = [entry("DOD/DOD 2015_Jana/x.jpg", "x"),
+               entry("DOD/DOD 2015_Verča/b.jpg", "b")]
+    existing = {"dod-2015-jana": {"nazev": "dod 2015_JANA"},
+                "mobil": {"nazev": "Mobil", "pristroj": "Samsung SM-A515F"},
+                "verca": {"nazev": "DOD 2015_Verca"}}
+    g = groups_of(entries, existing, rezim="podslozky")
+    # Název odlišný od existujících (pořadové číslo), gid bez kolize.
+    assert g["nove"] == ["dod-2015-jana-2", "dod-2015-verca-2"]
+    assert g["skupiny"]["dod-2015-jana-2"]["nazev"] == "DOD 2015_Jana 2"
+    assert g["skupiny"]["dod-2015-verca-2"]["nazev"] == "DOD 2015_Verča 2"
+    assert g["shody"] == {"dod-2015-jana-2": ["dod-2015-jana"],
+                          "dod-2015-verca-2": ["mobil", "verca"]}
+    g = groups_of(entries, existing, rezim="podslozky",
+                  pripojit={"dod-2015-jana-2": "dod-2015-jana",
+                            "dod-2015-verca-2": "neni"})
+    assert g["prirazeni"] == {"x.jpg": "dod-2015-jana",
+                              "b.jpg": "dod-2015-verca-2"}
+    assert g["nove"] == ["dod-2015-verca-2"]
+    assert set(g["skupiny"]) == {"dod-2015-jana", "dod-2015-verca-2"}
+
+
+def test_groups_auto_same_device_new_group():
+    existing = {"sm-a515f": {"nazev": "Samsung SM-A515F",
+                             "pristroj": "Samsung SM-A515F"}}
+    g = groups_of([entry("b.jpg", "b"), entry("b2.jpg", "b2")], existing,
+                  devices={"b.jpg": "Samsung SM-A515F",
+                           "b2.jpg": "Samsung SM-A515F"}, rezim="auto")
+    assert g["nove"] == ["samsung-sm-a515f-2"]
+    assert set(g["prirazeni"].values()) == {"samsung-sm-a515f-2"}
+    assert g["shody"]["samsung-sm-a515f-2"] == ["sm-a515f"]
+
+
+def test_target_groups_saved(imports):
+    id = make_import(imports, {"a.jpg": "a"})
+    volba = {"rezim": "jedna", "nazev": "Workshop"}
+    imports.set_target(id, ME, EVENT, False, volba)
+    assert imports.overview(id, ME, exiftool=fake_exiftool)["skupiny"] \
+        == volba
+
+
+def test_plan_and_execute_groups(imports, tree):
+    akce = tree({"akce/": {"x.jpg": "starý"}}) / "akce"
+    id = make_import(imports, {"D/A/a.jpg": "a", "D/A/x.jpg": "x",
+                               "D/B/b.jpg": "b", "D/B/b.rw2": "r"})
+    volba = {"rezim": "podslozky"}
+    existing = {"a": {"nazev": "A"}}
+    plan = last(imports.plan(id, ME, akce, existing, volba))
+    assert [(o["z"], o["skupina"]) for o in plan["operace"]] == [
+        ("D/A/a.jpg", "a-2"), ("D/A/x.jpg", None), ("D/B/b.jpg", "b"),
+        ("D/B/b.rw2", None)]
+    assert plan["skupiny"] == {
+        "nove": {"a-2": {"nazev": "A 2", "shody": ["a"]},
+                 "b": {"nazev": "B", "shody": []}},
+        "existujici": existing}
+    result = last(imports.execute(id, ME, akce, None, existing, volba,
+                                  {"a-2": "a"}))
+    assert result["skupiny"]["prirazeni"] == {"a.jpg": "a", "b.jpg": "b"}
+    assert result["skupiny"]["nove"] == ["b"]
+    assert [o["skupina"] for o in result["operace"]] == ["a", None, "b",
+                                                          None]
+
+
+def test_proposal_merge(imports):
+    assert imports.proposal(EVENT) is None
+    imports.add_proposal(EVENT, {"skupiny": {"a": {"nazev": "A"}},
+                                 "prirazeni": {"a.jpg": "a"}})
+    imports.add_proposal(EVENT, {"skupiny": {"b": {"nazev": "B"}},
+                                 "prirazeni": {"b.jpg": "b", "a.jpg": "b"}})
+    assert imports.proposal(EVENT) == {
+        "skupiny": {"a": {"nazev": "A"}, "b": {"nazev": "B"}},
+        "prirazeni": {"a.jpg": "a", "b.jpg": "b"}}
+    imports.drop_proposal(EVENT)
+    assert imports.proposal(EVENT) is None
+
+
+def test_apply_proposal():
+    files = [{"nazev": "a.jpg", "pristroj": "Panasonic DC-G9"},
+             {"nazev": "c.jpg", "pristroj": "Panasonic DC-G9"}]
+    proposal = {"skupiny": {"dc-g9": {"nazev": "Jana"},
+                            "prazdna": {"nazev": "Bez souborů"}},
+                "prirazeni": {"a.jpg": "dc-g9", "pryc.jpg": "prazdna"}}
+    g = importer.apply_proposal(files, proposal)
+    assert g == {"skupiny": {"dc-g9": {"nazev": "Jana"},
+                             "dc-g9-2": {"nazev": "Panasonic DC-G9",
+                                         "pristroj": "Panasonic DC-G9"}},
+                 "prirazeni": {"a.jpg": "dc-g9", "c.jpg": "dc-g9-2"}}
+
+
 # --- API -------------------------------------------------------------------
 
 def api_upload(c, id, files, jmeno=ME):
@@ -674,3 +837,119 @@ def test_purge_on_start(tmp_path, monkeypatch):
     monkeypatch.setattr("fotoarchiv.app.Flask.run", lambda *a, **k: None)
     main(["--archiv", str(tmp_path / "archiv"), "--work", str(work)])
     assert not (work / "import" / old).exists()
+
+
+# --- API: skupiny ----------------------------------------------------------
+
+def open_event(c, name=EVENT, relace=R1):
+    """Průvodce akcí: první uložení `_metadata.json`."""
+    c.post(f"/api/akce/{name}/zamek", json=relace)
+    d = c.get(f"/api/akce/{name}").json
+    r = c.put(f"/api/akce/{name}/metadata", json=dict(
+        relace, metadata=d["metadata"], version=d["version"]))
+    assert r.status_code == 200, r.json
+    return d
+
+
+def test_api_groups_into_event(tmp_path, monkeypatch):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
+    assert c.get(f"/api/akce/{EVENT}/skupiny").json == {
+        "skupiny": None, "zdroj": None}
+    open_event(c)
+    before = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    assert c.get(f"/api/akce/{EVENT}/skupiny").json == {
+        "skupiny": before["skupiny"], "zdroj": "metadata"}
+    id = c.post("/api/import", json=R1).json["id"]
+    files = {f"W/n{i}.jpg": f"n{i}" for i in range(3)}
+    files["W/foto.jpg"] = "jiná"  # kolize jména s fotkou v akci
+    api_upload(c, id, files)
+    url = f"/api/import/{id}/plan"
+    r = c.post(url, json={"jmeno": ME, "cil": EVENT,
+                          "skupiny": {"rezim": "jedna", "nazev": ""}})
+    assert r.status_code == 409 and r.json["chyba"] == "bez_nazvu_skupiny"
+    volba = {"rezim": "jedna", "nazev": "Workshop"}
+    plan = stream(c.post(url, json={"jmeno": ME, "cil": EVENT,
+                                    "skupiny": volba}))[-1]
+    assert [(o["z"], o["skupina"]) for o in plan["operace"]] == [
+        ("W/foto.jpg", None), ("W/n0.jpg", "workshop"),
+        ("W/n1.jpg", "workshop"), ("W/n2.jpg", "workshop")]
+    assert plan["skupiny"]["nove"] == {
+        "workshop": {"nazev": "Workshop", "shody": []}}
+    assert plan["skupiny"]["existujici"] == before["skupiny"]
+    assert c.get(f"/api/import/{id}",
+                 query_string={"jmeno": ME}).json["skupiny"] == volba
+    r = stream(c.post(f"/api/import/{id}/provest",
+                      json=dict(R1, cil=EVENT, skupiny=volba)))[-1]
+    assert r["skupiny"]["zapsano"]
+    assert r["skupiny"]["nove"] == ["workshop"]
+    doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    assert doc["skupiny"] == dict(before["skupiny"],
+                                  workshop={"nazev": "Workshop"})
+    for i in range(3):
+        assert doc["soubory"][f"n{i}.jpg"]["skupina"] == "workshop"
+    # Blokovaný soubor: existující záznam beze změny.
+    assert doc["soubory"]["foto.jpg"] == before["soubory"]["foto.jpg"]
+    assert (archiv / EVENT / "foto.jpg").read_bytes() != b"jin\xc3\xa1"
+
+
+def test_api_groups_conflict_keeps_files(tmp_path, monkeypatch):
+    from fotoarchiv.archive import Conflict
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
+    open_event(c)
+    ws = c.application.config["WORKSPACE"]
+
+    def conflict(*a):
+        raise Conflict("jina")
+    monkeypatch.setattr(ws, "save", conflict)
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"n.jpg": "n"})
+    r = stream(c.post(f"/api/import/{id}/provest", json=dict(
+        R1, cil=EVENT, skupiny={"rezim": "jedna", "nazev": "X"})))[-1]
+    assert r["skupiny"]["zapsano"] is False
+    assert r["skupiny"]["chyba"] == "konflikt"
+    assert (archiv / EVENT / "n.jpg").read_text() == "n"
+
+
+def test_api_groups_proposal(tmp_path, monkeypatch):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
+    name = "2026-04-28 DOD"
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"DOD 2015/DOD 2015_Jana/a.jpg": "a",
+                       "DOD 2015/DOD 2015_Pavla/b.jpg": "b"})
+    volba = {"rezim": "podslozky"}
+    r = stream(c.post(f"/api/import/{id}/provest",
+                      json=dict(R1, nova=name, skupiny=volba)))[-1]
+    assert r["skupiny"]["zapsano"]
+    assert not (archiv / name / "_metadata.json").exists()
+    assert c.get("/api/akce").json[0]["stav"] == "nezpracovano"
+    g = c.get(f"/api/akce/{name}/skupiny").json
+    assert g["zdroj"] == "navrh"
+    assert sorted(x["nazev"] for x in g["skupiny"].values()) == [
+        "DOD 2015_Jana", "DOD 2015_Pavla"]
+
+    # Druhý import: skupiny návrhu jsou existující, nic se nepřipojí.
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"DOD/DOD 2015_Jana/c.jpg": "c"})
+    plan = stream(c.post(f"/api/import/{id}/plan", json={
+        "jmeno": ME, "cil": name, "skupiny": volba}))[-1]
+    assert plan["skupiny"]["nove"] == {"dod-2015-jana-2": {
+        "nazev": "DOD 2015_Jana 2", "shody": ["dod-2015-jana"]}}
+    stream(c.post(f"/api/import/{id}/provest",
+                  json=dict(R1, cil=name, skupiny=volba)))
+    assert len(c.get(f"/api/akce/{name}/skupiny").json["skupiny"]) == 3
+
+    # Průvodce: návrh z importu, soubor mimo návrh automaticky.
+    (archiv / name / "IMG-20260428-WA0001.jpg").write_text("w")
+    d = c.get(f"/api/akce/{name}").json
+    assert d["novy"]
+    doc = d["metadata"]
+    assert {n: doc["skupiny"][r["skupina"]]["nazev"]
+            for n, r in doc["soubory"].items()} == {
+        "a.jpg": "DOD 2015_Jana", "b.jpg": "DOD 2015_Pavla",
+        "c.jpg": "DOD 2015_Jana 2", "IMG-20260428-WA0001.jpg": "WhatsApp"}
+    r = c.put(f"/api/akce/{name}/metadata",
+              json=dict(R1, metadata=doc, version=None))
+    assert r.status_code == 200
+    assert c.get(f"/api/akce/{name}/skupiny").json["zdroj"] == "metadata"
+    assert not (tmp_path / "work" / "navrhy-skupin" / f"{name}.json") \
+        .exists()
