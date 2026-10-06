@@ -251,7 +251,7 @@ window.addEventListener("pageshow", (e) => {
   if (e.persisted) route(); // návrat z bfcache: zámek získat znovu
 });
 window.addEventListener("beforeunload", (e) => {
-  if (state.dirty || state.saving) e.preventDefault();
+  if (state.dirty || state.saving || imp.uploading) e.preventDefault();
 });
 document.addEventListener("keydown", (e) => {
   if (state.mode !== "workspace" ||
@@ -274,9 +274,13 @@ document.addEventListener("keydown", (e) => {
 async function route() {
   if (state.dirty && state.mode === "workspace") await save();
   const m = location.hash.match(/^#\/akce\/(.+)$/);
+  const im = location.hash.match(/^#\/import(?:\/([^?]*))?(?:\?(.*))?$/);
   const name = m ? decodeURIComponent(m[1]) : null;
   if (state.locked && state.locked !== name) releaseLock();
-  if (name) await openEvent(name);
+  if (im) {
+    await openImport(im[1] ? decodeURIComponent(im[1]) : null,
+      new URLSearchParams(im[2] || ""));
+  } else if (name) await openEvent(name);
   else await showList();
 }
 
@@ -313,7 +317,9 @@ async function showList() {
         e.zmeneno_po_exportu
           ? h("span", { class: "warn" }, " změněno po exportu") : null)));
   app.replaceChildren(header(), h("main", { class: "list" },
-    h("h1", {}, "Akce"),
+    h("div", { class: "row" }, h("h1", {}, "Akce"),
+      h("button", { onclick: () => { location.hash = "#/import"; } },
+        "Importovat fotky a videa…")),
     h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Datum"), h("th", {}, "Akce"),
         h("th", {}, "Souborů"), h("th", {}, "Stav"))),
@@ -1541,6 +1547,10 @@ function renderWorkspace() {
         h("button", { dataset: { view: "loupe" },
           title: "Enter nebo dvojklik", onclick: () => setView("loupe") },
         "Lupa")),
+      h("button", { disabled: !!state.readonly,
+        title: "Nahrát do akce další fotky a videa", onclick: () => {
+          location.hash = `#/import?cil=${encodeURIComponent(state.name)}`;
+        } }, "Importovat…"),
       h("span", { class: "export" },
         h("span", { id: "export-status" }),
         h("button", { disabled: !!state.readonly, title: exportTarget(),
@@ -1955,6 +1965,518 @@ function renderAuthorsStep() {
     h("p", { class: "meta" }, "Autoři = fotil někdo z uvedených. " +
       "U jednotlivých fotek jde autory přepsat na ploše."),
     rows, warn), nav));
+}
+
+// --- import ---------------------------------------------------------------
+
+// Průvodce importem: soubory se nahrají do pracovního adresáře serveru
+// (`#/import/<id>` přežije reload), do archivu jdou až po potvrzení plánu.
+
+const IMPORT_STEPS = ["Soubory", "Přehled", "Cíl", "Plán", "Výsledek"];
+const PARALLEL = 3;
+const TYP = {
+  foto: ["fotka", "fotky", "fotek"],
+  video: ["video", "videa", "videí"],
+  raw: ["RAW", "RAWy", "RAWů"],
+  nepodporovany: ["nepodporovaný", "nepodporované", "nepodporovaných"],
+};
+const IMPORT_STAV = { ok: "", blokovano: "blokováno", duplicita: "duplicita",
+  hotovo: "hotovo", chyba: "chyba" };
+const IMPORT_CHYBA = {
+  neuplny: "přenos se přerušil",
+  prilis_velky: "soubor je příliš velký",
+  malo_mista: "na serveru není dost místa",
+  neplatne_jmeno: "neplatné jméno souboru",
+};
+
+const imp = {
+  id: null, step: 0, cil: null, picked: [], failed: [], uploading: false,
+  overview: null, target: null, targetError: null, plan: null,
+  result: null, lockHolder: null, error: null,
+};
+
+function importUrl(rest = "") {
+  return `/api/import/${encodeURIComponent(imp.id)}${rest}`;
+}
+
+function fmtDate(d) {
+  const [y, m, day] = d.slice(0, 10).split("-");
+  return `${+day}. ${+m}. ${y}`;
+}
+
+function fmtSize(n) {
+  const units = ["B", "kB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+  return `${n.toLocaleString("cs", { maximumFractionDigits: i ? 1 : 0 })} ` +
+    units[i];
+}
+
+async function openImport(id, params) {
+  state.mode = "import";
+  state.name = null;
+  if (!id || id !== imp.id) {
+    Object.assign(imp, {
+      id, step: 0, cil: params.get("cil"), picked: [], failed: [],
+      uploading: false, overview: null, target: null, targetError: null,
+      plan: null, result: null, lockHolder: null, error: null,
+    });
+  }
+  app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
+  if (!userName()) await askName();
+  state.events = await api("/api/akce");
+  if (imp.id && !imp.overview) {
+    try {
+      await loadOverview();
+    } catch (err) {
+      if (err.status !== 404) throw err;
+      app.replaceChildren(header(), h("main", { class: "wizard" },
+        h("p", {}, "Import nenalezen: je zahozený, už proběhl, nebo patří " +
+          "jiné záložce prohlížeče."), h("a", { href: "#/" }, "← Akce")));
+      return;
+    }
+    if (imp.overview.soubory.length) imp.step = 1;
+  }
+  renderImport();
+}
+
+async function loadOverview() {
+  imp.overview = await api(importUrl(`?relace=${session()}`));
+}
+
+function importFrame(body, nav) {
+  return [
+    header(),
+    h("div", { class: "eventbar" }, h("a", { href: "#/" }, "← Akce"),
+      h("h1", {}, "Import fotek a videí"),
+      imp.cil ? h("span", { class: "paths" }, `cíl: ${imp.cil}`) : null),
+    h("ol", { class: "steps" }, IMPORT_STEPS.map((s, i) => h("li", {
+      class: i === imp.step ? "current" : i < imp.step ? "done" : "",
+    }, s))),
+    body,
+    h("div", { class: "wnav" }, nav),
+  ];
+}
+
+function renderImport() {
+  if (state.mode !== "import") return; // mezitím jinam
+  [renderPick, renderOverview, renderTarget, renderImportPlan,
+    renderImportResult][imp.step]();
+}
+
+function goStep(step) {
+  imp.step = step;
+  renderImport();
+}
+
+async function discardImport() {
+  const n = imp.overview?.soubory.length || 0;
+  if (imp.id && !(await confirmDialog("Zahodit import?", [
+    `Nahrané soubory (${n}) se smažou z pracovního adresáře serveru. ` +
+    "Archiv zůstane beze změny."], "Zahodit"))) return;
+  if (imp.id) {
+    await api(importUrl(), { method: "DELETE", body: { relace: session() } })
+      .catch(() => {});
+  }
+  imp.id = null;
+  location.hash = "#/";
+}
+
+// Soubory z přetažení včetně podsložek (cesta = relativní cesta ve výběru).
+async function droppedFiles(dt) {
+  const entries = [...dt.items].map((i) => i.webkitGetAsEntry?.())
+    .filter(Boolean);
+  if (!entries.length) {
+    return [...dt.files].map((file) => ({ file, cesta: file.name }));
+  }
+  const out = [];
+  async function walk(entry) {
+    if (entry.isFile) {
+      const file = await new Promise((ok, fail) => entry.file(ok, fail));
+      out.push({ file, cesta: entry.fullPath.replace(/^\//, "") });
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      for (;;) {
+        const batch = await new Promise((ok, fail) =>
+          reader.readEntries(ok, fail));
+        if (!batch.length) break;
+        for (const e of batch) await walk(e);
+      }
+    }
+  }
+  for (const e of entries) await walk(e);
+  return out;
+}
+
+function renderPick() {
+  const limit = state.info.import_limit;
+  const add = (items) => {
+    for (const it of items) {
+      if (it.file.name.toLowerCase() === "thumbs.db") continue;
+      if (!imp.picked.some((p) => p.cesta === it.cesta)) imp.picked.push(it);
+    }
+    imp.error = null;
+    renderPick();
+  };
+  const fileInput = h("input", { type: "file", multiple: true, hidden: true,
+    onchange: (e) => add([...e.target.files].map((file) =>
+      ({ file, cesta: file.name }))) });
+  const dirInput = h("input", { type: "file", multiple: true, hidden: true,
+    webkitdirectory: true, onchange: (e) => add([...e.target.files].map(
+      (file) => ({ file, cesta: file.webkitRelativePath || file.name }))) });
+  const zone = h("div", {
+    class: "dropzone",
+    ondragover: (e) => { e.preventDefault(); zone.classList.add("over"); },
+    ondragleave: () => zone.classList.remove("over"),
+    ondrop: async (e) => {
+      e.preventDefault();
+      zone.classList.remove("over");
+      add(await droppedFiles(e.dataTransfer));
+    },
+  }, "Přetáhněte sem soubory nebo složku, nebo ",
+  h("button", { class: "link", disabled: imp.uploading,
+    onclick: () => fileInput.click() }, "vyberte soubory"), " či ",
+  h("button", { class: "link", disabled: imp.uploading,
+    onclick: () => dirInput.click() }, "celou složku"),
+  ". Soubory z podsložek se zpracují, jako by ležely v jedné úrovni.",
+  fileInput, dirInput);
+
+  const tooBig = imp.picked.filter((p) => p.file.size > limit);
+  const todo = imp.picked.filter((p) => p.file.size <= limit);
+  const total = todo.reduce((s, p) => s + p.file.size, 0);
+  const uploaded = imp.overview?.soubory.length || 0;
+  const failed = new Map(imp.failed.map((f) => [f.cesta, f.chyba]));
+  const rows = imp.picked.slice(0, 500).map((p) => h("tr", {
+    class: failed.has(p.cesta) || p.file.size > limit ? "failed" : "" },
+  h("td", {}, h("code", {}, p.cesta)), h("td", { class: "num" },
+    fmtSize(p.file.size)),
+  h("td", {}, p.file.size > limit ? "příliš velký, nenahraje se"
+    : failed.get(p.cesta) || "")));
+  const body = h("main", { class: "wizard" },
+    h("p", { class: "notice" }, "Soubory se nejdřív nahrají do pracovního " +
+      "adresáře serveru. Do archivu se nic nezapíše, dokud import " +
+      "nepotvrdíte; zavření stránky archiv nezmění."),
+    uploaded ? h("p", {}, `Už nahráno: ${plural(uploaded, "soubor",
+      "soubory", "souborů")}.`) : null,
+    imp.uploading ? null : zone,
+    imp.error ? h("p", { class: "notice error" }, imp.error) : null,
+    imp.uploading ? h("div", { class: "upload" },
+      h("progress", { id: "import-progress", max: 1, value: 0 }),
+      h("span", { id: "import-progress-text" }, "Nahrávám…")) : null,
+    imp.picked.length ? h("p", {}, `K nahrání: ${plural(todo.length,
+      "soubor", "soubory", "souborů")}, ${fmtSize(total)}` +
+      (tooBig.length ? `; příliš velkých (nad ${fmtSize(limit)}): ` +
+        tooBig.length : "") + ".") : null,
+    imp.picked.length ? h("table", { class: "ops" }, rows) : null,
+    imp.picked.length > 500
+      ? h("p", { class: "meta" }, `… a dalších ${imp.picked.length - 500}.`)
+      : null);
+  const nav = [
+    h("button", { disabled: imp.uploading, onclick: discardImport },
+      imp.id ? "Zahodit import" : "Zrušit"),
+    h("span", { class: "row" },
+      uploaded && !imp.uploading ? h("button", {
+        onclick: async () => { await loadOverview(); goStep(1); },
+      }, "Přeskočit na přehled") : null,
+      h("button", { class: "primary", disabled: imp.uploading || !todo.length,
+        onclick: () => startUpload(todo, total) },
+      imp.failed.length ? "Nahrát znovu" : "Nahrát")),
+  ];
+  app.replaceChildren(...importFrame(body, nav));
+}
+
+function uploadOne(item, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const q = new URLSearchParams({ relace: session(), cesta: item.cesta,
+      mtime: item.file.lastModified });
+    xhr.open("POST", importUrl(`/soubor?${q}`));
+    xhr.upload.onprogress = (e) => onProgress(e.loaded);
+    xhr.onload = () => {
+      if (xhr.status === 200) return resolve();
+      let code = null;
+      try { code = JSON.parse(xhr.responseText).chyba; } catch { /* HTML */ }
+      reject(new Error(IMPORT_CHYBA[code] || `HTTP ${xhr.status}`));
+    };
+    xhr.onerror = () => reject(new Error("spojení se serverem selhalo"));
+    xhr.send(item.file);
+  });
+}
+
+async function startUpload(todo, total) {
+  imp.uploading = true;
+  imp.failed = [];
+  imp.error = null;
+  if (!imp.id) {
+    try {
+      const r = await api("/api/import", { method: "POST",
+        body: { relace: session(), jmeno: userName(), celkem: total } });
+      imp.id = r.id;
+      history.replaceState(null, "", `#/import/${r.id}` +
+        (imp.cil ? `?cil=${encodeURIComponent(imp.cil)}` : ""));
+    } catch (err) {
+      imp.uploading = false;
+      imp.error = err.data?.chyba === "malo_mista"
+        ? "Na serveru není dost místa pro nahrání vybraných souborů."
+        : `Import nejde založit: ${err.message}`;
+      return renderImport();
+    }
+  }
+  renderImport();
+  const loaded = new Map();
+  let done = 0;
+  const update = () => {
+    const sum = [...loaded.values()].reduce((s, n) => s + n, 0);
+    const bar = document.getElementById("import-progress");
+    const text = document.getElementById("import-progress-text");
+    if (!bar) return;
+    bar.value = total ? sum / total : 1;
+    text.textContent = `Nahráno ${done} z ${todo.length} · ` +
+      `${fmtSize(sum)} z ${fmtSize(total)}`;
+  };
+  const queue = [...todo];
+  async function worker() {
+    while (queue.length) {
+      const item = queue.shift();
+      try {
+        await uploadOne(item, (n) => { loaded.set(item, n); update(); });
+        loaded.set(item, item.file.size);
+        done++;
+        imp.picked.splice(imp.picked.indexOf(item), 1);
+      } catch (err) {
+        loaded.set(item, 0);
+        imp.failed.push({ cesta: item.cesta, chyba: err.message });
+      }
+      update();
+    }
+  }
+  await Promise.all(Array.from({ length: PARALLEL }, worker));
+  imp.uploading = false;
+  if (imp.failed.length) {
+    imp.error = `Nepodařilo se nahrát ${plural(imp.failed.length, "soubor",
+      "soubory", "souborů")}; ostatní jsou nahrané.`;
+    return renderImport();
+  }
+  await loadOverview();
+  goStep(1);
+}
+
+function renderOverview() {
+  const o = imp.overview;
+  const c = o.pocty;
+  const media = (c.foto || 0) + (c.video || 0) + (c.raw || 0);
+  const parts = ["foto", "video", "raw"].filter((t) => c[t])
+    .map((t) => plural(c[t], ...TYP[t]));
+  const dates = !o.od ? "z EXIF nezjištěno"
+    : o.od === o.do ? fmtDate(o.od) : `${fmtDate(o.od)} – ${fmtDate(o.do)}`;
+  const rows = o.soubory.map((f) => h("tr", {
+    class: f.typ === "nepodporovany" ? "failed" : "" },
+  h("td", {}, h("code", {}, f.cesta)),
+  h("td", {}, TYP[f.typ][0]),
+  h("td", {}, f.datum ? fmtDate(f.datum) + f.datum.slice(10)
+    .replace("T", " ") : ""),
+  h("td", {}, f.pristroj || ""),
+  h("td", { class: "num" }, fmtSize(f.velikost))));
+  const body = h("main", { class: "wizard" },
+    h("p", {}, `Nahráno ${plural(o.soubory.length, "soubor", "soubory",
+      "souborů")}: ${parts.join(", ") || "žádná média"}.`),
+    h("p", {}, "Datum: ", h("strong", {}, dates)),
+    h("p", {}, "Přístroje: ", o.pristroje.join(", ") || "nezjištěny"),
+    o.nepodporovane.length ? h("div", { class: "notice error" },
+      "Nepodporované soubory se do archivu nepřenesou: ",
+      o.nepodporovane.flatMap((n, i) => [i ? ", " : "", h("code", {}, n)]))
+      : null,
+    h("details", {}, h("summary", {}, "Seznam souborů"),
+      h("table", { class: "ops" }, rows)));
+  app.replaceChildren(...importFrame(body, [
+    h("span", { class: "row" },
+      h("button", { onclick: () => goStep(0) }, "← Přidat soubory"),
+      h("button", { onclick: discardImport }, "Zahodit import")),
+    h("button", { class: "primary", disabled: !media,
+      onclick: () => goStep(2) }, "Pokračovat"),
+  ]));
+}
+
+function renderTarget() {
+  const o = imp.overview;
+  const events = state.events || [];
+  imp.target ||= imp.cil
+    ? { mode: "stavajici", cil: imp.cil, datum: o.od || "", nazev: "" }
+    : { mode: "nova", cil: events[0]?.nazev, datum: o.od || "", nazev: "" };
+  const t = imp.target;
+  const radio = (mode, label) => h("label", {},
+    h("input", { type: "radio", name: "cil", checked: t.mode === mode,
+      onchange: () => { t.mode = mode; imp.targetError = null;
+        renderTarget(); } }), " ", label);
+  const event = events.find((e) => e.nazev === t.cil);
+  const preview = h("code");
+  const folder = () => `${t.datum} ${t.nazev.trim()}`;
+  const updatePreview = () => { preview.textContent = folder(); };
+  updatePreview();
+  const existing = t.mode === "stavajici" ? h("div", { class: "folder" },
+    h("select", { onchange: (e) => { t.cil = e.target.value; renderTarget(); } },
+      events.map((e) => h("option", { value: e.nazev,
+        selected: e.nazev === t.cil },
+      e.nazev + (e.stav === "hotovo" ? " (hotovo)" : "")))),
+    event?.stav === "hotovo" ? h("p", { class: "warn" }, "Akce je " +
+      "dokončená. Nové soubory v ní budou bez metadat, dokud je " +
+      "nedoplníte a akci znovu nedokončíte.") : null) : null;
+  const created = t.mode === "nova" ? h("div", { class: "folder" },
+    h("div", { class: "row" },
+      h("input", { type: "date", value: t.datum,
+        oninput: (e) => { t.datum = e.target.value; updatePreview(); } }),
+      h("input", { type: "text", value: t.nazev, size: 50,
+        placeholder: "název akce, např. kontrola Stezky",
+        oninput: (e) => { t.nazev = e.target.value; updatePreview(); } })),
+    h("p", { class: "meta" }, "Složka: ", preview,
+      o.od ? "" : " (datum z EXIF nezjištěno, doplňte ho)")) : null;
+  const err = imp.targetError;
+  const body = h("main", { class: "wizard" },
+    h("div", { class: "row" }, radio("stavajici", "do stávající akce"),
+      radio("nova", "do nové akce")),
+    existing, created,
+    err ? h("p", { class: "notice error" }, err.text,
+      err.akce ? [" ", h("button", { class: "link", onclick: () => {
+        Object.assign(t, { mode: "stavajici", cil: err.akce });
+        imp.targetError = null;
+        renderTarget();
+      } }, "Zvolit ji jako stávající")] : null) : null);
+  const next = async () => {
+    const body = { relace: session() };
+    if (t.mode === "stavajici") body.cil = t.cil;
+    else if (!t.datum || !t.nazev.trim()) {
+      imp.targetError = { text: "Doplňte datum i název nové akce." };
+      return renderTarget();
+    } else body.nova = folder();
+    try {
+      imp.plan = await api(importUrl("/plan"), { method: "POST", body });
+    } catch (e) {
+      if (e.status !== 409) throw e;
+      const known = events.some((x) => x.nazev === e.data.akce);
+      imp.targetError = e.data.chyba === "existuje"
+        ? { text: `Složka ${e.data.akce} v archivu už je.`,
+          akce: known ? e.data.akce : null }
+        : { text: "Neplatný název: složka musí mít tvar „YYYY-MM-DD " +
+          "název“ a nesmí obsahovat / ani \\." };
+      return renderTarget();
+    }
+    imp.targetError = null;
+    imp.lockHolder = null;
+    goStep(3);
+  };
+  app.replaceChildren(...importFrame(body, [
+    h("button", { onclick: () => goStep(1) }, "← Zpět"),
+    h("button", { class: "primary",
+      disabled: t.mode === "stavajici" && !t.cil, onclick: next },
+    "Ukázat plán"),
+  ]));
+}
+
+function importOps(ops) {
+  return h("table", { class: "ops" }, ops.map((o) => h("tr", {
+    class: o.stav === "hotovo" || o.stav === "ok" ? ""
+      : o.stav === "chyba" ? "failed" : o.stav === "duplicita" ? "dup"
+        : "blocked" },
+  h("td", {}, h("code", {}, o.z)), h("td", {}, h("code", {}, `→ ${o.do}`)),
+  h("td", { class: "num" }, fmtSize(o.velikost)),
+  h("td", {}, IMPORT_STAV[o.stav], o.stav === "hotovo" || o.stav === "ok"
+    ? "" : `: ${o.chyba || o.duvod}`))));
+}
+
+function countBy(ops) {
+  const c = {};
+  for (const o of ops) c[o.stav] = (c[o.stav] || 0) + 1;
+  return (st) => c[st] || 0;
+}
+
+function renderImportPlan() {
+  const p = imp.plan;
+  const n = countBy(p.operace);
+  const zapis = state.info.zapis;
+  const holder = imp.lockHolder;
+  const body = h("main", { class: "wizard" },
+    zapis
+      ? h("p", { class: "notice" }, "Po potvrzení se soubory zkopírují do " +
+        "archivu, média do kořene akce, RAWy do RAW.ignored. Nic se " +
+        "nepřepíše; blokované a duplicitní soubory zůstanou v pracovním " +
+        "adresáři.")
+      : h("p", { class: "notice" }, "Vývojový režim: plán se jen ukazuje, " +
+        "do archivu se nic nezapíše."),
+    h("p", {}, p.nova ? "Vznikne nová akce " : "Cíl: ",
+      h("code", {}, p.cil), "."),
+    h("p", {}, `Přenese se ${n("ok")}, blokováno ${n("blokovano")}, ` +
+      `duplicit ${n("duplicita")}.`),
+    holder ? h("p", { class: "notice readonly" },
+      `Akci upravuje ${holder.jmeno}. Import teď nejde provést; nahrané ` +
+      "soubory zůstávají v pracovním adresáři.") : null,
+    p.nepodporovane.length ? h("p", { class: "meta" },
+      `Nepodporované (nepřenesou se): ${p.nepodporovane.join(", ")}`) : null,
+    importOps(p.operace));
+  const go = h("button", { class: "primary", onclick: () => {
+    if (!go.dataset.confirm) {
+      go.dataset.confirm = "1";
+      go.textContent = "Opravdu zkopírovat do archivu?";
+      return;
+    }
+    executeImport();
+  } }, `Importovat (${plural(n("ok"), "soubor", "soubory", "souborů")})`);
+  app.replaceChildren(...importFrame(body, [
+    h("span", { class: "row" },
+      h("button", { onclick: () => goStep(2) }, "← Zpět"),
+      h("button", { onclick: discardImport }, "Zahodit import")),
+    zapis && n("ok") ? go : h("span"),
+  ]));
+}
+
+async function executeImport() {
+  const p = imp.plan;
+  if (!p.nova && !(await acquireLock(p.cil))) {
+    imp.lockHolder = state.readonly;
+    state.readonly = null;
+    return renderImport();
+  }
+  app.replaceChildren(...importFrame(h("main", { class: "wizard" },
+    "Kopíruji do archivu…"), []));
+  try {
+    imp.result = await api(importUrl("/provest"), { method: "POST",
+      body: { relace: session(), [p.nova ? "nova" : "cil"]: p.cil } });
+  } catch (err) {
+    if (err.status === 423) {
+      imp.lockHolder = err.data?.drzitel || { jmeno: "jiný uživatel" };
+      releaseLock();
+      return renderImport();
+    }
+    if (err.status === 409 && err.data?.chyba === "existuje") {
+      imp.targetError = { text: `Složka ${err.data.akce} mezitím vznikla.` };
+      return goStep(2);
+    }
+    throw err;
+  }
+  // Novou akci server zamkl pro tuhle relaci; klient zámek převezme.
+  if (p.nova) await acquireLock(p.cil).catch(() => false);
+  state.events = await api("/api/akce");
+  goStep(4);
+}
+
+function renderImportResult() {
+  const r = imp.result;
+  const n = countBy(r.operace);
+  const body = h("main", { class: "wizard" },
+    h("p", { class: n("chyba") ? "notice error" : "notice" },
+      `Přeneseno ${n("hotovo")}, blokováno ${n("blokovano")}, duplicit ` +
+      `${n("duplicita")}, chyba ${n("chyba")}.` + (r.zahozeno ? ""
+        : " Nepřenesené soubory zůstaly v pracovním adresáři, dokud " +
+          "import nezahodíte.")),
+    r.nepodporovane.length ? h("p", { class: "meta" },
+      `Nepodporované (nepřeneseno): ${r.nepodporovane.join(", ")}`) : null,
+    importOps(r.operace));
+  app.replaceChildren(...importFrame(body, [
+    r.zahozeno ? h("span") : h("button", { onclick: discardImport },
+      "Zahodit nepřenesené"),
+    h("button", { class: "primary", onclick: () => {
+      location.hash = `#/akce/${encodeURIComponent(r.cil)}`;
+    } }, "Otevřít akci"),
+  ]));
 }
 
 // --- start ------------------------------------------------------------------

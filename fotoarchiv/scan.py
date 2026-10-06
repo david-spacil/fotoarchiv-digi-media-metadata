@@ -109,14 +109,16 @@ def run_exiftool(event_dir, names):
 
 # --- sken s cache ---------------------------------------------------------
 
-def scan(event_dir, cache_dir, exiftool=run_exiftool):
+def scan(event_dir, cache_dir, exiftool=run_exiftool, cache_name=None):
     """Technické údaje všech médií v kořeni akce.
 
     Výsledek se cachuje podle (název, velikost, mtime); exiftool dostane jen
-    soubory, které v cache nejsou nebo se změnily.
+    soubory, které v cache nejsou nebo se změnily. Cache je pod názvem
+    složky, nebo pod `cache_name`.
     """
     event_dir = Path(event_dir)
-    cache_path = Path(cache_dir) / "scan" / f"{event_dir.name}.json"
+    cache_name = cache_name or event_dir.name
+    cache_path = Path(cache_dir) / "scan" / f"{cache_name}.json"
     try:
         cache = json.loads(cache_path.read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):

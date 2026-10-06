@@ -19,6 +19,7 @@ EVENT_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (.+)$")
 METADATA_NAME = "_metadata.json"
 TMP_PREFIX = ".metadata-"
 XMP_TMP_PREFIX = ".xmp-"
+IMPORT_TMP_PREFIX = ".import-"
 
 
 def is_skipped(name):
@@ -27,10 +28,11 @@ def is_skipped(name):
 
 
 def is_metadata(name):
-    """`_metadata.json`, sidecary `.xmp` a jejich dočasné soubory (ne
-    média)."""
+    """`_metadata.json`, sidecary `.xmp`, jejich dočasné soubory
+    a rozpracované kopie importu (ne média)."""
     return (name == METADATA_NAME or name.startswith(TMP_PREFIX)
             or name.startswith(XMP_TMP_PREFIX)
+            or name.startswith(IMPORT_TMP_PREFIX)
             or name.lower().endswith(".xmp"))
 
 

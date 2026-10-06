@@ -188,7 +188,8 @@ Lokální webová aplikace spouštěná nad složkou archivu.
 ### Tok práce
 
 1. **Seznam akcí** se stavem (nezpracováno / rozpracováno / hotovo)
-   a chybějícími údaji.
+   a chybějícími údaji. Nové fotky a videa se do archivu dostanou
+   **importem** (viz Import) do nové nebo stávající akce.
 2. **Při prvním otevření akce průvodce:** úklid (podsložky, RAW) →
    načtení a skupiny → údaje akce → autoři skupin. Průvodce provede
    vším povinným; údaje jednotlivých souborů se doplňují na ploše.
@@ -213,6 +214,45 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    u dokončené akce upravené po exportu uvede „změněno po exportu“.
 
 Našeptávání a kontrola jmen viz výše.
+
+### Import
+
+Průvodce importem se spouští ze seznamu akcí (bez cíle) nebo z plochy
+akce (s ní jako předvybraným cílem). Kroky: soubory → přehled → cíl →
+plán → výsledek.
+
+- **Soubory:** jednotlivé soubory i celá složka, výběrem nebo
+  přetažením; soubory z podsložek se berou, jako by ležely v jedné
+  úrovni. Nahrávají se po jednom (2–3 souběžně, s průběhem) do
+  `.work/import/<id>/`, ne do archivu; zavření stránky archiv nezmění.
+  Adresa `#/import/<id>` přežije reload. Limit 20 GB na soubor, server
+  před nahráním kontroluje volné místo.
+- **Přehled:** počty fotek, videí a RAWů, rozsah dat z EXIF (WhatsApp
+  z názvu), přístroje, nepodporované soubory. Přijímají se média
+  aplikace (jpg, jpeg, png, mp4, mov) a RAWy; `Thumbs.db` se tiše
+  přeskočí, ostatní se vypíšou a nepřenesou.
+- **Cíl:** stávající akce, nebo nová — datum se předvyplní nejstarším
+  dnem z EXIF, název doplní uživatel; složka `YYYY-MM-DD název` bez
+  `/` a `\` a nesmí existovat (bez ohledu na velikost písmen; jinak
+  průvodce nabídne zvolit ji jako stávající). U dokončené akce
+  upozorní, že nové soubory budou bez metadat.
+- **Plán:** média do kořene, RAWy do `RAW.ignored/`. Jméno, které
+  v cíli existuje nebo ho má víc souborů výběru, se blokuje.
+  Duplicita (stejný sha256 jako soubor v kořeni cílové akce nebo jiný
+  soubor výběru) se přeskočí; hashe akce se počítají jen u souborů
+  shodné velikosti a cachují se v `.work/cache/sha256/`.
+- **Provedení** (jen produkční režim, ve vývojovém se plán jen ukáže):
+  plán se sestaví znovu, soubor se zkopíruje do dočasného
+  `.import-*.tmp` v cílové složce, dostane čas změny originálu
+  a přejmenuje se, jen pokud cíl pořád neexistuje. Selhání jednoho
+  souboru ostatní nezastaví. Import do stávající akce vyžaduje zámek
+  akce; nová akce vznikne jen, pokud složka mezitím nevznikla, a zámek
+  na ni dostane relace importu.
+- **Výsledek:** přenesené, blokované, duplicitní a selhané soubory;
+  přenesené zmizí z pracovního adresáře, ostatní tam zůstanou, dokud
+  uživatel import nezahodí. Importy neaktivní přes 7 dní server smaže
+  při startu. Průvodce nabídne otevřít akci; nové soubory jsou mezi
+  „novými od posledního otevření“, metadata se doplňují běžně.
 
 ### Ukládání a export
 
@@ -249,8 +289,9 @@ workerů ne). Do archivu se žádný soubor zámku nezapisuje.
   při odchodu z akce nebo zavření stránky ho uvolní.
 - Zámek bez heartbeatu ~5 min (podle hodin serveru) je opuštěný a jde
   převzít. Kdo o zámek přijde, přepne se jen ke čtení.
-- Uložení a provedení úklidu bez zámku server odmítne; kontrola verze
-  `_metadata.json` platí i pro držitele zámku.
+- Uložení, provedení úklidu a import do stávající akce bez zámku
+  server odmítne; kontrola verze `_metadata.json` platí i pro
+  držitele zámku.
 - Restart serveru zámky zahodí; klient je při dalším heartbeatu získá
   znovu, pokud je akce volná.
 - „Kdo“ je do zavedení přihlašování jméno zadané v prohlížeči.

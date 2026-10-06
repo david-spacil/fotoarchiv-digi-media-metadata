@@ -8,7 +8,8 @@ Prototyp: Flask server v `fotoarchiv/`, klient v `fotoarchiv/static/`
 (čisté ES moduly bez build kroku). Bez přepínače vývojový režim: archiv
 jen čte, `_metadata.json` a cache ukládá do `.work/`. S
 `--zapis-do-archivu` produkční: `_metadata.json` ve složce akce, úklid
-se provádí; cache zůstává v `.work/`. Zámek akcí je v paměti serveru
+a import se provádějí; cache a nahrané soubory importu
+(`.work/import/`) zůstávají v `.work/`. Zámek akcí je v paměti serveru
 (`lock.py`) — **server smí běžet jen jako jeden proces**.
 
 `README.md` je specifikace (archiv, datový model, jména osob, výstupy,

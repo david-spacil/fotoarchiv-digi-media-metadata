@@ -186,3 +186,12 @@ header .user { color: #fff; font-size: 12px; }
 .notice.error { background: #fff5f5; border-left-color: #c53030; }
 fieldset.panel-body { border: 0; margin: 0; padding: 0; min-width: 0; }
 .ops tr.failed td { color: #c53030; }
+
+/* import */
+.dropzone { margin: 8px 0; padding: 24px; border: 2px dashed #a0aec0;
+  background: #fff; text-align: center; }
+.dropzone.over { border-color: #3182ce; background: #ebf8ff; }
+.upload { display: flex; gap: 8px; align-items: center; margin: 8px 0; }
+.upload progress { flex: 1; max-width: 500px; }
+.ops tr.dup td { color: #975a16; }
+.ops td.num { text-align: right; white-space: nowrap; }

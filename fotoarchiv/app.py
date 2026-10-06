@@ -10,7 +10,8 @@ from pathlib import Path
 
 from flask import Flask, abort, jsonify, request, send_file
 
-from . import cleanup, geocode, lock, model, names, scan, thumbs, xmp
+from . import (cleanup, geocode, importer, lock, model, names, scan, thumbs,
+               xmp)
 from .archive import SCHEMA, Conflict, Workspace
 
 STATIC = Path(__file__).parent / "static"
@@ -25,6 +26,7 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
     if geocoder is None and kontakt:
         geocoder = geocode.Geocoder(cache_dir, kontakt)
     name_index = names.NameIndex(ws.metadata_files)
+    imports = importer.Imports(ws.work)
     app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
     app.config["WORKSPACE"] = ws
     app.config["LOCKS"] = locks
@@ -44,7 +46,8 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         return {"archiv": str(ws.archiv.resolve()),
                 "work": str(ws.work.resolve()),
                 "zapis": ws.zapis,
-                "geokodovani": geocoder is not None}
+                "geokodovani": geocoder is not None,
+                "import_limit": importer.MAX_FILE}
 
     @app.get("/api/akce")
     def akce_list():
@@ -222,6 +225,106 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         if scan.extension(soubor) not in scan.MEDIA_EXT:
             abort(404)
         return send_file(src, conditional=True)
+
+    # --- import ------------------------------------------------------------
+
+    def refused(e, status=409):
+        return dict({"chyba": e.code}, **e.detail), status
+
+    def check_import(id, relace):
+        """Import patří relaci, která ho založila; jiné ho nevidí."""
+        try:
+            return imports.get(id, relace)
+        except KeyError:
+            abort(404)
+
+    def import_target(body):
+        """(název, složka) cíle z těla: stávající `cil`, nebo nová `nova`
+        (složka None, dokud nevznikne)."""
+        if body.get("cil"):
+            return body["cil"], event_dir(body["cil"])
+        nova = body_field(body, "nova")
+        importer.check_new_name(ws.archiv, nova)
+        return nova, None
+
+    @app.post("/api/import")
+    def import_create():
+        body = request.get_json(force=True)
+        celkem = body.get("celkem", 0)
+        if not isinstance(celkem, int) or celkem < 0:
+            abort(400)
+        try:
+            id = imports.create(body_field(body, "relace"),
+                                body_field(body, "jmeno").strip(), celkem)
+        except importer.Refused as e:
+            return refused(e, 507)
+        return {"id": id, "limit": importer.MAX_FILE}
+
+    @app.post("/api/import/<id>/soubor")
+    def import_file(id):
+        """Tělo = obsah souboru (bez multipartu), čte se po blocích."""
+        relace = request.args.get("relace")
+        check_import(id, relace)
+        mtime = request.args.get("mtime")
+        try:
+            mtime = int(mtime) if mtime else None
+        except ValueError:
+            abort(400)
+        try:
+            entry = imports.add_file(id, relace, request.args.get("cesta"),
+                                     request.stream, request.content_length,
+                                     mtime)
+        except importer.Refused as e:
+            return refused(e, {"bez_delky": 411, "prilis_velky": 413,
+                               "malo_mista": 507}.get(e.code, 400))
+        except KeyError:
+            abort(404)  # mezitím zahozeno
+        return {"soubor": entry}
+
+    @app.get("/api/import/<id>")
+    def import_overview(id):
+        relace = request.args.get("relace")
+        check_import(id, relace)
+        return imports.overview(id, relace)
+
+    @app.post("/api/import/<id>/plan")
+    def import_plan(id):
+        body = request.get_json(force=True)
+        check_import(id, body.get("relace"))
+        try:
+            nazev, path = import_target(body)
+        except importer.Refused as e:
+            return refused(e)
+        return dict(imports.plan(id, body["relace"], path), cil=nazev,
+                    nova=path is None)
+
+    @app.post("/api/import/<id>/provest")
+    def import_execute(id):
+        body = request.get_json(force=True)
+        record = check_import(id, body.get("relace"))
+        if not ws.zapis:
+            return {"chyba": "vyvojovy_rezim"}, 403
+        relace = body["relace"]
+        try:
+            nazev, path = import_target(body)
+            if path is None:
+                path = importer.create_event(ws.archiv, nazev)
+                # Novou akci nikdo neotevře uprostřed přenosu; zámek pak
+                # přebírá klient, který ji otevírá.
+                locks.acquire(nazev, relace, record["jmeno"])
+        except importer.Refused as e:
+            return refused(e)
+        denied = require_lock(nazev, body)
+        if denied:
+            return denied
+        return dict(imports.execute(id, relace, path), cil=nazev)
+
+    @app.delete("/api/import/<id>")
+    def import_discard(id):
+        body = request.get_json(force=True, silent=True) or {}
+        check_import(id, body.get("relace"))
+        imports.discard(id, body["relace"])
+        return {}
 
     @app.get("/api/jmena")
     def jmena():

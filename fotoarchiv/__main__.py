@@ -7,7 +7,7 @@ import logging
 import sys
 from pathlib import Path
 
-from . import xmp
+from . import importer, xmp
 from .app import create_app
 from .archive import Workspace, adopt
 
@@ -108,6 +108,9 @@ def main(argv=None):
     work.mkdir(parents=True, exist_ok=True)
     # Provedené operace úklidu jdou do logu serveru.
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    removed = importer.Imports(work).purge()
+    if removed:
+        print(f"Smazané importy neaktivní přes 7 dní: {len(removed)}")
 
     app = create_app(archiv, work, zapis=args.zapis_do_archivu,
                      kontakt=args.kontakt)
