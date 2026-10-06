@@ -121,6 +121,22 @@ def test_thumb_sizes(client):
     assert snapshot(archiv) == before
 
 
+def test_cleanup_sample_thumb(client):
+    c, archiv = client
+    Image.new("RGB", (100, 50)).save(archiv / EVENT / "RAW" / "f.jpg")
+    before = snapshot(archiv)
+    plan = c.post(f"/api/akce/{EVENT}/uklid", json={}).json
+    assert plan["podslozky"][0]["ukazky"] == ["f.jpg"]
+    url = f"/api/akce/{EVENT}/uklid/nahled"
+    assert c.get(f"{url}/RAW/f.jpg").status_code == 200
+    assert c.get(f"{url}/RAW/f.jpg?velikost=1600").status_code == 200
+    assert c.get(f"{url}/RAW/f.jpg?velikost=800").status_code == 400
+    for path in ("RAW/a.rw2", "RAW/neni.jpg", "foto.jpg", "neni/f.jpg",
+                 "..%2F..%2Fx/f.jpg", ".%2E/foto.jpg", "RAW/..%2Ffoto.jpg"):
+        assert c.get(f"{url}/{path}").status_code == 404, path
+    assert snapshot(archiv) == before
+
+
 def test_original_range(client):
     c, archiv = client
     before = snapshot(archiv)

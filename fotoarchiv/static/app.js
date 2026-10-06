@@ -2131,6 +2131,30 @@ async function executeCleanup() {
   } }, "Pokračovat a načíst soubory")]));
 }
 
+function sampleUrl(folder, f, size) {
+  return eventUrl(state.name, `/uklid/nahled/${encodeURIComponent(folder)}/` +
+    encodeURIComponent(f) + (size ? `?velikost=${size}` : ""));
+}
+
+// Ukázky obsahu podsložky: náhled s názvem, klik zvětší.
+function folderSamples(folder, files) {
+  const zoom = (f) => {
+    const dialog = h("dialog", { class: "sample",
+      onclick: () => dialog.close(), onclose: () => dialog.remove() },
+      h("img", { src: sampleUrl(folder, f, LARGE), alt: "" }),
+      h("p", {}, h("code", {}, f)));
+    document.body.append(dialog);
+    dialog.showModal();
+  };
+  return h("div", { class: "samples" }, files.map((f) => {
+    const name = h("span", { title: f }, f);
+    const img = h("img", { src: sampleUrl(folder, f), alt: "",
+      loading: "lazy", title: "Zvětšit", onclick: () => zoom(f),
+      onerror: () => img.remove() });
+    return h("figure", {}, img, name);
+  }));
+}
+
 async function renderCleanup() {
   app.replaceChildren(...wizardFrame(h("main", { class: "wizard" },
     "Počítám plán úklidu…"), []));
@@ -2150,6 +2174,7 @@ async function renderCleanup() {
         plural(f.souboru, "soubor", "soubory", "souborů"),
         f.rawu ? ` (RAW: ${f.rawu})` : "",
         f.podslozek ? `, podsložek: ${f.podslozek}` : "", "."),
+      folderSamples(f.nazev, f.ukazky),
       h("div", { class: "row" },
         radio("presunout", "přesunout mezi soubory akce"),
         radio("ponechat", h("span", {}, "ponechat stranou → ",

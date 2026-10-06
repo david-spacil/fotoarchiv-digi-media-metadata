@@ -266,3 +266,16 @@ def test_execute_discard_move_fails_removes_sidecar(tree, monkeypatch):
     assert states(result) == [("move", "a.jpg", "chyba")]
     assert (root / "a.jpg").exists()
     assert list((root / "k_odstraneni.ignored").iterdir()) == []
+
+
+def test_subfolder_samples_spread_media_first(tree):
+    photos = {f"P{i:02}.jpg": "" for i in range(13)}
+    root = tree({"PPA/": dict(photos, **{"a.txt": "", "Thumbs.db": ""}),
+                 "Prez/": {"b.pdf": "", "a.pptx": "", "Thumbs.db": ""},
+                 "Prázdná/": {}})
+    folders = {f["nazev"]: f for f in cleanup.subfolders(root)}
+    samples = folders["PPA"]["ukazky"]
+    assert len(samples) == 8 and samples[0] == "P00.jpg"
+    assert samples == sorted(set(samples)) and samples[-1] >= "P11.jpg"
+    assert folders["Prez"]["ukazky"] == ["a.pptx", "b.pdf"]
+    assert folders["Prázdná"]["ukazky"] == []

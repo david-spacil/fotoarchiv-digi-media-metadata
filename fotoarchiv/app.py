@@ -266,28 +266,44 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
                     continue
         return dict(result, version=version)
 
+    def child(path, name):
+        """Přímý potomek `path`; cesty a skryté položky nejsou."""
+        if "/" in name or "\\" in name or name.startswith("."):
+            abort(404)
+        return path / name
+
     def root_file(nazev, soubor):
         """Soubor v kořeni akce; podsložky a skryté soubory nejsou."""
-        path = event_dir(nazev)
-        if "/" in soubor or "\\" in soubor or soubor.startswith("."):
-            abort(404)
-        src = path / soubor
+        src = child(event_dir(nazev), soubor)
         if not src.is_file():
             abort(404)
         return src
 
-    @app.get("/api/akce/<nazev>/nahled/<soubor>")
-    def akce_thumb(nazev, soubor):
+    def thumb_response(src):
         size = request.args.get("velikost", str(thumbs.SIZE))
         if size not in map(str, thumbs.SIZES):
             abort(400)
-        src = root_file(nazev, soubor)
         thumb = thumbs.thumbnail(src, cache_dir, int(size))
         if thumb is None:
             abort(404)
         response = send_file(thumb, mimetype="image/jpeg")
         response.cache_control.max_age = 3600
         return response
+
+    @app.get("/api/akce/<nazev>/nahled/<soubor>")
+    def akce_thumb(nazev, soubor):
+        return thumb_response(root_file(nazev, soubor))
+
+    @app.get("/api/akce/<nazev>/uklid/nahled/<slozka>/<soubor>")
+    def akce_cleanup_thumb(nazev, slozka, soubor):
+        # Ukázka z podsložky před úklidem; jen média, archiv jen čte.
+        folder = child(event_dir(nazev), slozka)
+        if not folder.is_dir() or scan.extension(soubor) not in scan.MEDIA_EXT:
+            abort(404)
+        src = child(folder, soubor)
+        if not src.is_file():
+            abort(404)
+        return thumb_response(src)
 
     @app.get("/api/akce/<nazev>/soubor/<soubor>")
     def akce_original(nazev, soubor):

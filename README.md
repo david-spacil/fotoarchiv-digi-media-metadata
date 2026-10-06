@@ -65,7 +65,9 @@ prohlížení: jen fotky a videa, která patří do Immiche.
 
 - **Podsložky:** u každé podsložky bez přípony `.ignored` se průvodce
   zeptá, např. *„Složka `Video` obsahuje 22 souborů. Přesunout je mezi
-  soubory akce, nebo složku ponechat stranou?“*
+  soubory akce, nebo složku ponechat stranou?“* Pro rozhodnutí ukáže až
+  8 souborů rovnoměrně z jejích fotek a videí (náhled s názvem, klikem
+  zvětšit); bez fotek a videí jen názvy ostatních souborů.
   - *Přesunout:* obsah jde do kořene, prázdná složka (včetně
     `Thumbs.db`) se smaže.
   - *Ponechat:* složka se přejmenuje na `název.ignored` a dál se jí
