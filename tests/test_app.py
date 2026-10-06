@@ -25,7 +25,8 @@ def make_client(tmp_path, monkeypatch, zapis=False, locks=None):
     Image.new("RGB", (2000, 1000)).save(archiv / EVENT / "foto.jpg")
     monkeypatch.setattr("fotoarchiv.scan.run_exiftool",
                         lambda d, n: {})
-    app = create_app(archiv, tmp_path / "work", zapis, locks)
+    app = create_app(archiv, tmp_path / "work", zapis, locks,
+                     prihlaseni=False)
     app.testing = True
     return app.test_client(), archiv
 
@@ -264,8 +265,9 @@ def test_geocoding_endpoint(tmp_path, monkeypatch):
     monkeypatch.setattr("fotoarchiv.geocode.INTERVAL", 0)
     monkeypatch.setattr("fotoarchiv.scan.run_exiftool", lambda d, n: {})
     (tmp_path / "archiv").mkdir()
+    geocode.Contact(tmp_path / "work").save("test@example.org")
     app = create_app(tmp_path / "archiv", tmp_path / "work",
-                     kontakt="test@example.org")
+                     prihlaseni=False)
     c = app.test_client()
     assert c.get("/api/info").json["geokodovani"] is True
     assert c.get("/api/geokodovani?q=").status_code == 400
@@ -433,3 +435,251 @@ def test_discard_execute_requires_lock(prod):
                json=dict(DISCARD, relace="r2"))
     assert r.status_code == 423
     assert (archiv / EVENT / "foto.jpg").exists()
+
+
+# --- přihlášení ------------------------------------------------------------
+
+USERS = {"spacil": {"jmeno": "Spáčil, David", "admin": True,
+                    "email": "spacil@example.cz"},
+         "kopacova": {"jmeno": "Kopáčová, Jana"}}
+HESLO = "tajne-heslo-1"
+
+
+@pytest.fixture
+def login_app(tmp_path, monkeypatch):
+    """(app, archiv) s přihlášením v produkčním režimu; oba uživatelé mají
+    heslo HESLO."""
+    from fotoarchiv import auth
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "uzivatele.json").write_text(json.dumps(USERS),
+                                         encoding="utf-8")
+    passwords = auth.Passwords(work)
+    for login in USERS:
+        passwords.set(login, HESLO)
+    archiv = tmp_path / "archiv"
+    archiv.mkdir()
+    make_tree(archiv, {f"{EVENT}/": {"IMG-20260428-WA0001.jpg": "x"}})
+    monkeypatch.setattr("fotoarchiv.scan.run_exiftool", lambda d, n: {})
+    app = create_app(archiv, work, zapis=True)
+    app.testing = True
+    return app, archiv
+
+
+def logged_in(app, login, heslo=HESLO):
+    c = app.test_client()
+    r = c.post("/api/prihlaseni", json={"login": login, "heslo": heslo})
+    assert r.status_code == 200, r.json
+    return c
+
+
+def test_unauthenticated_rejected(login_app):
+    app, archiv = login_app
+    before = snapshot(archiv)
+    c = app.test_client()
+    doc = {"schema": 1}
+    r = c.put(f"/api/akce/{EVENT}/metadata",
+              json={"metadata": doc, "version": None, "relace": "r1"})
+    assert r.status_code == 401 and r.json["chyba"] == "neprihlasen"
+    assert c.get("/api/akce").status_code == 401
+    r = c.get("/")
+    assert r.status_code == 302 and r.location.endswith("/prihlaseni")
+    assert c.get("/prihlaseni").status_code == 200
+    assert c.get("/static/app.js").status_code == 200
+    assert snapshot(archiv) == before
+
+
+def test_login_cookie_and_me(login_app):
+    app, _ = login_app
+    c = app.test_client()
+    r = c.post("/api/prihlaseni", json={"login": "Spacil", "heslo": HESLO})
+    cookie = r.headers["Set-Cookie"]
+    assert "HttpOnly" in cookie and "SameSite=Lax" in cookie
+    assert "Secure" not in cookie
+    assert HESLO not in r.get_data(as_text=True)
+    assert c.get("/api/ja").json == {
+        "prihlaseni": True, "login": "spacil", "jmeno": "Spáčil, David",
+        "admin": True, "zmenit_heslo": False}
+    assert c.get("/api/akce").status_code == 200
+    assert c.get("/").status_code == 200
+    c.post("/api/odhlaseni")
+    assert c.get("/api/akce").status_code == 401
+
+
+def test_https_cookie_secure(tmp_path):
+    app = create_app(tmp_path, tmp_path / "work", https=True)
+    assert app.config["SESSION_COOKIE_SECURE"] is True
+
+
+def test_wrong_and_unknown_login_same(login_app):
+    app, _ = login_app
+    c = app.test_client()
+    wrong = c.post("/api/prihlaseni", json={"login": "spacil", "heslo": "x"})
+    unknown = c.post("/api/prihlaseni", json={"login": "nikdo", "heslo": "x"})
+    assert wrong.status_code == unknown.status_code == 401
+    assert wrong.json == unknown.json == {"chyba": "neplatne"}
+
+
+def test_login_throttled(login_app):
+    app, _ = login_app
+    c = app.test_client()
+    for _ in range(5):
+        c.post("/api/prihlaseni", json={"login": "spacil", "heslo": "x"})
+    r = c.post("/api/prihlaseni", json={"login": "spacil", "heslo": HESLO})
+    assert r.status_code == 429 and r.json["za_s"] >= 1
+
+
+def test_one_time_password_only_change(login_app):
+    app, _ = login_app
+    heslo = app.config["AUTH"].issue("kopacova")
+    c = logged_in(app, "kopacova", heslo)
+    assert c.get("/api/ja").json["zmenit_heslo"] is True
+    r = c.get("/api/akce")
+    assert r.status_code == 403 and r.json["chyba"] == "zmenit_heslo"
+    assert c.get("/").location.endswith("/heslo")
+    assert c.get("/heslo").status_code == 200
+    r = c.post("/api/heslo", json={"stavajici": heslo, "nove": "kratke"})
+    assert r.status_code == 400 and r.json["chyba"] == "kratke_heslo"
+    r = c.post("/api/heslo", json={"stavajici": heslo,
+                                   "nove": "vlastni-heslo"})
+    assert r.status_code == 200 and r.json["zmenit_heslo"] is False
+    assert c.get("/api/akce").status_code == 200
+
+
+def test_password_change_ends_other_sessions(login_app):
+    app, _ = login_app
+    a = logged_in(app, "kopacova")
+    b = logged_in(app, "kopacova")
+    r = a.post("/api/heslo", json={"stavajici": "spatne",
+                                   "nove": "nove-heslo-22"})
+    assert r.status_code == 400 and r.json["chyba"] == "spatne_heslo"
+    assert a.post("/api/heslo", json={"stavajici": HESLO,
+                                      "nove": "nove-heslo-22"}).status_code == 200
+    assert a.get("/api/akce").status_code == 200
+    assert b.get("/api/akce").status_code == 401
+    r = app.test_client().post("/api/prihlaseni",
+                               json={"login": "kopacova", "heslo": HESLO})
+    assert r.status_code == 401
+
+
+def test_new_one_time_password_ends_sessions(login_app):
+    app, _ = login_app
+    c = logged_in(app, "kopacova")
+    app.config["AUTH"].issue("kopacova")
+    assert c.get("/api/akce").status_code == 401
+
+
+def test_removed_user_401(login_app, tmp_path):
+    app, _ = login_app
+    c = logged_in(app, "kopacova")
+    path = tmp_path / "work" / "uzivatele.json"
+    path.write_text(json.dumps({"spacil": USERS["spacil"]}))
+    import os
+    os.utime(path, ns=(1, 1))
+    assert c.get("/api/akce").status_code == 401
+
+
+def test_lock_name_from_login_and_logout_releases(login_app):
+    app, _ = login_app
+    c = logged_in(app, "kopacova")
+    r = c.post(f"/api/akce/{EVENT}/zamek",
+               json={"relace": "r1", "jmeno": "Podvržené, Jméno"})
+    assert r.json["zamek"]["jmeno"] == "Kopáčová, Jana"
+    other = logged_in(app, "spacil")
+    r = other.post(f"/api/akce/{EVENT}/zamek", json={"relace": "r2"})
+    assert r.status_code == 409
+    assert r.json["drzitel"]["jmeno"] == "Kopáčová, Jana"
+    c.post("/api/odhlaseni")
+    assert other.post(f"/api/akce/{EVENT}/zamek",
+                      json={"relace": "r2"}).status_code == 200
+
+
+def test_force_release_admin_only(login_app):
+    app, _ = login_app
+    user = logged_in(app, "kopacova")
+    doc = user.get(f"/api/akce/{EVENT}").json["metadata"]
+    user.post(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
+    r = user.post(f"/api/akce/{EVENT}/zamek/vynutit")
+    assert r.status_code == 403
+    admin = logged_in(app, "spacil")
+    r = admin.post(f"/api/akce/{EVENT}/zamek/vynutit")
+    assert r.json["uvolneno"]["jmeno"] == "Kopáčová, Jana"
+    assert admin.post(f"/api/akce/{EVENT}/zamek",
+                      json={"relace": "r2"}).status_code == 200
+    r = user.put(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
+    assert r.status_code == 409 and r.json["uvolnil"] == "Spáčil, David"
+    r = user.put(f"/api/akce/{EVENT}/metadata",
+                 json={"metadata": doc, "version": None, "relace": "r1"})
+    assert r.status_code == 423
+
+
+def test_nominatim_contact_admin_only(login_app, tmp_path):
+    app, _ = login_app
+    user = logged_in(app, "kopacova")
+    assert user.put("/api/nominatim",
+                    json={"kontakt": "x@example.cz"}).status_code == 403
+    assert app.test_client().get("/api/info").status_code == 401
+    admin = logged_in(app, "spacil")
+    assert admin.get("/api/info").json["geokodovani"] is False
+    assert admin.get("/api/nominatim").json == {
+        "kontakt": None, "navrh": "spacil@example.cz"}
+    assert admin.put("/api/nominatim", json={"kontakt": " "}).status_code \
+        == 400
+    r = admin.put("/api/nominatim", json={"kontakt": "archiv@example.cz"})
+    assert r.json["kontakt"] == "archiv@example.cz"
+    assert user.get("/api/info").json["geokodovani"] is True
+    path = tmp_path / "work" / "nominatim.json"
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert admin.delete("/api/nominatim").json["kontakt"] is None
+    assert user.get("/api/info").json["geokodovani"] is False
+
+
+def test_without_login_everyone_admin(client):
+    c, _ = client
+    assert c.get("/api/ja").json == {
+        "prihlaseni": False, "login": None, "jmeno": None, "admin": True,
+        "zmenit_heslo": False}
+    assert c.get("/prihlaseni").status_code == 302
+    r = c.post(f"/api/akce/{EVENT}/zamek", json=R1)
+    assert r.json["zamek"]["jmeno"] == "Spáčil, David"
+    assert c.post(f"/api/akce/{EVENT}/zamek/vynutit").status_code == 200
+
+
+def test_production_without_login_refused(tmp_path, capsys):
+    (tmp_path / "archiv").mkdir()
+    with pytest.raises(SystemExit) as e:
+        main(["--archiv", str(tmp_path / "archiv"), "--work",
+              str(tmp_path / "work"), "--zapis-do-archivu",
+              "--bez-prihlaseni"])
+    assert "bez přihlášení" in str(e.value)
+
+
+def test_password_command(tmp_path, capsys):
+    from fotoarchiv import auth
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "uzivatele.json").write_text(json.dumps(USERS))
+    with pytest.raises(SystemExit) as e:
+        main(["heslo", "nikdo", "--work", str(work)])
+    assert "nikdo" in str(e.value)
+    main(["heslo", "kopacova", "--work", str(work)])
+    heslo = capsys.readouterr().out.strip().rsplit(" ", 1)[1]
+    a = auth.Auth(work)
+    assert a.passwords.must_change("kopacova")
+    assert a.login("kopacova", heslo)[1] is None
+    assert heslo not in (work / "hesla.json").read_text()
+
+
+def test_contact_option_migrated(tmp_path, monkeypatch, capsys):
+    from fotoarchiv import geocode
+    monkeypatch.setattr("flask.Flask.run", lambda self, **kw: None)
+    (tmp_path / "archiv").mkdir()
+    args = ["--archiv", str(tmp_path / "archiv"), "--work",
+            str(tmp_path / "work"), "--bez-prihlaseni"]
+    main(args + ["--kontakt", "archiv@example.cz"])
+    assert "zastaralý" in capsys.readouterr().out
+    contact = geocode.Contact(tmp_path / "work")
+    assert contact.load() == "archiv@example.cz"
+    main(args + ["--kontakt", "jiny@example.cz"])  # už nastaveno: ignoruje
+    assert "ignoruje" in capsys.readouterr().out
+    assert contact.load() == "archiv@example.cz"

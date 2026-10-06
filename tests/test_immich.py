@@ -81,7 +81,8 @@ def setup(tmp_path, monkeypatch):
                        f"{OTHER}/": {"c.jpg": "x"}})
     monkeypatch.setattr("fotoarchiv.scan.run_exiftool", lambda d, n: {})
     fake = FakeImmich()
-    app = create_app(archiv, tmp_path / "work", immich_fetch=fake)
+    app = create_app(archiv, tmp_path / "work", immich_fetch=fake,
+                     prihlaseni=False)
     app.testing = True
     ws = app.config["WORKSPACE"]
     ws.save(EVENT, {"schema": SCHEMA, "akce": {"nazev": "Konference"},
@@ -99,7 +100,7 @@ def faces_of(app, soubor, akce=EVENT):
 # --- nastavení -------------------------------------------------------------
 
 def test_settings_file_private_and_key_not_returned(tmp_path):
-    app = create_app(tmp_path, tmp_path / "work")
+    app = create_app(tmp_path, tmp_path / "work", prihlaseni=False)
     c = app.test_client()
     assert c.get("/api/immich").json["nastaveno"] is False
     assert c.get("/api/info").json["immich"] is False
@@ -115,7 +116,7 @@ def test_settings_file_private_and_key_not_returned(tmp_path):
 
 
 def test_address_change_needs_key(tmp_path):
-    app = create_app(tmp_path, tmp_path / "work")
+    app = create_app(tmp_path, tmp_path / "work", prihlaseni=False)
     c = app.test_client()
     assert c.put("/api/immich", json={"adresa": URL}).status_code == 400
     c.put("/api/immich", json={"adresa": URL, "klic": KEY})
@@ -322,3 +323,24 @@ def test_sync_endpoint(setup, monkeypatch):
     monkeypatch.setattr(sync, "run", lambda: called.append(1))
     r = app.test_client().post("/api/immich/sync")
     assert r.status_code == 200 and r.json["synchronizace"]["bezi"] is True
+
+
+def test_settings_admin_only(tmp_path):
+    from fotoarchiv import auth
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "uzivatele.json").write_text(json.dumps(
+        {"kopacova": {"jmeno": "Kopáčová, Jana"}}))
+    auth.Passwords(work).set("kopacova", "tajne-heslo-1")
+    app = create_app(tmp_path, work)
+    c = app.test_client()
+    c.post("/api/prihlaseni",
+           json={"login": "kopacova", "heslo": "tajne-heslo-1"})
+    assert c.get("/api/ja").status_code == 200
+    for method, path in [("put", "/api/immich"), ("get", "/api/immich"),
+                         ("delete", "/api/immich"),
+                         ("post", "/api/immich/test"),
+                         ("post", "/api/immich/sync")]:
+        r = getattr(c, method)(path, json={"adresa": URL, "klic": KEY})
+        assert r.status_code == 403, path
+    assert not (work / "immich.json").exists()

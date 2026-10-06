@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fotoarchiv – přihlášení</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header><a href="/" class="brand">Fotoarchiv – metadata</a></header>
+  <main class="wizard form auth">
+    <h1>Přihlášení</h1>
+    <p id="http" class="notice readonly" hidden>Spojení není šifrované
+      (HTTP): heslo jde sítí čitelně. Nepoužívejte heslo z jiných
+      systémů.</p>
+    <form id="form">
+      <div class="field"><label for="login">Login</label>
+        <input id="login" autocomplete="username" autocapitalize="none"
+               required autofocus></div>
+      <div class="field"><label for="heslo">Heslo</label>
+        <input id="heslo" type="password" autocomplete="current-password"
+               required></div>
+      <p id="msg" class="warn"></p>
+      <button class="primary">Přihlásit</button>
+    </form>
+    <p class="meta">Úvodní nebo zapomenuté heslo vydá správce serveru.</p>
+  </main>
+  <script type="module">
+    const $ = (id) => document.getElementById(id);
+    $("http").hidden = location.protocol !== "http:";
+    $("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("msg").textContent = "";
+      const r = await fetch("/api/prihlaseni", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login: $("login").value,
+                               heslo: $("heslo").value }),
+      }).catch(() => null);
+      const data = await r?.json().catch(() => null);
+      if (r?.ok) {
+        location.href = data.zmenit_heslo ? "/heslo" : "/";
+      } else if (r?.status === 429) {
+        $("msg").textContent = "Příliš mnoho chybných pokusů, zkuste to " +
+          `znovu za ${data.za_s} s.`;
+      } else if (r?.status === 401) {
+        $("msg").textContent = "Neplatný login nebo heslo.";
+      } else {
+        $("msg").textContent = "Server neodpověděl.";
+      }
+    });
+  </script>
+</body>
+</html>

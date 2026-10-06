@@ -37,6 +37,17 @@ function thumbUrl(f, size) {
     (size ? `?velikost=${size}` : ""));
 }
 
+// Relace skončila (401) nebo čeká povinná změna hesla: pryč z aplikace.
+// Vrátí true, když se přesměrovává.
+function authRedirect(status, data) {
+  const to = status === 401 ? "/prihlaseni"
+    : status === 403 && data?.chyba === "zmenit_heslo" ? "/heslo" : null;
+  if (!to) return false;
+  state.dirty = false; // neuložené změny server stejně odmítne
+  location.href = to;
+  return true;
+}
+
 async function api(url, opts = {}) {
   const r = await fetch(url, {
     headers: { "Content-Type": "application/json" },
@@ -45,6 +56,7 @@ async function api(url, opts = {}) {
   });
   const data = await r.json().catch(() => null);
   if (!r.ok) {
+    authRedirect(r.status, data);
     const err = new Error(`HTTP ${r.status}`);
     err.status = r.status;
     err.data = data;
@@ -63,6 +75,7 @@ async function apiStream(url, body, onEvent) {
     const err = new Error(`HTTP ${r.status}`);
     err.status = r.status;
     err.data = await r.json().catch(() => null);
+    authRedirect(r.status, err.data);
     throw err;
   }
   const reader = r.body.getReader();
@@ -124,6 +137,7 @@ const CHYBI = { autori: "autoři", datum: "data", misto: "místa" };
 
 const state = {
   info: null,
+  me: null,          // /api/ja: přihlášený uživatel (bez přihlášení admin)
   events: null,
   name: null,        // otevřená akce
   detail: null,      // odpověď /api/akce/<n> bez metadat
@@ -169,13 +183,16 @@ function session() {
   return id;
 }
 
+// Přihlášený: kanonické jméno z účtu; bez přihlášení (vývojový režim)
+// jméno zadané v prohlížeči.
 function userName() {
+  if (state.me?.prihlaseni) return state.me.jmeno;
   return localStorage.getItem("jmeno");
 }
 
 const NAME_RE = /^[^,]+, [^,]+$/;
 
-// Do zavedení přihlašování jméno zadané v prohlížeči (jen se zobrazuje).
+// Jen bez přihlášení: jméno zadané v prohlížeči (jen se zobrazuje).
 function askName() {
   return new Promise((done) => {
     const input = h("input", { value: userName() || "", list: "jmena-uziv",
@@ -241,9 +258,16 @@ async function heartbeat() {
     });
   } catch (err) {
     if (err.status !== 409 || name !== state.locked) return;
-    // Zámek je pryč (restart serveru nebo opuštění); volný se získá znovu.
     state.locked = null;
     clearInterval(heartbeatTimer);
+    if (err.data?.uvolnil) {
+      // Zámek uvolnil admin: znovu nezískávat, rozdělané změny propadly.
+      state.readonly = err.data.drzitel || { jmeno: err.data.uvolnil };
+      state.readonly.uvolnil = err.data.uvolnil;
+      lostLock();
+      return;
+    }
+    // Zámek je pryč (restart serveru nebo opuštění); volný se získá znovu.
     if (!await acquireLock(name).catch(() => false)) lostLock();
   }
 }
@@ -273,15 +297,37 @@ function holderText(holder) {
     : `Akci upravuje ${holder.jmeno}.`;
 }
 
+// Admin uvolní cizí zámek (opuštěná rozdělaná práce) a akci otevře.
+async function forceRelease() {
+  const holder = state.readonly?.jmeno || "jiný uživatel";
+  if (!await confirmDialog("Uvolnit zámek akce?", [
+    `Zámek drží ${holder}.`,
+    "Jeho neuložené změny se ztratí, akci bude mít jen ke čtení.",
+  ], "Uvolnit")) return;
+  await api(eventUrl(state.name, "/zamek/vynutit"), { method: "POST" });
+  route();
+}
+
 function lockNotice() {
   const r = state.readonly;
   // Prázdný řetězec, ne null: jde přímo do replaceChildren, který by
   // null vypsal jako text.
   if (!r) return "";
+  if (r.uvolnil) {
+    return h("p", { class: "notice readonly" },
+      `Zámek akce uvolnil admin ${r.uvolnil}. Jen ke čtení – ` +
+      "neuložené změny se neuloží.",
+      " ", h("button", { class: "link", onclick: () => route() },
+        "Zkusit znovu"));
+  }
+  const own = nameKey(r.jmeno) === nameKey(userName());
   return h("p", { class: "notice readonly" },
     `${holderText(r)} Jen ke čtení – změny se neukládají.`,
     " ", h("button", { class: "link", onclick: () => route() },
-      "Zkusit znovu"));
+      "Zkusit znovu"),
+    state.me?.admin && state.me.prihlaseni && !own
+      ? [" · ", h("button", { class: "link", onclick: forceRelease },
+        "Uvolnit zámek")] : null);
 }
 
 // Zámek získal někdo jiný: zahodit plánované uložení a přepnout jen
@@ -359,10 +405,26 @@ function header(...right) {
     h("a", { href: "#/", class: "brand" }, "Fotoarchiv – metadata"),
     paths,
     ...right,
-    h("a", { href: "#/nastaveni", class: "settings-link" }, "Nastavení"),
-    userName() ? h("button", { class: "link user", title: "Změnit jméno",
+    state.me?.admin
+      ? h("a", { href: "#/nastaveni", class: "settings-link" }, "Nastavení")
+      : null,
+    state.me?.prihlaseni ? [
+      h("a", { href: "/heslo", class: "settings-link",
+        title: "Změnit heslo" }, userName()),
+      h("button", { class: "link user", onclick: logout }, "Odhlásit"),
+    ] : userName() ? h("button", { class: "link user",
+      title: "Změnit jméno",
       onclick: async () => { await askName(); route(); } }, userName())
       : null);
+}
+
+async function logout() {
+  if (state.dirty) await save();
+  // Server uvolní zámky tohoto přihlášení.
+  state.locked = null;
+  clearInterval(heartbeatTimer);
+  await api("/api/odhlaseni", { method: "POST" }).catch(() => {});
+  location.href = "/prihlaseni";
 }
 
 // --- seznam akcí ----------------------------------------------------------
@@ -1578,7 +1640,7 @@ function placeChooser(misto, rerender) {
       showCandidates(r.kandidati);
     } catch (e) {
       const text = e.status === 503
-        ? "Geokódování je na serveru vypnuté (chybí --kontakt)."
+        ? "Geokódování je vypnuté (kontakt nastaví admin v Nastavení)."
         : "Služba neodpověděla.";
       list.replaceChildren(h("p", { class: "warn" }, text));
       if (e.status !== 503) {
@@ -2634,6 +2696,7 @@ function uploadOne(item, onProgress) {
       if (xhr.status === 200) return resolve();
       let code = null;
       try { code = JSON.parse(xhr.responseText).chyba; } catch { /* HTML */ }
+      authRedirect(xhr.status, { chyba: code });
       reject(new Error(IMPORT_CHYBA[code] || `HTTP ${xhr.status}`));
     };
     xhr.onerror = () => reject(new Error("spojení se serverem selhalo"));
@@ -3143,7 +3206,7 @@ function renderImportResult() {
   ]));
 }
 
-// --- nastavení (Immich) ----------------------------------------------------
+// --- nastavení (jen admin: Immich, Nominatim) -------------------------------
 
 // Klíč se do prohlížeče nevrací; server ukáže jen jeho poslední 4 znaky.
 let settingsTimer = null;
@@ -3152,7 +3215,14 @@ async function showSettings() {
   state.mode = "settings";
   state.name = null;
   clearTimeout(settingsTimer);
-  const s = await api("/api/immich");
+  if (!state.me?.admin) {
+    app.replaceChildren(header(), h("main", { class: "list settings" },
+      h("h1", {}, "Nastavení"),
+      h("p", {}, "Nastavení serveru mění jen admin.")));
+    return;
+  }
+  const [s, nominatim] = await Promise.all([api("/api/immich"),
+    api("/api/nominatim")]);
   const msg = h("p", { class: "status" });
   const say = (text, error = false) => {
     msg.textContent = text;
@@ -3207,12 +3277,47 @@ async function showSettings() {
       s.nastaveno ? h("button", { onclick: test }, "Otestovat") : null,
       s.nastaveno ? h("button", { onclick: remove }, "Smazat") : null),
     msg,
-    s.nastaveno ? syncBlock(s.synchronizace, sync) : null));
+    s.nastaveno ? syncBlock(s.synchronizace, sync) : null,
+    contactBlock(nominatim, refresh)));
   if (s.synchronizace.bezi) {
     settingsTimer = setTimeout(() => {
       if (state.mode === "settings") showSettings();
     }, 2000);
   }
+}
+
+// Kontakt provozovatele do User-Agent Nominatimu: jeden pro celý server.
+function contactBlock(n, refresh) {
+  const msg = h("p", { class: "status" });
+  const kontakt = h("input", { value: n.kontakt || n.navrh || "",
+    placeholder: "e-mail nebo URL provozovatele" });
+  const saveContact = async () => {
+    try {
+      await api("/api/nominatim", { method: "PUT",
+        body: { kontakt: kontakt.value } });
+      await refresh();
+    } catch (err) {
+      msg.className = "status error";
+      msg.textContent = err.data?.chyba === "kontakt_povinny"
+        ? "Zadejte kontakt." : `Uložení selhalo: ${err.message}`;
+    }
+  };
+  const remove = async () => {
+    await api("/api/nominatim", { method: "DELETE" });
+    await refresh();
+  };
+  return h("section", {},
+    h("h2", {}, "Geokódování míst (Nominatim)"),
+    h("p", {}, "Souřadnice míst se hledají ve veřejném Nominatimu " +
+      "(OpenStreetMap). Jeho podmínky vyžadují kontakt na provozovatele; " +
+      "je jeden pro celý server, ne po uživatelích. Bez něj jdou " +
+      "souřadnice zadat jen ručně."),
+    h("div", { class: "field" }, h("label", {},
+      n.kontakt ? "Kontakt" : "Kontakt (zatím nenastaven)"), kontakt),
+    h("div", { class: "row" },
+      h("button", { class: "primary", onclick: saveContact }, "Uložit"),
+      n.kontakt ? h("button", { onclick: remove }, "Smazat") : null),
+    msg);
 }
 
 function syncBlock(st, sync) {
@@ -3245,5 +3350,6 @@ function syncBlock(st, sync) {
 
 // --- start ------------------------------------------------------------------
 
-state.info = await api("/api/info");
+[state.me, state.info] = await Promise.all([api("/api/ja"),
+  api("/api/info")]);
 route();

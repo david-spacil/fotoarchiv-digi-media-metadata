@@ -25,7 +25,10 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
   --archiv /mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
 # → http://127.0.0.1:5000, volitelně --work .work --port 5000,
 #   --zapis-do-archivu (produkční režim, zapisuje do archivu),
-#   --kontakt E-MAIL (zapne geokódování míst přes Nominatim)
+#   --bez-prihlaseni (jen vývojový režim, každý admin),
+#   --https (cookie relace jen přes HTTPS)
+.venv/bin/python -m fotoarchiv heslo LOGIN --work .work
+# → jednorázové heslo pro login z .work/uzivatele.json
 .venv/bin/python -m fotoarchiv prevzit --archiv … --work .work
 # → jednorázově převezme _metadata.json z .work do archivu
 .venv/bin/python -m fotoarchiv exportovat [AKCE] --archiv … --work .work
@@ -40,8 +43,8 @@ node --test tests/js                                # dědění v JS
 Systémově: `exiftool`, `ffmpeg` (bez něj video bez náhledu), `node` jen
 na testy. Synchronizace obličejů potřebuje `.work/immich.json`
 (nastavení v aplikaci) a HTTP na server Immich; testy na něj nesahají
-(podvržený `fetch`). Geokódování potřebuje `--kontakt` (User-Agent, podmínka
-Nominatimu) a odchozí HTTPS na `nominatim.openstreetmap.org`; bez nich
+(podvržený `fetch`). Geokódování potřebuje kontakt v `.work/nominatim.json` (nastaví admin
+v aplikaci; User-Agent, podmínka Nominatimu) a odchozí HTTPS na `nominatim.openstreetmap.org`; bez nich
 jdou souřadnice míst zadat jen ručně. Testy na službu nesahají
 (podvržený `fetch`); skutečné dotazy jen jednotlivě, nikdy hromadně. Dědění je v Pythonu (`model.py`) i JS (`static/inherit.js`);
 obě se testují proti `tests/fixtures/inheritance/*.json` — měnit spolu.
@@ -65,6 +68,12 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
   Klíč Immiche jen v `.work/immich.json`, nikdy v archivu ani
   v odpovědi API. MWG oblasti v exportu pro obnovu jsou vůči uloženému
   (neotočenému) obrázku, `oblast` v JSONu vůči otočenému.
+- **Hesla jen jako hash v `.work/hesla.json`** (píše jen aplikace,
+  0600); `uzivatele.json` píše jen správce, aplikace ho nikdy
+  nezapisuje. Heslo ani hash nikdy do archivu, logu ani odpovědi API.
+  Přihlášení hlídá jediná vstupní kontrola v `app.py`
+  (`before_request`); jméno u zámku z relace, ne z požadavku. Admin
+  endpointy kontroluje server, klient je jen skrývá.
 - Jména v kanonickém tvaru `Příjmení, Jméno`; seznam návrhů se skládá ze
   všech `_metadata.json` v archivu, žádný pevný číselník. Porovnání ignoruje
   diakritiku, velikost písmen a pořadí slov.

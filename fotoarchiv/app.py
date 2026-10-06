@@ -3,34 +3,52 @@
 Dokument `_metadata.json` drží klient a ukládá ho celý (PUT) s verzí,
 ze které vycházel. Jediný stav serveru jsou zámky akcí v paměti (`lock`),
 proto server smí běžet jen jako jeden proces.
+
+Přihlášení hlídá jediná vstupní kontrola (`before_request`): bez platné
+relace stránky přesměruje na přihlášení, API vrátí 401.
 """
 
 import json
+import math
+import secrets
 from datetime import date
 from pathlib import Path
 
-from flask import Flask, Response, abort, jsonify, request, send_file
+from flask import (Flask, Response, abort, g, jsonify, redirect, request,
+                   send_file, session)
 
-from . import (cleanup, geocode, immich, importer, lock, model, names, scan,
-               thumbs, xmp)
+from . import (auth, cleanup, geocode, immich, importer, lock, model, names,
+               scan, thumbs, xmp)
 from . import index as archive_index
 from .archive import SCHEMA, Conflict, Workspace
 
 STATIC = Path(__file__).parent / "static"
 
+# Bez relace dostupné; s povinnou změnou hesla navíc jen PASSWORD_PATHS.
+OPEN_PATHS = {"/prihlaseni", "/api/prihlaseni", "/api/odhlaseni"}
+PASSWORD_PATHS = {"/heslo", "/api/heslo", "/api/ja"}
+ADMIN_PREFIXES = ("/api/immich", "/api/nominatim")
+# Bez přihlášení (jen vývojový režim) je každý admin.
+NOBODY = {"login": None, "jmeno": None, "email": None, "admin": True,
+          "zmenit_heslo": False}
 
-def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
-               geocoder=None, immich_fetch=None, immich_interval=None):
-    """`kontakt` zapne geokódování (User-Agent pro Nominatim).
 
-    `immich_interval` (s) zapne pravidelnou synchronizaci obličejů
+def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
+               immich_fetch=None, immich_interval=None, prihlaseni=True,
+               https=False):
+    """`immich_interval` (s) zapne pravidelnou synchronizaci obličejů
     z Immiche, jakmile je nastavené připojení; None = jen na požádání.
+
+    `prihlaseni=False` jen ve vývojovém režimu (hlídá CLI); `https`
+    posílá cookie relace jen přes HTTPS.
     """
     ws = Workspace(archiv, work, zapis)
     locks = locks or lock.Locks()
     cache_dir = ws.work / "cache"
-    if geocoder is None and kontakt:
-        geocoder = geocode.Geocoder(cache_dir, kontakt)
+    contact = geocode.Contact(ws.work)
+    if geocoder is None:
+        geocoder = geocode.Geocoder(cache_dir, contact.load)
+    accounts = auth.Auth(ws.work)
     name_index = names.NameIndex(ws.metadata_files)
     imports = importer.Imports(ws.work)
     immich_settings = immich.Settings(ws.work)
@@ -43,6 +61,108 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
     app.config["LOCKS"] = locks
     app.config["IMPORTS"] = imports
     app.config["IMMICH"] = sync
+    app.config["AUTH"] = accounts
+    app.config.update(SECRET_KEY=auth.secret_key(ws.work),
+                      SESSION_COOKIE_NAME="fotoarchiv",
+                      SESSION_COOKIE_HTTPONLY=True,
+                      SESSION_COOKIE_SAMESITE="Lax",
+                      SESSION_COOKIE_SECURE=https)
+
+    # --- přihlášení --------------------------------------------------------
+
+    def session_user():
+        """Přihlášený uživatel z relace, nebo None (odebraný ze souboru,
+        jiný otisk hesla)."""
+        login = session.get("login")
+        user = accounts.users.get(login) if login else None
+        if user is None or \
+                session.get("otisk") != accounts.passwords.fingerprint(login):
+            return None
+        return dict(user, login=login,
+                    zmenit_heslo=accounts.passwords.must_change(login))
+
+    @app.before_request
+    def check_login():
+        path = request.path
+        api = path.startswith("/api/")
+        if not prihlaseni:
+            g.user = NOBODY
+        elif path.startswith("/static/") or path in OPEN_PATHS:
+            return None
+        else:
+            g.user = session_user()
+            if g.user is None:
+                session.clear()
+                if api:
+                    return {"chyba": "neprihlasen"}, 401
+                return redirect("/prihlaseni")
+            if g.user["zmenit_heslo"] and path not in PASSWORD_PATHS:
+                if api:
+                    return {"chyba": "zmenit_heslo"}, 403
+                return redirect("/heslo")
+        if path.startswith(ADMIN_PREFIXES) and not g.user["admin"]:
+            return {"chyba": "jen_admin"}, 403
+        return None
+
+    def me():
+        u = g.user
+        return {"prihlaseni": prihlaseni, "login": u["login"],
+                "jmeno": u["jmeno"], "admin": u["admin"],
+                "zmenit_heslo": u["zmenit_heslo"]}
+
+    @app.get("/prihlaseni")
+    def login_page():
+        if not prihlaseni:
+            return redirect("/")
+        return send_file(STATIC / "prihlaseni.html")
+
+    @app.get("/heslo")
+    def password_page():
+        if not prihlaseni:
+            return redirect("/")
+        return send_file(STATIC / "heslo.html")
+
+    @app.post("/api/prihlaseni")
+    def login():
+        if not prihlaseni:
+            return {"chyba": "bez_prihlaseni"}, 409
+        body = request.get_json(force=True, silent=True) or {}
+        user, err = accounts.login(body.get("login"), body.get("heslo"))
+        if user is None:
+            # Stejná odpověď pro neexistující login i špatné heslo.
+            if err == "neplatne":
+                return {"chyba": "neplatne"}, 401
+            return {"chyba": "zdrzeno", "za_s": math.ceil(err)}, 429
+        session.clear()
+        session["login"] = user["login"]
+        session["otisk"] = accounts.passwords.fingerprint(user["login"])
+        session["id"] = secrets.token_hex(8)  # zámky tohoto přihlášení
+        g.user = session_user()
+        return me()
+
+    @app.post("/api/odhlaseni")
+    def logout():
+        locks.release_login(session.get("id"))
+        session.clear()
+        return {}
+
+    @app.post("/api/heslo")
+    def change_password():
+        if not prihlaseni:
+            return {"chyba": "bez_prihlaseni"}, 409
+        body = request.get_json(force=True, silent=True) or {}
+        login = g.user["login"]
+        err = accounts.change(login, body.get("stavajici"), body.get("nove"))
+        if err:
+            return {"chyba": err}, 400
+        # Ostatní relace mají starý otisk; tahle zůstane přihlášená.
+        session["otisk"] = accounts.passwords.fingerprint(login)
+        g.user = session_user()
+        return me()
+
+    @app.get("/api/ja")
+    def ja():
+        return me()
 
     def event_dir(nazev):
         try:
@@ -59,7 +179,7 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         return {"archiv": str(ws.archiv.resolve()),
                 "work": str(ws.work.resolve()),
                 "zapis": ws.zapis,
-                "geokodovani": geocoder is not None,
+                "geokodovani": geocoder.enabled,
                 "immich": immich_settings.load() is not None,
                 "import_limit": importer.MAX_FILE}
 
@@ -118,8 +238,10 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
     def zamek_ziskat(nazev):
         event_dir(nazev)
         body = request.get_json(force=True)
-        ok, info = locks.acquire(nazev, body_field(body, "relace"),
-                                 body_field(body, "jmeno").strip())
+        # Přihlášený: jméno z relace, poslané se ignoruje.
+        jmeno = g.user["jmeno"] or body_field(body, "jmeno").strip()
+        ok, info = locks.acquire(nazev, body_field(body, "relace"), jmeno,
+                                 session.get("id"))
         if not ok:
             return {"chyba": "obsazeno", "drzitel": info}, 409
         return {"zamek": info}
@@ -128,9 +250,20 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
     def zamek_heartbeat(nazev):
         event_dir(nazev)
         body = request.get_json(force=True)
-        if not locks.heartbeat(nazev, body_field(body, "relace")):
-            return {"chyba": "ztracen", "drzitel": locks.holder(nazev)}, 409
+        relace = body_field(body, "relace")
+        if not locks.heartbeat(nazev, relace):
+            return {"chyba": "ztracen", "drzitel": locks.holder(nazev),
+                    "uvolnil": locks.forced(relace)}, 409
         return {"zamek": locks.holder(nazev)}
+
+    @app.post("/api/akce/<nazev>/zamek/vynutit")
+    def zamek_vynutit(nazev):
+        """Admin uvolní zámek jiné relace (opuštěná rozdělaná práce)."""
+        event_dir(nazev)
+        if not g.user["admin"]:
+            return {"chyba": "jen_admin"}, 403
+        return {"uvolneno": locks.force_release(
+            nazev, g.user["jmeno"] or "admin")}
 
     @app.delete("/api/akce/<nazev>/zamek")
     @app.post("/api/akce/<nazev>/zamek/uvolnit")  # navigator.sendBeacon
@@ -477,7 +610,8 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
                 path = importer.create_event(ws.archiv, nazev)
                 # Novou akci nikdo neotevře uprostřed přenosu; zámek pak
                 # přebírá klient, který ji otevírá.
-                locks.acquire(nazev, relace, record["jmeno"])
+                locks.acquire(nazev, relace, record["jmeno"],
+                              session.get("id"))
         except importer.Refused as e:
             return refused(e)
         denied = require_lock(nazev, body)
@@ -597,9 +731,34 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
             return {"chyba": "nenastaveno"}, 409
         return {"synchronizace": sync.trigger()}
 
+    # --- Nominatim ----------------------------------------------------------
+
+    def contact_state():
+        # Prázdný formulář předvyplní e-mail přihlášeného admina; uloží se
+        # ale jako jeden kontakt provozovatele.
+        return {"kontakt": contact.load(), "navrh": g.user["email"]}
+
+    @app.get("/api/nominatim")
+    def nominatim_get():
+        return contact_state()
+
+    @app.put("/api/nominatim")
+    def nominatim_put():
+        body = request.get_json(force=True, silent=True) or {}
+        kontakt = str(body.get("kontakt") or "").strip()
+        if not kontakt:
+            return {"chyba": "kontakt_povinny"}, 400
+        contact.save(kontakt)
+        return contact_state()
+
+    @app.delete("/api/nominatim")
+    def nominatim_delete():
+        contact.delete()
+        return contact_state()
+
     @app.get("/api/geokodovani")
     def geokodovani():
-        if geocoder is None:
+        if not geocoder.enabled:
             return {"chyba": "geokodovani_vypnuto"}, 503
         q = request.args.get("q", "").strip()
         if not q:

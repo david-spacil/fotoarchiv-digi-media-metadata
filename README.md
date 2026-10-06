@@ -26,17 +26,61 @@ python -m venv .venv
 Aplikace běží na <http://127.0.0.1:5000>. Bez dalších přepínačů je to
 vývojový režim: archiv se jen čte, metadata a cache jdou do `.work/`.
 Server spouštět jen jednou (zámky akcí jsou v paměti procesu).
+Přístup vyžaduje přihlášení (viz Přihlášení níže).
 
 Volitelné přepínače:
 
 - `--zapis-do-archivu` — produkční režim, `_metadata.json` se ukládá do
   složek akcí a provádí se úklid a import.
-- `--kontakt E-MAIL` — zapne geokódování míst přes Nominatim.
+- `--bez-prihlaseni` — vývojový režim bez přihlášení: každý je admin
+  a jméno u zámku se zadává v prohlížeči. S `--zapis-do-archivu` server
+  odmítne start.
+- `--https` — cookie relace jen přes HTTPS (za reverzní proxy s HTTPS).
 - `--work CESTA` — jiný pracovní adresář než `.work`.
 - `--host`, `--port` — adresa a port (výchozí `127.0.0.1:5000`).
 
-Napojení na Immich (obličeje) se nastavuje v aplikaci; uloží se do
-`.work/immich.json`.
+Napojení na Immich (obličeje) a kontakt pro Nominatim (geokódování
+míst) nastavuje admin v aplikaci; uloží se do `.work/immich.json`
+a `.work/nominatim.json`. Zastaralý přepínač `--kontakt` server při
+startu převezme do `.work/nominatim.json`, pokud ještě neexistuje.
+
+### Přihlášení
+
+Účty jsou lokální. Uživatele zapisuje správce ručně do
+`.work/uzivatele.json` (login → kanonické jméno, volitelně e-mail
+a příznak admina); aplikace ho jen čte, změna platí bez restartu
+a odebraný uživatel přijde o přístup při dalším požadavku:
+
+```json
+{"spacil": {"jmeno": "Spáčil, David", "email": "…", "admin": true}}
+```
+
+Úvodní nebo zapomenuté heslo vydá správce na serveru:
+
+```sh
+.venv/bin/python -m fotoarchiv heslo LOGIN --work .work
+```
+
+Příkaz vypíše jednorázové heslo; po přihlášení s ním aplikace pustí
+jen na změnu hesla. Vydání nového hesla ukončí stávající relace
+uživatele. Heslo si pak uživatel mění sám (aspoň 10 znaků, odkaz se
+jménem v hlavičce); změna ukončí jeho ostatní relace.
+
+Hesla jsou jen jako hash se solí (`werkzeug.security`, scrypt)
+v `.work/hesla.json`, který píše jen aplikace; tajný klíč relací je
+v `.work/relace.key`. Všechny tři soubory mají práva jen pro
+vlastníka (`uzivatele.json` nastaví správce). Odpověď na chybné
+přihlášení neprozradí, zda login existuje; po 5 chybných pokusech na
+login server další pokusy zdržuje.
+
+Jen **admin** smí měnit Nastavení (Immich včetně synchronizace na
+požádání, kontakt pro Nominatim) a vynuceně uvolnit zámek akce;
+ostatním server vrátí 403 a klient tyto prvky nezobrazí.
+
+Zatím běží přes HTTP ve firemní síti (přijaté riziko): heslo a cookie
+jdou sítí čitelně, přihlašovací stránka na to upozorní. Cookie je
+`HttpOnly` a `SameSite=Lax`; `Secure` zapne `--https`, až bude
+reverzní proxy s HTTPS.
 
 Na Windows místo `.venv/bin/` použít `.venv\Scripts\`.
 
@@ -167,7 +211,9 @@ přístroje a vzoru názvu, uživatel je může upravit.
   (úroveň `misto`); k souboru se neukládají a GPS z EXIF nepřepisují.
   Kandidáty hledá server v Nominatimu (OSM) až po otevření volby,
   odpovědi cachuje v `.work/cache/geokodovani.json` (sdílené všemi
-  akcemi, smazatelné). Předvybraný je kandidát nejbližší fotkám akce
+  akcemi, smazatelné). User-Agent nese kontakt provozovatele, který
+  nastavuje admin v Nastavení (jeden pro server, předvyplní se jeho
+  e-mail); bez kontaktu je geokódování vypnuté. Předvybraný je kandidát nejbližší fotkám akce
   s GPS; potvrzuje ho uživatel. Přejmenování místa rozhodnutí
   nepřenese.
 - **Autorů může být víc.** `autori` znamená „fotil někdo z uvedených“;
@@ -423,8 +469,8 @@ a API klíč. Stačí klíč jen pro čtení s oprávněními ke čtení osob,
 assetů a obličejů (`face.read`). Ukládá se do `.work/immich.json`
 (práva 0600), nikdy do archivu; klíč se do prohlížeče nevrací (jen
 „klíč nastaven (…W4No)“) a změna adresy vyžaduje zadat ho znovu.
-Otestovat ověří verzi, osoby a čtení obličejů. Do zavedení
-přihlašování může nastavení změnit kdokoli, kdo na server dosáhne.
+Otestovat ověří verzi, osoby a čtení obličejů. Nastavení
+(i synchronizaci na požádání) smí jen admin.
 
 **Synchronizace obličejů** běží v serveru po startu, pak každých
 15 minut a na tlačítko Načíst osoby:
@@ -495,7 +541,14 @@ workerů ne). Do archivu se žádný soubor zámku nezapisuje.
   držitele zámku.
 - Restart serveru zámky zahodí; klient je při dalším heartbeatu získá
   znovu, pokud je akce volná.
-- „Kdo“ je do zavedení přihlašování jméno zadané v prohlížeči.
+- „Kdo“ je kanonické jméno přihlášeného uživatele (jméno poslané
+  klientem server ignoruje); jen bez přihlášení (`--bez-prihlaseni`)
+  jméno zadané v prohlížeči.
+- Admin může zámek jiné relace vynuceně uvolnit (opuštěná rozdělaná
+  práce, tlačítko u hlášky „Akci upravuje …“). Původní držitel při
+  dalším heartbeatu přejde jen ke čtení s upozorněním, kdo zámek
+  uvolnil; jeho neuložené změny server odmítne.
+- Odhlášení uvolní zámky, které relace přihlášení drží.
 - Rozpracovaný import patří jménu, ne záložce; vidí ho jen jeho
   vlastník. Během provedení importu server odmítne nahrávání,
   zahození i další provedení téhož importu (příznak v paměti); nahrávat

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fotoarchiv – změna hesla</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header><a href="/" class="brand">Fotoarchiv – metadata</a></header>
+  <main class="wizard form auth">
+    <h1>Změna hesla</h1>
+    <p id="vynucena" class="notice" hidden>Přihlásili jste se jednorázovým
+      heslem. Než budete pokračovat, nastavte si vlastní.</p>
+    <p id="http" class="notice readonly" hidden>Spojení není šifrované
+      (HTTP). Nepoužívejte heslo z jiných systémů.</p>
+    <form id="form">
+      <input id="login" autocomplete="username" hidden>
+      <div class="field"><label for="stavajici">Stávající heslo</label>
+        <input id="stavajici" type="password"
+               autocomplete="current-password" required autofocus></div>
+      <div class="field"><label for="nove">Nové heslo (aspoň 10 znaků)</label>
+        <input id="nove" type="password" autocomplete="new-password"
+               minlength="10" required></div>
+      <div class="field"><label for="znovu">Nové heslo znovu</label>
+        <input id="znovu" type="password" autocomplete="new-password"
+               required></div>
+      <p id="msg" class="warn"></p>
+      <div class="row">
+        <button class="primary">Změnit heslo</button>
+        <a id="zpet" href="/">Zpět</a>
+        <button type="button" id="odhlasit" class="link">Odhlásit</button>
+      </div>
+    </form>
+  </main>
+  <script type="module">
+    const $ = (id) => document.getElementById(id);
+    const CHYBA = {
+      spatne_heslo: "Stávající heslo nesouhlasí.",
+      kratke_heslo: "Nové heslo musí mít aspoň 10 znaků.",
+      stejne_heslo: "Nové heslo musí být jiné než stávající.",
+    };
+    $("http").hidden = location.protocol !== "http:";
+    const me = await fetch("/api/ja").then((r) => r.ok ? r.json() : null)
+      .catch(() => null);
+    if (!me) location.href = "/prihlaseni";
+    $("login").value = me?.login || "";
+    $("vynucena").hidden = !me?.zmenit_heslo;
+    $("zpet").hidden = !!me?.zmenit_heslo;
+    $("odhlasit").addEventListener("click", async () => {
+      await fetch("/api/odhlaseni", { method: "POST" }).catch(() => {});
+      location.href = "/prihlaseni";
+    });
+    $("form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      $("msg").textContent = "";
+      if ($("nove").value !== $("znovu").value) {
+        $("msg").textContent = "Nová hesla se neshodují.";
+        return;
+      }
+      const r = await fetch("/api/heslo", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stavajici: $("stavajici").value,
+                               nove: $("nove").value }),
+      }).catch(() => null);
+      const data = await r?.json().catch(() => null);
+      if (r?.ok) {
+        location.href = "/";
+      } else if (r?.status === 401) {
+        location.href = "/prihlaseni";
+      } else {
+        $("msg").textContent = CHYBA[data?.chyba] || "Změna selhala.";
+      }
+    });
+  </script>
+</body>
+</html>

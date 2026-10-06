@@ -4,7 +4,9 @@ Podmínky provozu (operations.osmfoundation.org/policies/nominatim): nejvýš
 1 dotaz/s, identifikující User-Agent, povinná cache, žádné našeptávání.
 Cache (`<cache>/geokodovani.json`, normalizovaný dotaz → kandidáti) je
 jen odpověď služby, smazatelná bez ztráty dat; volba kandidáta patří do
-`souradnice_mist` v `_metadata.json` akce.
+`souradnice_mist` v `_metadata.json` akce. Kontakt provozovatele do
+User-Agent je jeden pro server (`<work>/nominatim.json`, nastavuje admin);
+bez něj je geokódování vypnuté.
 """
 
 import json
@@ -18,6 +20,8 @@ import urllib.parse
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+from .auth import write_private
 
 URL = "https://nominatim.openstreetmap.org/search"
 APP = "fotoarchiv-digi-media-metadata"
@@ -61,13 +65,37 @@ def candidate(item):
     }
 
 
+class Contact:
+    """`<work>/nominatim.json` = {kontakt}."""
+
+    def __init__(self, work):
+        self.path = Path(work) / "nominatim.json"
+
+    def load(self):
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        return str(data.get("kontakt") or "").strip() or None
+
+    def save(self, kontakt):
+        write_private(self.path, {"kontakt": kontakt})
+
+    def delete(self):
+        self.path.unlink(missing_ok=True)
+
+
 class Geocoder:
-    """Dotazy na Nominatim s cache; každý dotaz odejde nejvýš jednou."""
+    """Dotazy na Nominatim s cache; každý dotaz odejde nejvýš jednou.
+
+    `kontakt` je text, nebo funkce, která ho vrátí při každém dotazu
+    (změna platí bez restartu).
+    """
 
     def __init__(self, cache_dir, kontakt, fetch=None,
                  clock=time.monotonic, sleep=time.sleep):
         self.path = Path(cache_dir) / "geokodovani.json"
-        self.user_agent = f"{APP} ({kontakt})"
+        self.kontakt = kontakt if callable(kontakt) else lambda: kontakt
         self.fetch = fetch or fetch_nominatim
         self.clock = clock
         self.sleep = sleep
@@ -88,21 +116,29 @@ class Geocoder:
             json.dump(self.cache, f, ensure_ascii=False, indent=1)
         os.replace(tmp, self.path)
 
+    @property
+    def enabled(self):
+        return bool(self.kontakt())
+
     def search(self, query):
-        """(kandidáti, z_cache). Chyba služby → GeocodeError, necachuje se."""
+        """(kandidáti, z_cache). Chyba služby → GeocodeError, necachuje se;
+        bez kontaktu GeocodeError bez dotazu."""
         key = normalize(query)
         # Zámek drží i čekání a dotaz: souběžné požadavky jdou po jednom
         # a druhý stejný dotaz už najde odpověď v cache.
         with self.lock:
             if key in self.cache:
                 return self.cache[key]["kandidati"], True
+            kontakt = self.kontakt()
+            if not kontakt:
+                raise GeocodeError("kontakt není nastaven")
             if self.last is not None:
                 wait = self.last + INTERVAL - self.clock()
                 if wait > 0:
                     self.sleep(wait)
             log.info("geokódování: dotaz na Nominatim: %s", key)
             try:
-                items = self.fetch(key, self.user_agent)
+                items = self.fetch(key, f"{APP} ({kontakt})")
             finally:
                 self.last = self.clock()
             found = [candidate(item) for item in items]

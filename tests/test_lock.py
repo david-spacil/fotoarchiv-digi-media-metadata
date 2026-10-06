@@ -82,3 +82,27 @@ def test_release_only_by_holder():
     l.release("A", "r1")
     assert l.holder("A") is None
     assert not l.heartbeat("A", "r1")
+
+
+def test_force_release_by_admin():
+    l, _ = locks()
+    l.acquire("A", "r1", "Kopáčová, Jana")
+    info = l.force_release("A", "Spáčil, David")
+    assert info["jmeno"] == "Kopáčová, Jana"
+    assert l.holder("A") is None
+    assert not l.heartbeat("A", "r1") and not l.holds("A", "r1")
+    assert l.forced("r1") == "Spáčil, David"
+    assert l.acquire("A", "r2", "Spáčil, David")[0]
+    assert l.force_release("B", "Spáčil, David") is None
+
+
+def test_release_login():
+    l, _ = locks()
+    l.acquire("A", "r1", "X", prihlaseni="p1")
+    l.acquire("B", "r2", "X", prihlaseni="p1")
+    l.acquire("C", "r3", "Y", prihlaseni="p2")
+    l.release_login("p1")
+    assert l.holder("A") is None and l.holder("B") is None
+    assert l.holds("C", "r3")
+    l.release_login(None)
+    assert l.holds("C", "r3")

@@ -101,3 +101,24 @@ def test_error_not_cached(tmp_path):
     with pytest.raises(geocode.GeocodeError):
         g.search("Holštejn")
     assert len(calls) == 2
+
+
+def test_contact_read_per_query(tmp_path):
+    service = FakeService(answer=[])
+    contact = geocode.Contact(tmp_path / "work")
+    g = geocode.Geocoder(tmp_path / "cache", contact.load,
+                         fetch=service.fetch, clock=service.clock,
+                         sleep=service.sleep)
+    assert not g.enabled
+    with pytest.raises(geocode.GeocodeError):
+        g.search("a")
+    assert service.calls == []
+    contact.save("archiv@example.cz")
+    assert (tmp_path / "work" / "nominatim.json").stat().st_mode & 0o777 \
+        == 0o600
+    g.search("a")
+    contact.save("jiny@example.cz")  # bez restartu
+    g.search("b")
+    assert [ua for _, ua, _ in service.calls] == [
+        "fotoarchiv-digi-media-metadata (archiv@example.cz)",
+        "fotoarchiv-digi-media-metadata (jiny@example.cz)"]

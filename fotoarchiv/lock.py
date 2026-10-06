@@ -3,7 +3,8 @@
 Server běží jako jediný proces, takže zámek stačí držet ve slovníku.
 Čas je monotónní čas serveru; opuštěnost (bez heartbeatu déle než
 `timeout`) se vyhodnocuje líně při každém dotazu. Jedna relace prohlížeče
-drží nejvýš jeden zámek.
+drží nejvýš jeden zámek. Zámek si pamatuje i přihlášení, ze kterého
+vznikl: odhlášení uvolní jeho zámky.
 """
 
 import threading
@@ -17,7 +18,8 @@ class Locks:
     def __init__(self, timeout=TIMEOUT, clock=time.monotonic):
         self.timeout = timeout
         self.clock = clock
-        self._locks = {}  # akce → {jmeno, relace, ziskan, heartbeat}
+        self._locks = {}  # akce → {jmeno, relace, prihlaseni, ziskan, heartbeat}
+        self._forced = {}  # relace → jméno admina, který zámek uvolnil
         self._mutex = threading.Lock()
 
     def _live(self, akce):
@@ -32,7 +34,7 @@ class Locks:
         return {"jmeno": lock["jmeno"], "ziskan": lock["ziskan"],
                 "heartbeat_pred_s": round(self.clock() - lock["heartbeat"])}
 
-    def acquire(self, akce, relace, jmeno):
+    def acquire(self, akce, relace, jmeno, prihlaseni=None):
         """Vrátí (True, zámek), nebo (False, držitel) u cizího zámku.
 
         Získání uvolní zámek, který relace drží na jiné akci.
@@ -50,7 +52,9 @@ class Locks:
                     "relace": relace,
                     "ziskan": datetime.now().isoformat(timespec="seconds")}
             lock["jmeno"] = jmeno
+            lock["prihlaseni"] = prihlaseni
             lock["heartbeat"] = now
+            self._forced.pop(relace, None)
             return True, self._info(lock)
 
     def heartbeat(self, akce, relace):
@@ -67,6 +71,29 @@ class Locks:
             lock = self._locks.get(akce)
             if lock and lock["relace"] == relace:
                 del self._locks[akce]
+
+    def release_login(self, prihlaseni):
+        """Uvolní zámky získané z daného přihlášení (odhlášení)."""
+        with self._mutex:
+            for akce in [a for a, l in self._locks.items()
+                         if prihlaseni and l["prihlaseni"] == prihlaseni]:
+                del self._locks[akce]
+
+    def force_release(self, akce, admin):
+        """Uvolní zámek bez ohledu na držitele; vrátí jeho info, nebo None.
+        Heartbeat držitele pak selže a `forced` řekne, kdo zámek uvolnil."""
+        with self._mutex:
+            lock = self._live(akce)
+            if lock is None:
+                return None
+            del self._locks[akce]
+            self._forced[lock["relace"]] = admin
+            return self._info(lock)
+
+    def forced(self, relace):
+        """Jméno admina, který relaci vynuceně uvolnil zámek, nebo None."""
+        with self._mutex:
+            return self._forced.get(relace)
 
     def holds(self, akce, relace):
         with self._mutex:
