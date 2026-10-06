@@ -60,3 +60,45 @@
 - [x] 6.2 Celé testy `.venv/bin/python -m pytest -q` a `node --test tests/js`
   zelené; end-to-end import do nové a stávající akce na kopii archivu,
   otevření akce ukáže nové soubory
+
+## 7. Průběh plánu a provedení
+
+- [ ] 7.1 Klient: tlačítka, která čekají na server (plán, nahrání,
+  provedení, zahození), se zablokují a ukážou stav; ověřit
+  v prohlížeči dvojklikem na „Ukázat plán“ (v logu jeden `/plan`)
+- [ ] 7.2 `importer.plan` / `root_hashes` s událostmi průběhu hashování
+  (soubor, po 64 MB), endpoint `plan` jako NDJSON stream, klient
+  s ukazatelem porovnání; ověřit testem (pořadí událostí, cache se
+  počítá jako hotová) a v prohlížeči na velké akci
+- [ ] 7.3 `importer.execute` jako generátor událostí (start, průběh po
+  64 MB, soubor, výsledek), odebrání ze stagingu po každém souboru;
+  ověřit testem pořadí událostí a přerušení uprostřed souboru (žádný
+  `.import-*.tmp`, přenesené pryč ze stagingu)
+- [ ] 7.4 Endpoint `provest` jako NDJSON stream, odmítnutí před startem
+  dál JSON se stavem; ověřit Flask test clientem
+- [ ] 7.5 Klient: čtení streamu, ukazatel podle bajtů, výsledek
+  z posledního řádku; ověřit v prohlížeči na velkém videu a zavřením
+  záložky uprostřed
+- [ ] 7.6 `README.md` (Import, Provedení): průběh plánu a provedení
+  a chování při přerušení
+
+## 8. Rozpracované importy
+
+- [ ] 8.1 Vlastník importu podle jména (`names.normalize`), `jmeno`
+  místo `relace` v API, uložení zvoleného cíle do `import.json`;
+  ověřit testy (cizí jméno → 404, jiné pořadí slov/diakritika → vlastní)
+- [ ] 8.2 `GET /api/import?jmeno=…` se seznamem rozpracovaných importů;
+  ověřit testem
+- [ ] 8.3 Příznak „provádí se“ v paměti, 409 `probiha` pro upload,
+  zahození a druhé provedení; ověřit testem souběhu
+- [ ] 8.4 Klient: sekce „Moje rozpracované importy“ na seznamu akcí
+  (Pokračovat, Zahodit), předvyplnění cíle po návratu; ověřit
+  v prohlížeči zavřením záložky a pokračováním v nové
+- [ ] 8.5 `README.md` (Import, Souběh): vlastník podle jména, seznam
+  rozpracovaných importů
+
+## 9. Pojistky
+
+- [ ] 9.1 Provedení se zámkem nejdřív smaže `.import-*.tmp` starší než
+  1 h v kořeni akce a v `RAW.ignored/`, uvede je v logu a ve výsledku;
+  ověřit testem (starý smaže, čerstvý nechá, jiné skryté soubory nechá)

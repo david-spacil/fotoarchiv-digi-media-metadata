@@ -78,7 +78,14 @@ existuje nebo který má stejné jméno jako jiný soubor ve výběru
 (bez ohledu na velikost písmen), MUST být označen jako blokovaný.
 Soubor se stejným obsahem (sha256) jako soubor v kořeni cílové akce
 nebo jako jiný soubor výběru MUST být označen jako duplicita
-a přeskočen.
+a přeskočen. Během výpočtu plánu SHALL průvodce ukazovat průběh
+porovnání s cílovou akcí a MUST NOT dovolit spustit výpočet znovu.
+
+#### Scenario: Plán do velké akce na síťovém disku
+- **WHEN** uživatel nechá ukázat plán do akce, kde je 900 MB souborů
+  stejné velikosti jako nahrané
+- **THEN** průvodce ukazuje průběh porovnání, tlačítko je do konce
+  výpočtu zablokované a server počítá plán jen jednou
 
 #### Scenario: Kolize jména
 - **WHEN** cílová akce obsahuje `P1503712.JPG` s jiným obsahem
@@ -96,14 +103,30 @@ MUST plán sestavit znovu těsně před provedením a přenést jen
 neblokované soubory, které nejsou duplicitou. Přenos MUST NOT přepsat
 existující soubor. Přenesený soubor MUST mít stejný obsah a čas změny
 jako nahraný originál. U nové akce server SHALL vytvořit složku akce;
-pokud mezitím vznikla, import MUST odmítnout. Ve vývojovém režimu SHALL
-průvodce plán jen zobrazit a do archivu nic nezapsat.
+pokud mezitím vznikla, import MUST odmítnout. Během provedení SHALL
+průvodce ukazovat průběh podle objemu přenesených dat. Ve vývojovém
+režimu SHALL průvodce plán jen zobrazit a do archivu nic nezapsat.
 
 #### Scenario: Import do nové akce
 - **WHEN** uživatel v produkčním režimu potvrdí import 40 JPG a 40 RW2
   do nové akce `2026-04-28 kontrola Stezky`
 - **THEN** složka vznikne, 40 JPG je v jejím kořeni, 40 RW2
   v `RAW.ignored/` a akce je v seznamu jako *nezpracováno*
+
+#### Scenario: Průběh u velkého videa
+- **WHEN** uživatel importuje video o velikosti 10 GB
+- **THEN** ukazatel průběhu se posouvá i během kopírování tohoto souboru
+
+#### Scenario: Zavření stránky během provedení
+- **WHEN** uživatel během kopírování do archivu zavře stránku
+- **THEN** přenesené soubory jsou v archivu celé, rozkopírovaný soubor
+  v archivu nezůstane a nepřenesené zůstanou v pracovním adresáři
+
+#### Scenario: Dočasný soubor po výpadku síťového disku
+- **WHEN** v akci zůstal po výpadku spojení dočasný soubor importu
+  starší než hodina a uživatel do akce znovu importuje
+- **THEN** server dočasný soubor před kopírováním smaže a výsledek to
+  uvede
 
 #### Scenario: Kolize vzniklá po zobrazení plánu
 - **WHEN** mezi zobrazením plánu a potvrzením vznikne v cílové akci
@@ -125,6 +148,31 @@ Průvodce SHALL nabídnout otevřít cílovou akci.
 - **WHEN** import do stávající akce s `_metadata.json` skončí
 - **THEN** po otevření akce jsou přenesené soubory mezi novými soubory
   akce
+
+### Requirement: Rozpracované importy
+Import SHALL patřit uživateli (jménu), pod kterým vznikl, ne záložce
+prohlížeče. Seznam akcí SHALL ukázat rozpracované importy uživatele
+(kdy vznikly, počet a velikost souborů, zamýšlený cíl, poslední
+aktivita) s možností pokračovat nebo import zahodit. Import jiného
+uživatele MUST NOT být vidět ani dostupný. Zvolený cíl SHALL průvodce
+po návratu předvyplnit. Během provedení importu MUST server odmítnout
+nahrávání, zahození i další provedení téhož importu.
+
+#### Scenario: Pokračování ze zavřené záložky
+- **WHEN** uživatel nahraje soubory, zavře záložku a v nové záložce
+  otevře seznam akcí
+- **THEN** seznam ukáže jeho rozpracovaný import a po kliknutí na
+  Pokračovat průvodce naskočí na přehled se stejnými soubory
+
+#### Scenario: Cizí import
+- **WHEN** jiný uživatel otevře seznam akcí nebo adresu cizího importu
+- **THEN** import nevidí a průvodce ohlásí, že import nenalezl
+
+#### Scenario: Provedení ve dvou záložkách
+- **WHEN** uživatel spustí provedení importu a v jiné záložce ho zkusí
+  provést nebo zahodit znovu
+- **THEN** druhá záložka dostane odmítnutí a archiv obsahuje každý
+  soubor nejvýš jednou
 
 ### Requirement: Zahození importu
 Uživatel SHALL moci rozpracovaný import zahodit; server MUST pak

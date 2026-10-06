@@ -77,6 +77,32 @@ pokračuje se dalším. Po úspěchu se soubor ze stagingu smaže;
 prázdný staging se smaže celý. *Alternativa:* `os.link` bez přepsání —
 na SMB/CIFS nespolehlivé.
 
+**Čekání na server.** Každá akce průvodce, která čeká na server (plán,
+nahrávání, provedení, zahození), zablokuje své tlačítko a ukáže, co
+se děje; dvojklik tak nespustí druhý požadavek. Výpočet plánu do
+stávající akce může na SMB trvat minuty (hash souborů shodné velikosti,
+měřeno ~4,5 MB/s přes VPN, 943 MB ≈ 3,5 min), proto
+`POST /api/import/<id>/plan` odpovídá stejně jako provedení streamem
+NDJSON: `{"typ":"hash", souboru, bajtu}` na začátku porovnání,
+`{"typ":"hash_prubeh", hotovo_souboru, hotovo_bajtu}` po každém souboru
+(u velkých i po 64 MB), nakonec `{"typ":"plan", …}`. Odmítnutí
+(neplatný nebo existující název, 409) zůstává obyčejnou JSON odpovědí.
+Hashe z cache se do průběhu počítají hned jako hotové.
+
+**Průběh provedení.** `POST /api/import/<id>/provest` odpovídá streamem
+NDJSON: `{"typ":"start", souboru, bajtu}`, po každém souboru
+`{"typ":"soubor", operace}`, u souborů nad 64 MB navíc po každých 64 MB
+`{"typ":"prubeh", z, bajtu}`, nakonec `{"typ":"vysledek", …}` (dosavadní
+tvar výsledku). Odmítnutí před začátkem kopírování (403, 409, 423) zůstává
+obyčejnou JSON odpovědí se stavovým kódem. Klient čte stream
+(`response.body.getReader()`) a posouvá ukazatel podle bajtů. Přenesený
+soubor se ze stagingu a `import.json` odebere hned po přenosu, ne až na
+konci. Přerušení spojení ukončí generátor: rozkopírovaný soubor se smaže
+(dočasné jméno), přenesené zůstanou, zbytek čeká ve stagingu.
+*Alternativy:* provedení po souborech z klienta — zamítnuto (plán, zámek
+a duplicity ve výběru by se počítaly v každém volání); úloha na pozadí
+s dotazováním — zamítnuto (nový stav serveru, pro pár uživatelů zbytečné).
+
 **Nová akce.** Název se validuje `EVENT_RE` + zákaz `/`, `\`, úvodní
 tečky; složka vzniká `os.mkdir` (selže, pokud existuje, porovnání
 existence přes `_key` proti `event_names`, kvůli SMB). Po vytvoření
@@ -91,6 +117,12 @@ o zámek stávajícím `POST /api/akce/<akce>/zamek`; `execute` vyžaduje
 **Dočasné soubory v archivu.** Prefix `.import-` se přidá do
 `archive.is_metadata`, aby ho sken, počty v seznamu ani export
 nepovažovaly za médium (stejně jako `.metadata-`, `.xmp-`).
+Při výpadku SMB může selhat i smazání rozkopírovaného dočasného
+souboru (ověřeno: `Host is down` nechal v akci dva prázdné
+`.import-*.tmp`). Pojistka: provedení importu, které drží zámek akce,
+nejdřív smaže `.import-*.tmp` v kořeni akce a v `RAW.ignored/` starší
+než 1 h (souběžné provedení do téže akce vylučuje zámek, hodina kryje
+nepřesné hodiny SMB). Smazané se zapíší do logu a do výsledku.
 
 **Úklid stagingů.** Při startu serveru (`__main__`) smazat
 `.work/import/*` s poslední aktivitou starší 7 dní. Bez plánovače.
@@ -100,18 +132,39 @@ nepovažovaly za médium (stejně jako `.metadata-`, `.xmp-`).
 - `POST /api/import/<id>/soubor?jmeno=…&mtime=…` (tělo = soubor)
 - `GET /api/import/<id>` → přehled (soubory, typy, data, přístroje,
   nepodporované, navržené datum)
-- `POST /api/import/<id>/plan` `{cil | nova}` → plán
-- `POST /api/import/<id>/provest` `{cil | nova, relace}` → výsledek;
-  ve vývojovém režimu 403 `vyvojovy_rezim` jako úklid
+- `POST /api/import/<id>/plan` `{cil | nova}` → stream NDJSON
+  (průběh porovnání, plán)
+- `POST /api/import/<id>/provest` `{cil | nova, relace}` → stream NDJSON
+  (průběh, výsledek); ve vývojovém režimu 403 `vyvojovy_rezim` jako úklid
 - `DELETE /api/import/<id>` → zahození
 
-Import patří relaci, která ho založila; ostatní relace ho nevidí
-(do zavedení přihlášení stačí token v URL a kontrola `relace`).
+**Vlastník importu = jméno uživatele.** Import patří jménu, pod kterým
+vznikl (`jmeno` v `import.json`), ne relaci (záložce): do zavedení
+přihlášení je „kdo“ jméno zadané v prohlížeči, stejně jako u zámků.
+Porovnání jmen jako u návrhů jmen (`names.normalize`: bez diakritiky,
+velikosti písmen a pořadí slov). Požadavky nesou `jmeno` místo `relace`;
+cizí import vrací 404. `GET /api/import?jmeno=…` vrátí rozpracované
+importy uživatele (id, založeno, poslední aktivita, počet a velikost
+souborů, zamýšlený cíl). Zvolený cíl (`cil` / `nova`) se ukládá do
+`import.json` při sestavení plánu, aby ho seznam ukázal a průvodce po
+návratu předvyplnil. *Alternativy:* importy viditelné všem — zamítnuto
+(omylem zahozený cizí import); vazba na záložku s převzetím — zamítnuto
+(krok navíc i u vlastních importů ze zavřené záložky).
+
+**Souběh nad jedním importem.** Dvě záložky stejného uživatele nesmí
+zároveň nahrávat a provádět. Server drží v paměti příznak „provádí se“
+(jako zámky akcí, jeden proces): během provedení odmítne upload,
+zahození i druhé provedení (409 `probiha`). Souběžné uploady z víc
+záložek zůstávají povolené (zápis `import.json` je pod mutexem).
 
 **Klient.** Nová trasa `#/import` (a `#/import/<id>` po nahrání, aby
 reload stránky nepřišel o staging). Kroky jako karty jednoho pohledu:
 Soubory → Přehled → Cíl → Plán → Výsledek. Tlačítko „Importovat“
 v hlavičce seznamu akcí a na ploše akce (`#/import?cil=<akce>`).
+Na seznamu akcí nad tabulkou sekce „Moje rozpracované importy“
+(jen když nějaké jsou): datum založení, počet a velikost souborů,
+zamýšlený cíl, poslední aktivita, tlačítka Pokračovat (`#/import/<id>`)
+a Zahodit.
 Výběr přes `<input type=file multiple>`, `<input webkitdirectory>`
 a drag&drop (`DataTransferItem.webkitGetAsEntry` pro složky).
 
@@ -131,6 +184,9 @@ a drag&drop (`DataTransferItem.webkitGetAsEntry` pro složky).
   vždy; chybějící mtime = čas uploadu (EXIF datum to neovlivní).
 - [Nová akce bez souborů po selhání všech přenosů] → prázdná složka
   zůstane; výsledek to uvede (mazat složky v archivu import nesmí).
+- [Werkzeug zjistí odpojení klienta až při zápisu do odpovědi] → průběh
+  se posílá i uvnitř velkých souborů (po 64 MB), takže zavření záložky
+  zastaví kopírování nejpozději po dalších 64 MB.
 
 ## Migration Plan
 
@@ -141,3 +197,9 @@ při prvním importu. Návrat = starší verze, staging smazat ručně.
 
 - HEIC z iPhonů: `scan.MEDIA_EXT` ho nemá, import ho zatím odmítne
   jako nepodporovaný. Rozšíření je samostatná změna (náhledy, Immich).
+- Podsložky výběru jako skupiny: podsložky mívají význam, např.
+  `přetřídit/DOD 2015` je dělí podle fotografů. Import je zatím
+  zplošťuje a cesta ve výběru (`cesta` v `import.json`) se po přenosu
+  ztratí. Navázat lze samostatnou změnou: předat rozdělení podle
+  podsložek průvodci akce jako návrh skupin (místo nebo vedle návrhu
+  podle přístroje), u nové akce i stávající bez `_metadata.json`.
