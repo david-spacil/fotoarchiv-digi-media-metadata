@@ -11,11 +11,12 @@ datum, polohu a tagy fotek a videí akce.
 Sidecar souboru SHALL obsahovat výsledné (zděděné) hodnoty takto:
 `popis` → `dc:description`, `datum` → `xmp:CreateDate`, výsledné `gps`
 (vlastní, zděděné nebo souřadnice místa) → `exif:GPSLatitude`
-a `exif:GPSLongitude`, `autori` → tagy `autor/<jméno>`, `osoby` → tagy
-`osoba/<jméno>` a název složky akce → tag `akce/<název složky>`, vše
-v `digiKam:TagsList`. Lomítko v názvu tagu MUST být nahrazeno pomlčkou.
-Prázdná pole se do sidecaru nezapisují. Název místa, přístroj,
-účastníci akce ani skupina se do sidecaru MUST NOT zapsat.
+a `exif:GPSLongitude`, `autori` → tagy `autor/<jméno>` a název složky
+akce → tag `akce/<název složky>`, vše v `digiKam:TagsList`. Lomítko
+v názvu tagu MUST být nahrazeno pomlčkou. Prázdná pole se do sidecaru
+nezapisují. Název místa, přístroj, účastníci akce, osoby ani skupina se
+do sidecaru MUST NOT zapsat; obličeje jen podle požadavku Obličeje pro
+obnovu.
 
 #### Scenario: Zděděné hodnoty
 - **WHEN** skupina `g9` má autory `Spáčil, David` a `Kopáčová, Zuzana`
@@ -31,6 +32,11 @@ Prázdná pole se do sidecaru nezapisují. Název místa, přístroj,
 - **WHEN** akce je ve složce `2026-04-28 kontrola Stezky`
 - **THEN** sidecar každého jejího souboru obsahuje tag
   `akce/2026-04-28 kontrola Stezky`
+
+#### Scenario: Osoby se běžně neexportují
+- **WHEN** soubor má obličej `Hlava, Miloš` a exportuje se bez volby
+  pro obnovu
+- **THEN** jeho sidecar neobsahuje tag `osoba/…` ani oblasti obličejů
 
 ### Requirement: Časová zóna data
 Datum s časem bez zóny SHALL být zapsáno se zónou Europe/Prague platnou
@@ -97,7 +103,10 @@ Po exportu bez chyb SHALL aplikace v pracovním adresáři zaznamenat verzi
 `_metadata.json` akce, ze které export vznikl. Akce SHALL mít
 *neexportované změny*, když se aktuální verze od zaznamenané liší;
 bez záznamu je stav exportu *neznámý*. Do archivu se záznam MUST NOT
-zapisovat.
+zapisovat. Zápis synchronizace obličejů do akce, jejíž záznam odpovídal
+verzi před zápisem, SHALL záznam posunout na novou verzi, protože
+obličeje obsah běžných sidecarů nemění. Export pro obnovu (s obličeji)
+MUST NOT záznam změnit.
 
 #### Scenario: Úprava po exportu
 - **WHEN** akce se exportuje bez chyb a pak se změní popis souboru
@@ -107,6 +116,10 @@ zapisovat.
 - **WHEN** zápis jednoho sidecaru selže
 - **THEN** záznam o exportu se nezmění
 
+#### Scenario: Synchronizace obličejů po exportu
+- **WHEN** akce je exportovaná a synchronizace jí změní obličeje
+- **THEN** akce nemá neexportované změny
+
 ### Requirement: Kontrola nanečisto
 Aplikace SHALL umět akci zkontrolovat nanečisto: vygenerovat sidecary,
 porovnat je s diskem a vrátit počet chybějících nebo neaktuálních, aniž
@@ -115,3 +128,24 @@ cokoli zapíše.
 #### Scenario: Ruční úprava sidecaru
 - **WHEN** někdo ručně změní jeden sidecar exportované akce
 - **THEN** kontrola nanečisto hlásí 1 neaktuální sidecar a nic nezapíše
+
+### Requirement: Obličeje pro obnovu
+Příkaz `exportovat` SHALL mít volbu `--obliceje`, se kterou sidecary
+navíc obsahují oblasti pojmenovaných obličejů ve formátu MWG
+(`mwg-rs:Regions`): `mwg-rs:AppliedToDimensions` s rozměry originálu
+v pixelech a pro každý obličej `mwg-rs:Area` s `oblast` (jednotka
+`normalized`), `mwg-rs:Type` `Face` a `mwg-rs:Name` se jménem. Takový
+sidecar SHALL Immich se zapnutým importem obličejů z metadat načíst
+jako obličej přiřazený osobě daného jména. Soubory bez obličejů SHALL
+dostat běžný sidecar.
+
+#### Scenario: Export pro obnovu
+- **WHEN** soubor 2736 × 3648 má obličej `Hlava, Miloš` s oblastí
+  `[0.5, 0.4, 0.08, 0.06]` a spustí se `exportovat --obliceje`
+- **THEN** sidecar obsahuje `mwg-rs:Regions` s rozměry 2736 × 3648
+  a oblastí `Face` jménem `Hlava, Miloš` se středem 0.5, 0.4 a velikostí
+  0.08 × 0.06
+
+#### Scenario: Kontrola po exportu pro obnovu
+- **WHEN** po `exportovat --obliceje` proběhne kontrola nanečisto
+- **THEN** sidecary s obličeji jsou hlášené jako neaktuální
