@@ -11,9 +11,12 @@ v Immichi místo, a přitom se na stejný název neptat služby opakovaně.
 Server SHALL hledat název místa ve veřejném Nominatimu (OpenStreetMap)
 a vrátit kandidáty s názvem, popisem (hierarchie správních celků)
 a souřadnicemi. Dotaz MUST nést User-Agent s názvem aplikace
-a kontaktem z konfigurace serveru; bez kontaktu je geokódování vypnuté.
-Server MUST posílat nejvýš jeden dotaz za sekundu a MUST NOT se ptát
-během psaní, jen na potvrzený název.
+a kontaktem provozovatele; kontakt je jeden pro celý server (ne po
+uživatelích), nastavuje ho admin v nastavení aplikace a ukládá se
+v pracovním adresáři mimo archiv. Bez kontaktu je geokódování vypnuté.
+Změna kontaktu SHALL platit bez restartu serveru. Server MUST posílat
+nejvýš jeden dotaz za sekundu a MUST NOT se ptát během psaní, jen na
+potvrzený název.
 
 #### Scenario: Nejednoznačný název
 - **WHEN** se hledá `Vysočany`
@@ -24,6 +27,16 @@ během psaní, jen na potvrzený název.
 - **WHEN** Nominatim neodpoví
 - **THEN** aplikace ukáže chybu s možností zkusit znovu a práce
   s ostatními poli pokračuje
+
+#### Scenario: Nastavení kontaktu
+- **WHEN** admin uloží kontakt `archiv@example.cz` a jiný uživatel
+  pak hledá místo
+- **THEN** dotaz na Nominatim nese v User-Agent `archiv@example.cz`
+  bez ohledu na to, kdo hledá
+
+#### Scenario: Bez kontaktu
+- **WHEN** kontakt není nastaven
+- **THEN** volba místa nabídne jen ruční souřadnice a „bez souřadnic“
 
 ### Requirement: Cache odpovědí
 Odpovědi služby SHALL být uložené v cache na serveru mimo archiv,
