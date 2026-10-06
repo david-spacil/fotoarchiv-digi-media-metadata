@@ -116,6 +116,7 @@ režimu SHALL průvodce plán jen zobrazit a do archivu nic nezapsat.
 #### Scenario: Průběh u velkého videa
 - **WHEN** uživatel importuje video o velikosti 10 GB
 - **THEN** ukazatel průběhu se posouvá i během kopírování tohoto souboru
+  a ukazuje data skutečně zapsaná do archivu, ne do cache
 
 #### Scenario: Zavření stránky během provedení
 - **WHEN** uživatel během kopírování do archivu zavře stránku
@@ -156,7 +157,9 @@ prohlížeče. Seznam akcí SHALL ukázat rozpracované importy uživatele
 aktivita) s možností pokračovat nebo import zahodit. Import jiného
 uživatele MUST NOT být vidět ani dostupný. Zvolený cíl SHALL průvodce
 po návratu předvyplnit. Během provedení importu MUST server odmítnout
-nahrávání, zahození i další provedení téhož importu.
+nahrávání, zahození i další provedení téhož importu. Nahrává-li se
+nebo kopíruje-li se import v jiné záložce, průvodce SHALL na to
+upozornit (u nahrávání se jménem souboru a přijatým objemem).
 
 #### Scenario: Pokračování ze zavřené záložky
 - **WHEN** uživatel nahraje soubory, zavře záložku a v nové záložce
@@ -167,6 +170,12 @@ nahrávání, zahození i další provedení téhož importu.
 #### Scenario: Cizí import
 - **WHEN** jiný uživatel otevře seznam akcí nebo adresu cizího importu
 - **THEN** import nevidí a průvodce ohlásí, že import nenalezl
+
+#### Scenario: Nahrávání v jiné záložce
+- **WHEN** uživatel nahrává velké video a otevře týž import v druhé
+  záložce
+- **THEN** druhá záložka upozorní, že se v jiné záložce nahrává video,
+  a poradí počkat nebo původní záložku zavřít
 
 #### Scenario: Provedení ve dvou záložkách
 - **WHEN** uživatel spustí provedení importu a v jiné záložce ho zkusí
