@@ -216,6 +216,11 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    hodnoty jsou ve formuláři vidět a jdou přepsat. Lišta ukazuje, co
    chybí („2 skupiny bez autorů, 14 souborů bez data“).
 
+   Datum pořízení jde psát (`RRRR-MM-DD` nebo `RRRR-MM-DDTHH:MM:SS`)
+   nebo vybrat z kalendáře (📅): zvolený den nahradí datum a čas
+   zůstane; hodnota bez času (WhatsApp) zůstane bez času. U výběru
+   s rozdílnými hodnotami dostane nový den každý soubor se svým časem.
+
    Místo mřížky jde přepnout na **lupu** (Enter, dvojklik na dlaždici
    nebo přepínač; zpět Esc): velká fotka nebo přehrávač videa a pod ní
    filmový pás celé akce se skupinami oddělenými předělem. Šipky
@@ -237,6 +242,9 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    a bez dokončení. U tlačítka plocha ukazuje, kolik sidecarů je
    neaktuálních, a po úpravě „neexportované změny“; seznam akcí
    u dokončené akce upravené po exportu uvede „změněno po exportu“.
+   U dokončené akce je Dokončit akci neaktivní, dokud není co
+   dokončovat (neuložené či neexportované změny, neaktuální sidecary,
+   selhaný export).
 
 Našeptávání a kontrola jmen viz výše.
 

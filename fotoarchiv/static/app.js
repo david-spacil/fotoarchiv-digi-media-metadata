@@ -147,6 +147,8 @@ const state = {
   exporting: false,  // běží export nebo dokončení
   exportVersion: null, // verze `_metadata.json` posledního exportu
   exportNote: "",    // stav exportu u tlačítka
+  exportStale: true, // sidecary nejsou ověřeně aktuální
+  exportErrors: [],  // chyby posledního exportu po souborech
 };
 
 // --- uživatel a zámek akce ---------------------------------------------------
@@ -339,14 +341,17 @@ async function route() {
 
 function header(...right) {
   const info = state.info || {};
+  const paths = info.zapis
+    ? h("span", { class: "paths" }, `archiv: ${info.archiv || "…"} · `,
+      h("strong", {}, "metadata a úklid se zapisují do archivu"))
+    : h("span", { class: "paths" },
+      `archiv (jen čtení): ${info.archiv || "…"} · `,
+      h("strong", {}, `ukládá se do: ${info.work || "…"}`));
+  // Na úzkém okně se cesta ořízne; celá je v title.
+  paths.title = paths.textContent;
   return h("header", {},
     h("a", { href: "#/", class: "brand" }, "Fotoarchiv – metadata"),
-    info.zapis
-      ? h("span", { class: "paths" }, `archiv: ${info.archiv || "…"} · `,
-        h("strong", {}, "metadata a úklid se zapisují do archivu"))
-      : h("span", { class: "paths" },
-        `archiv (jen čtení): ${info.archiv || "…"} · `,
-        h("strong", {}, `ukládá se do: ${info.work || "…"}`)),
+    paths,
     ...right,
     userName() ? h("button", { class: "link user", title: "Změnit jméno",
       onclick: async () => { await askName(); route(); } }, userName())
@@ -440,6 +445,7 @@ async function openEvent(name) {
     sel: new Set(), group: null, anchor: null, dirty: false,
     conflict: false, view: "grid", current: null, readonly: null,
     placeOpen: null, exporting: false, exportVersion: null, exportNote: "",
+    exportStale: true, exportErrors: [],
   });
   // Stav akce se mohl změnit u jiného uživatele.
   const events = state.events = await api("/api/akce");
@@ -493,6 +499,10 @@ async function loadDetail() {
   state.scan = Object.fromEntries(d.soubory.map((f) => [f.nazev, f]));
   state.exportVersion = d.export.version;
   state.exportNote = checkNote(d.export.kontrola);
+  // Chybějící kontrola (nová akce, selhání) = neověřeno.
+  const k = d.export.kontrola;
+  state.exportStale = !k || k.zapsano + k.chyby.length > 0 ||
+    (d.export.version !== null && d.export.version !== d.version);
   if (!d.novy && d.nove.length) state.dirty = true;
 }
 
@@ -521,6 +531,7 @@ function setStatus(text) {
   else el.textContent = "Uloženo";
   el.className = state.conflict ? "status error" :
     state.dirty || state.saving ? "status pending" : "status";
+  renderExportStatus();
 }
 
 async function save() {
@@ -542,6 +553,7 @@ async function save() {
     if (name === state.name) {
       state.version = r.version;
       if (r.version !== state.exportVersion) {
+        state.exportStale = true;
         state.exportNote = "neexportované změny";
         renderExportStatus();
       }
@@ -1251,8 +1263,17 @@ function fieldRow(targets, key, onChange) {
   const shown = st.mixed ? undefined : st.value;
   const placeholder = st.mixed ? "rozdílné hodnoty – zápisem přepíšete vše"
     : inherited ? format(def.type, st.value) : "";
+  // Den z kalendáře: každému cíli přepíše datum, jeho čas zůstane.
+  const pickDay = (day) => {
+    for (const t of targets) {
+      const cur = String(t.obj[key] ?? t.eff(key)?.hodnota ?? "");
+      t.obj[key] = day + cur.slice(10);
+    }
+    onChange(key);
+    row.replaceWith(fieldRow(targets, key, onChange));
+  };
   const input = editor(def.type, inherited ? undefined : shown, placeholder,
-    update, inherited ? st.value : undefined);
+    update, inherited ? st.value : undefined, pickDay);
   row.append(h("label", {}, def.label, " ", note, revert), input);
   return row;
 }
@@ -1264,7 +1285,7 @@ function format(type, v) {
   return String(v);
 }
 
-function editor(type, value, placeholder, update, inheritedValue) {
+function editor(type, value, placeholder, update, inheritedValue, pickDay) {
   if (type === "names" || type === "tags") {
     return namesField(value || [], update, inheritedValue, placeholder,
       type === "names");
@@ -1291,7 +1312,7 @@ function editor(type, value, placeholder, update, inheritedValue) {
       } });
   }
   if (type === "datetime") {
-    return h("input", { value: value || "", placeholder:
+    const text = h("input", { value: value || "", placeholder:
       placeholder || "RRRR-MM-DD nebo RRRR-MM-DDTHH:MM:SS",
       oninput: (e) => {
         const v = e.target.value.trim();
@@ -1299,6 +1320,21 @@ function editor(type, value, placeholder, update, inheritedValue) {
         e.target.classList.toggle("invalid", !!v && !ok);
         if (!v || ok) update(v);
       } });
+    // Kalendář jen pro den; čas se píše ručně.
+    const picker = h("input", { type: "date", class: "picker", tabindex: "-1",
+      value: (value || inheritedValue || "").slice(0, 10),
+      onchange: (e) => { if (e.target.value) pickDay(e.target.value); } });
+    const open = h("button", { type: "button", class: "calendar",
+      title: "Vybrat den z kalendáře", onclick: () => {
+        try {
+          picker.showPicker();
+        } catch {
+          // Bez showPicker(): kalendářový vstup se ukáže přímo.
+          picker.classList.add("shown");
+          picker.focus();
+        }
+      } }, "📅");
+    return h("div", { class: "row datetime" }, text, open, picker);
   }
   if (type === "place") {
     // Jedno místo; návrhy z míst akce.
@@ -1658,16 +1694,27 @@ function exportResult(r) {
   return text;
 }
 
-function renderExportStatus(errors = []) {
+// Je co exportovat: neuložené či neexportované změny, neaktuální sidecary,
+// selhaný export nebo chybějící kontrola.
+function exportPending() {
+  return state.dirty || state.saving || state.exportStale;
+}
+
+function renderExportStatus() {
   const el = document.getElementById("export-status");
   if (!el) return;
   const done = state.doc?.dokonceno;
+  const errors = state.exportErrors;
   el.textContent = state.exporting ? "Exportuji…"
     : [done ? `Dokončeno ${done}` : "", state.exportNote]
       .filter(Boolean).join(" · ");
-  el.className = errors.length ? "error"
-    : /neaktuál|neexport|selhal/.test(state.exportNote) ? "pending" : "";
+  el.className = errors.length ? "error" : exportPending() ? "pending" : "";
   el.title = errors.map((e) => `${e.soubor}: ${e.chyba}`).join("\n");
+  // Dokončená akce beze změn nemá co dokončovat.
+  const finish = document.getElementById("finish");
+  if (finish) {
+    finish.disabled = !!state.readonly || (!!done && !exportPending());
+  }
 }
 
 function confirmDialog(title, lines, ok) {
@@ -1709,14 +1756,15 @@ async function runExport(finish) {
   }
   const name = state.name;
   state.exporting = true;
+  state.exportErrors = [];
   renderExportStatus();
-  let errors = [];
   try {
     const r = await api(eventUrl(name, finish ? "/dokoncit" : "/export"), {
       method: "POST", body: { relace: session(), version: state.version },
     });
     if (name !== state.name) return;
-    errors = r.chyby;
+    state.exportErrors = r.chyby;
+    state.exportStale = r.chyby.length > 0;
     if (finish) {
       state.version = r.version;
       state.doc.dokonceno = r.dokonceno;
@@ -1736,11 +1784,12 @@ async function runExport(finish) {
       clearInterval(heartbeatTimer);
       lostLock();
     }
+    state.exportStale = true;
     state.exportNote = `Export selhal: ${err.message}`;
   } finally {
     state.exporting = false;
   }
-  renderExportStatus(errors);
+  renderExportStatus();
   if (state.dirty && !state.conflict) scheduleSave();
 }
 
@@ -1768,7 +1817,8 @@ function renderWorkspace() {
         h("span", { id: "export-status" }),
         h("button", { disabled: !!state.readonly, title: exportTarget(),
           onclick: () => runExport(false) }, "Exportovat"),
-        h("button", { class: "primary", disabled: !!state.readonly,
+        h("button", { id: "finish", class: "primary",
+          disabled: !!state.readonly,
           onclick: () => runExport(true) }, "Dokončit akci"))),
     lockNotice(),
     h("div", { id: "bar", class: "bar" }),
