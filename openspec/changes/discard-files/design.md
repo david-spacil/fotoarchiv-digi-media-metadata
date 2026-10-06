@@ -4,7 +4,8 @@
 a běží jen v průvodci při prvním otevření akce. Plán se staví ze stavu
 disku a voleb klienta, server ho před provedením sestaví znovu. Mřížka
 už umí hromadný výběr (klik, Ctrl, Shift, tažení), lupa sdílí výběr.
-XMP sidecary README popisuje, ale kód je zatím negeneruje.
+XMP sidecary generuje `xmp.py` (změna `add-xmp-export`); soubory
+s `vyradit` export vynechává.
 
 ## Goals / Non-Goals
 
@@ -35,21 +36,30 @@ XMP sidecary README popisuje, ale kód je zatím negeneruje.
   verze. Klient pak dokument znovu načte. Alternativa (klient smaže
   záznamy sám) by při pádu klienta nechala záznamy souborů, které už
   v kořeni nejsou.
-- **`VYRAZENE = "vyrazene.ignored"`** vedle `RAW_DIR`; `_move()` zakládá
+- **`K_ODSTRANENI = "k_odstraneni.ignored"`** vedle `RAW_DIR`; `_move()` zakládá
   cílovou složku pro obě. Název bez diakritiky a bez úvodní tečky (glob
   `*` v `**/*.ignored/**` nebere jména začínající tečkou).
 - **Úklid z plochy = stávající dialog/krok úklidu** v režimu, kde
   podsložky a RAWy z kořene nejsou ve hře (`volby` prázdné,
   `raw_v_koreni: false`), jen vyřazení. Průvodce při prvním otevření
   vyřazení nemá (bez `_metadata.json` nic označené není).
+- **Sidecar zapisuje provedení vyřazení, ne export.** Před odstraněním
+  záznamu se vždy zapíše `xmp.sidecar()` (rozepsané hodnoty) do
+  `k_odstraneni.ignored/<soubor>.xmp`; záznam existuje vždy, nese
+  příznak `vyradit`. Sidecar v kořeni, pokud existuje, se odstraní (je
+  to generovaný výstup). Tag vyřazení se nepíše — indikátorem je
+  složka. Přesun je blokovaný,
+  existuje-li v cíli soubor nebo jeho `.xmp`. Ve vývojovém režimu se
+  nic nepřesouvá, a tedy ani nezapisuje.
 - **Del** v obsluze `keydown` vedle Enter/Esc, se stejnými výjimkami
   (formulářová pole, otevřený dialog); funguje v mřížce i lupě.
 
 ## Risks / Trade-offs
 
-- [Ztráta ručních údajů vyřazeného souboru: záznam se odstraní a sidecar
-  zatím nevzniká] → Implementovat až po změně generování XMP, nebo do té
-  doby záznam neodstraňovat (viz Open Questions).
+- [Ztráta ručních údajů vyřazeného souboru: záznam se odstraní a export
+  soubor s `vyradit` vynechává] → Sidecar zapíše provedení vyřazení
+  před odstraněním záznamu; selže-li zápis, soubor se nepřesune
+  a záznam zůstane.
 - [Neuložená změna označení mezi zobrazením plánu a provedením] → Server
   staví plán znovu z uloženého stavu; klient ukládá před plánem
   i před provedením.
@@ -59,9 +69,4 @@ XMP sidecary README popisuje, ale kód je zatím negeneruje.
 
 ## Open Questions
 
-- **XMP sidecar k vyřazenému souboru.** Před odstraněním záznamu se má
-  zapsat `vyrazene.ignored/<soubor>.xmp` s rozepsanými hodnotami
-  generátorem ze změny `add-xmp-export`; existující sidecar v kořeni se
-  má přesunout se souborem. Tahle změna se proto implementuje až po
-  `add-xmp-export`; přesná podoba (sidecar i ve vývojovém režimu?, tag
-  `vyrazeno`?) se doladí tehdy.
+Žádné.
