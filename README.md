@@ -274,10 +274,12 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    hodnoty jsou ve formuláři vidět a jdou přepsat. Lišta ukazuje, co
    chybí („2 skupiny bez autorů, 14 souborů bez data“).
 
-   Datum pořízení jde psát (`RRRR-MM-DD` nebo `RRRR-MM-DDTHH:MM:SS`)
-   nebo vybrat z kalendáře (📅): zvolený den nahradí datum a čas
-   zůstane; hodnota bez času (WhatsApp) zůstane bez času. U výběru
-   s rozdílnými hodnotami dostane nový den každý soubor se svým časem.
+   Datum pořízení má dva vstupy s nativním výběrem prohlížeče: den
+   a čas (se sekundami). Prázdný čas = hodnota jen s datem (WhatsApp);
+   smazání času ponechá den, smazání dne smaže celé datum, čas bez dne
+   zadat nejde. U výběru změna dne přepíše každému souboru den a jeho
+   čas zůstane, změna času přepíše čas a den zůstane; rozdílnou část
+   vstup neukazuje a vedle stojí „rozdílné hodnoty“.
 
    Místo mřížky jde přepnout na **lupu** (Enter, dvojklik na dlaždici
    nebo přepínač; zpět Esc): velká fotka nebo přehrávač videa a pod ní

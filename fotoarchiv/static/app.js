@@ -1,6 +1,7 @@
 // Klient prototypu: seznam akcí, průvodce prvním otevřením a pracovní
 // plocha. Stav (dokument `_metadata.json`) drží klient a ukládá ho celý.
 
+import { parts, withDay, withTime } from "./datetime.js";
 import { missing, resolve, resolveGroup } from "./inherit.js";
 
 // --- pomocné -------------------------------------------------------------
@@ -1302,17 +1303,17 @@ function fieldRow(targets, key, onChange) {
   const shown = st.mixed ? undefined : st.value;
   const placeholder = st.mixed ? "rozdílné hodnoty – zápisem přepíšete vše"
     : inherited ? format(def.type, st.value) : "";
-  // Den z kalendáře: každému cíli přepíše datum, jeho čas zůstane.
-  const pickDay = (day) => {
-    for (const t of targets) {
-      const cur = String(t.obj[key] ?? t.eff(key)?.hodnota ?? "");
-      t.obj[key] = day + cur.slice(10);
-    }
-    onChange(key);
-    row.replaceWith(fieldRow(targets, key, onChange));
-  };
-  const input = editor(def.type, inherited ? undefined : shown, placeholder,
-    update, inherited ? st.value : undefined, pickDay);
+  const input = def.type === "datetime"
+    ? dateTimeEditor(targets, key, () => {
+      row.classList.remove("inherited", "from-place");
+      const s = fieldState(targets, key);
+      row.classList.toggle("mixed", s.mixed);
+      row.classList.toggle("own", s.anyOwn);
+      note.textContent = noteText();
+      onChange(key);
+    })
+    : editor(def.type, inherited ? undefined : shown, placeholder,
+      update, inherited ? st.value : undefined);
   row.append(h("label", {}, def.label, " ", note, revert), input);
   return row;
 }
@@ -1324,7 +1325,42 @@ function format(type, v) {
   return String(v);
 }
 
-function editor(type, value, placeholder, update, inheritedValue, pickDay) {
+// Datum pořízení: den a čas zvlášť, každý zapisuje každému cíli jen
+// svou část (druhá zůstane). Rozepsaný vstup hlásí prázdno
+// (`badInput`) — to není smazání; rok nad 9999 se nezapíše. Stav se
+// obnoví na místě, aby psaní neztratilo fokus.
+function dateTimeEditor(targets, key, changed) {
+  const cur = (t) => String(t.obj[key] ?? t.eff(key)?.hodnota ?? "");
+  const write = (fn, input) => {
+    if (!input.validity.valid) return;
+    const part = input.value;
+    for (const t of targets) {
+      const v = fn(cur(t), part);
+      if (v) t.obj[key] = v;
+      else delete t.obj[key];
+    }
+    refresh();
+    changed();
+  };
+  const day = h("input", { type: "date", max: "9999-12-31",
+    onchange: (e) => write(withDay, e.target) });
+  const time = h("input", { type: "time", step: "1",
+    onchange: (e) => write(withTime, e.target) });
+  const mixed = h("span", { class: "ph-text" },
+    "rozdílné hodnoty – zápisem přepíšete vše");
+  const refresh = () => {
+    const values = targets.map(cur);
+    const p = parts(values);
+    if (document.activeElement !== day) day.value = p.day;
+    if (document.activeElement !== time) time.value = p.time;
+    time.disabled = values.every((v) => !v);
+    mixed.hidden = !p.mixed;
+  };
+  refresh();
+  return h("div", { class: "row datetime" }, day, time, mixed);
+}
+
+function editor(type, value, placeholder, update, inheritedValue) {
   if (type === "names" || type === "tags") {
     return namesField(value || [], update, inheritedValue, placeholder,
       type === "names");
@@ -1349,31 +1385,6 @@ function editor(type, value, placeholder, update, inheritedValue, pickDay) {
         if (!v) update(null);
         else if (m) update([Number(m[1]), Number(m[2])]);
       } });
-  }
-  if (type === "datetime") {
-    const text = h("input", { value: value || "", placeholder:
-      placeholder || "RRRR-MM-DD nebo RRRR-MM-DDTHH:MM:SS",
-      oninput: (e) => {
-        const v = e.target.value.trim();
-        const ok = /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$/.test(v);
-        e.target.classList.toggle("invalid", !!v && !ok);
-        if (!v || ok) update(v);
-      } });
-    // Kalendář jen pro den; čas se píše ručně.
-    const picker = h("input", { type: "date", class: "picker", tabindex: "-1",
-      value: (value || inheritedValue || "").slice(0, 10),
-      onchange: (e) => { if (e.target.value) pickDay(e.target.value); } });
-    const open = h("button", { type: "button", class: "calendar",
-      title: "Vybrat den z kalendáře", onclick: () => {
-        try {
-          picker.showPicker();
-        } catch {
-          // Bez showPicker(): kalendářový vstup se ukáže přímo.
-          picker.classList.add("shown");
-          picker.focus();
-        }
-      } }, "📅");
-    return h("div", { class: "row datetime" }, text, open, picker);
   }
   if (type === "place") {
     // Jedno místo; návrhy z míst akce.
