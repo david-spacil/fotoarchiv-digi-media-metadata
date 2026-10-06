@@ -5,10 +5,11 @@ ze které vycházel. Jediný stav serveru jsou zámky akcí v paměti (`lock`),
 proto server smí běžet jen jako jeden proces.
 """
 
+import json
 from datetime import date
 from pathlib import Path
 
-from flask import Flask, abort, jsonify, request, send_file
+from flask import Flask, Response, abort, jsonify, request, send_file
 
 from . import (cleanup, geocode, importer, lock, model, names, scan, thumbs,
                xmp)
@@ -30,6 +31,7 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
     app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
     app.config["WORKSPACE"] = ws
     app.config["LOCKS"] = locks
+    app.config["IMPORTS"] = imports
 
     def event_dir(nazev):
         try:
@@ -231,10 +233,10 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
     def refused(e, status=409):
         return dict({"chyba": e.code}, **e.detail), status
 
-    def check_import(id, relace):
-        """Import patří relaci, která ho založila; jiné ho nevidí."""
+    def check_import(id, jmeno):
+        """Import patří jménu, pod kterým vznikl; jiní ho nevidí."""
         try:
-            return imports.get(id, relace)
+            return imports.get(id, jmeno)
         except KeyError:
             abort(404)
 
@@ -247,6 +249,23 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         importer.check_new_name(ws.archiv, nova)
         return nova, None
 
+    def ndjson(events, first=None):
+        """Události generátoru jako stream NDJSON (řádek = JSON objekt).
+        Přerušené spojení generátor zavře (smaže rozkopírovaný soubor)."""
+        def lines():
+            if first is not None:
+                yield json.dumps(first, ensure_ascii=False) + "\n"
+            for event in events:
+                yield json.dumps(event, ensure_ascii=False) + "\n"
+        response = Response(lines(), mimetype="application/x-ndjson")
+        response.headers["Cache-Control"] = "no-cache"
+        response.call_on_close(events.close)
+        return response
+
+    @app.get("/api/import")
+    def import_list():
+        return {"importy": imports.owned(request.args.get("jmeno"))}
+
     @app.post("/api/import")
     def import_create():
         body = request.get_json(force=True)
@@ -254,8 +273,7 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         if not isinstance(celkem, int) or celkem < 0:
             abort(400)
         try:
-            id = imports.create(body_field(body, "relace"),
-                                body_field(body, "jmeno").strip(), celkem)
+            id = imports.create(body_field(body, "jmeno").strip(), celkem)
         except importer.Refused as e:
             return refused(e, 507)
         return {"id": id, "limit": importer.MAX_FILE}
@@ -263,51 +281,66 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
     @app.post("/api/import/<id>/soubor")
     def import_file(id):
         """Tělo = obsah souboru (bez multipartu), čte se po blocích."""
-        relace = request.args.get("relace")
-        check_import(id, relace)
+        jmeno = request.args.get("jmeno")
+        check_import(id, jmeno)
         mtime = request.args.get("mtime")
         try:
             mtime = int(mtime) if mtime else None
         except ValueError:
             abort(400)
         try:
-            entry = imports.add_file(id, relace, request.args.get("cesta"),
+            entry = imports.add_file(id, jmeno, request.args.get("cesta"),
                                      request.stream, request.content_length,
-                                     mtime)
+                                     mtime, request.args.get("relace"))
         except importer.Refused as e:
             return refused(e, {"bez_delky": 411, "prilis_velky": 413,
-                               "malo_mista": 507}.get(e.code, 400))
+                               "malo_mista": 507,
+                               "probiha": 409}.get(e.code, 400))
         except KeyError:
             abort(404)  # mezitím zahozeno
         return {"soubor": entry}
 
     @app.get("/api/import/<id>")
     def import_overview(id):
-        relace = request.args.get("relace")
-        check_import(id, relace)
-        return imports.overview(id, relace)
+        jmeno = request.args.get("jmeno")
+        check_import(id, jmeno)
+        return imports.overview(id, jmeno,
+                                relace=request.args.get("relace"))
 
     @app.post("/api/import/<id>/plan")
     def import_plan(id):
+        """Stream průběhu porovnání s cílovou akcí, nakonec `plan`."""
         body = request.get_json(force=True)
-        check_import(id, body.get("relace"))
+        jmeno = body.get("jmeno")
+        check_import(id, jmeno)
         try:
             nazev, path = import_target(body)
         except importer.Refused as e:
             return refused(e)
-        return dict(imports.plan(id, body["relace"], path), cil=nazev,
-                    nova=path is None)
+        imports.set_target(id, jmeno, nazev, path is None)
+
+        def events():
+            for event in imports.plan(id, jmeno, path):
+                if event["typ"] == "plan":
+                    event.update(cil=nazev, nova=path is None)
+                yield event
+        return ndjson(events())
 
     @app.post("/api/import/<id>/provest")
     def import_execute(id):
+        """Stream průběhu provedení, nakonec `vysledek`. Odmítnutí před
+        začátkem kopírování je obyčejná JSON odpověď."""
         body = request.get_json(force=True)
-        record = check_import(id, body.get("relace"))
+        jmeno = body.get("jmeno")
+        record = check_import(id, jmeno)
         if not ws.zapis:
             return {"chyba": "vyvojovy_rezim"}, 403
-        relace = body["relace"]
+        relace = body_field(body, "relace")
         try:
+            imports.check_idle(id)
             nazev, path = import_target(body)
-            if path is None:
+            created = path is None
+            if created:
                 path = importer.create_event(ws.archiv, nazev)
                 # Novou akci nikdo neotevře uprostřed přenosu; zámek pak
                 # přebírá klient, který ji otevírá.
@@ -317,13 +350,48 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         denied = require_lock(nazev, body)
         if denied:
             return denied
-        return dict(imports.execute(id, relace, path), cil=nazev)
+        finished = False
+
+        def release():
+            # Klient bez výsledku (zavřená záložka) zámek nové akce
+            # nepřevezme ani neobnovuje: neblokovat akci do vypršení.
+            if created and not finished:
+                locks.release(nazev, relace)
+
+        events = imports.execute(id, jmeno, path, relace)
+        try:
+            first = next(events)
+        except importer.Refused as e:
+            release()
+            return refused(e)
+        except KeyError:
+            release()
+            abort(404)
+
+        def tagged():
+            nonlocal finished
+            for event in events:
+                if event["typ"] == "vysledek":
+                    event["cil"] = nazev
+                yield event
+                finished = event["typ"] == "vysledek"
+        stream = tagged()
+        response = ndjson(stream, first)
+        response.call_on_close(events.close)
+        response.call_on_close(release)
+        return response
 
     @app.delete("/api/import/<id>")
     def import_discard(id):
         body = request.get_json(force=True, silent=True) or {}
-        check_import(id, body.get("relace"))
-        imports.discard(id, body["relace"])
+        jmeno = body.get("jmeno")
+        check_import(id, jmeno)
+        try:
+            imports.discard(id, jmeno)
+        except importer.Refused as e:
+            return refused(e)
+        except KeyError:
+            abort(404)
         return {}
 
     @app.get("/api/jmena")

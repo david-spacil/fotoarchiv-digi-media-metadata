@@ -226,7 +226,11 @@ plán → výsledek.
   úrovni. Nahrávají se po jednom (2–3 souběžně, s průběhem) do
   `.work/import/<id>/`, ne do archivu; zavření stránky archiv nezmění.
   Adresa `#/import/<id>` přežije reload. Limit 20 GB na soubor, server
-  před nahráním kontroluje volné místo.
+  před nahráním kontroluje volné místo. Import patří jménu uživatele
+  (porovnání jako u návrhů jmen), ne záložce: seznam akcí ukazuje
+  „Moje rozpracované importy“ (založeno, počet a velikost souborů,
+  zamýšlený cíl, poslední aktivita) s tlačítky Pokračovat a Zahodit.
+  Cizí import není vidět a jeho adresa hlásí „nenalezen“.
 - **Přehled:** počty fotek, videí a RAWů, rozsah dat z EXIF (WhatsApp
   z názvu), přístroje, nepodporované soubory. Přijímají se média
   aplikace (jpg, jpeg, png, mp4, mov) a RAWy; `Thumbs.db` se tiše
@@ -240,14 +244,26 @@ plán → výsledek.
   v cíli existuje nebo ho má víc souborů výběru, se blokuje.
   Duplicita (stejný sha256 jako soubor v kořeni cílové akce nebo jiný
   soubor výběru) se přeskočí; hashe akce se počítají jen u souborů
-  shodné velikosti a cachují se v `.work/cache/sha256/`.
+  shodné velikosti a cachují se v `.work/cache/sha256/`. Na SMB to
+  může trvat minuty, proto server posílá průběh porovnání (stream
+  NDJSON, po souboru a u velkých po 64 MB; hashe z cache jsou hned
+  hotové) a tlačítko je do konce výpočtu zablokované. Zvolený cíl se
+  uloží k importu a po návratu se předvyplní.
 - **Provedení** (jen produkční režim, ve vývojovém se plán jen ukáže):
   plán se sestaví znovu, soubor se zkopíruje do dočasného
   `.import-*.tmp` v cílové složce, dostane čas změny originálu
   a přejmenuje se, jen pokud cíl pořád neexistuje. Selhání jednoho
   souboru ostatní nezastaví. Import do stávající akce vyžaduje zámek
   akce; nová akce vznikne jen, pokud složka mezitím nevznikla, a zámek
-  na ni dostane relace importu.
+  na ni dostane relace importu. Průběh jde streamem (NDJSON) po
+  souborech a u velkých po 64 MB; ukazatel se posouvá podle bajtů.
+  Přenesený soubor zmizí z pracovního adresáře hned. Zavření stránky
+  kopírování zastaví nejpozději po dalších 64 MB: rozkopírovaný
+  dočasný soubor se smaže, přenesené zůstanou v archivu, zbytek
+  v pracovním adresáři. Když dočasný soubor smazat nejde (výpadek
+  SMB), smaže ho další import do téže akce: před kopírováním odstraní
+  `.import-*.tmp` starší než hodinu v kořeni a v `RAW.ignored/`
+  a uvede je ve výsledku.
 - **Výsledek:** přenesené, blokované, duplicitní a selhané soubory;
   přenesené zmizí z pracovního adresáře, ostatní tam zůstanou, dokud
   uživatel import nezahodí. Importy neaktivní přes 7 dní server smaže
@@ -295,6 +311,14 @@ workerů ne). Do archivu se žádný soubor zámku nezapisuje.
 - Restart serveru zámky zahodí; klient je při dalším heartbeatu získá
   znovu, pokud je akce volná.
 - „Kdo“ je do zavedení přihlašování jméno zadané v prohlížeči.
+- Rozpracovaný import patří jménu, ne záložce; vidí ho jen jeho
+  vlastník. Během provedení importu server odmítne nahrávání,
+  zahození i další provedení téhož importu (příznak v paměti); nahrávat
+  z víc záložek najednou lze. Průvodce v jiné záložce upozorní, že se
+  import právě nahrává nebo kopíruje jinde.
+- Drží-li zámek akce jiná záložka téhož jména, hláška místo „Akci
+  upravuje …“ radí zavřít původní záložku. Zámek nové akce, který
+  server vzal pro provedení importu, se při přerušení provedení uvolní.
 
 Metadata (JPG, mp4) čte `exiftool`. Náhledy
 (320 px do mřížky, 1600 px do lupy) se cachují lokálně mimo archiv —

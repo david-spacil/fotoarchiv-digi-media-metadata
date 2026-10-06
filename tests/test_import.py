@@ -12,6 +12,7 @@ from .conftest import make_tree, snapshot
 
 EVENT = "2026-04-28 kontrola"
 MTIME_MS = 1777363200123  # 2026-04-28
+ME = "Spáčil, David"
 
 
 def free(n):
@@ -23,11 +24,17 @@ def imports(tmp_path):
     return Imports(tmp_path / "work", disk_usage=free(10 * 2**30))
 
 
-def upload(imp, id, cesta, data, mtime=MTIME_MS, relace="r1"):
+def upload(imp, id, cesta, data, mtime=MTIME_MS, jmeno=ME):
     if isinstance(data, str):
         data = data.encode()
-    return imp.add_file(id, relace, cesta, io.BytesIO(data), len(data),
+    return imp.add_file(id, jmeno, cesta, io.BytesIO(data), len(data),
                         mtime)
+
+
+def last(events):
+    """Poslední událost generátoru (plán / výsledek)."""
+    *_, final = events
+    return final
 
 
 def staged(imp, id):
@@ -38,34 +45,37 @@ def staged(imp, id):
 # --- staging ---------------------------------------------------------------
 
 def test_upload_stores_record(imports):
-    id = imports.create("r1", "Spáčil, David", 100)
+    id = imports.create(ME, 100)
     e = upload(imports, id, "Fotky/a.jpg", "obsah")
     assert e["nazev"] == "a.jpg" and e["ulozeno"] == "soubory/a.jpg"
     assert e["velikost"] == 5 and e["mtime_ns"] == MTIME_MS * 1_000_000
     assert e["sha256"] == importer.hashlib.sha256(b"obsah").hexdigest()
-    record = imports.get(id, "r1")
+    record = imports.get(id, ME)
     assert [s["cesta"] for s in record["soubory"]] == ["Fotky/a.jpg"]
-    with pytest.raises(KeyError):
-        imports.get(id, "r2")
+    # Vlastník podle jména: jiné pořadí slov a diakritika nevadí.
+    assert imports.get(id, "david spacil") == record
+    for other in ("Kopáčová, Jana", "", None):
+        with pytest.raises(KeyError):
+            imports.get(id, other)
 
 
 def test_interrupted_upload_not_recorded(imports):
-    id = imports.create("r1", "x")
+    id = imports.create(ME)
     with pytest.raises(Refused) as e:
-        imports.add_file(id, "r1", "a.jpg", io.BytesIO(b"kratsi"), 100)
+        imports.add_file(id, ME, "a.jpg", io.BytesIO(b"kratsi"), 100)
     assert e.value.code == "neuplny"
 
     class Broken(io.BytesIO):
         def read(self, n=-1):
             raise ConnectionError("odpojeno")
     with pytest.raises(ConnectionError):
-        imports.add_file(id, "r1", "b.jpg", Broken(), 100)
-    assert imports.get(id, "r1")["soubory"] == []
+        imports.add_file(id, ME, "b.jpg", Broken(), 100)
+    assert imports.get(id, ME)["soubory"] == []
     assert staged(imports, id) == ["import.json"]
 
 
 def test_same_path_replaces_same_name_kept_apart(imports):
-    id = imports.create("r1", "x")
+    id = imports.create(ME)
     upload(imports, id, "a.jpg", "1")
     upload(imports, id, "a.jpg", "22")
     upload(imports, id, "Jine/A.JPG", "333")
@@ -75,37 +85,37 @@ def test_same_path_replaces_same_name_kept_apart(imports):
 
 
 def test_thumbs_db_dropped(imports):
-    id = imports.create("r1", "x")
+    id = imports.create(ME)
     assert upload(imports, id, "Fotky/Thumbs.db", "x") is None
-    assert imports.get(id, "r1")["soubory"] == []
+    assert imports.get(id, ME)["soubory"] == []
 
 
 def test_space_and_size_limits(tmp_path):
     imp = Imports(tmp_path / "work", disk_usage=free(importer.RESERVE + 10))
     with pytest.raises(Refused) as e:
-        imp.create("r1", "x", 11)
+        imp.create(ME, 11)
     assert e.value.code == "malo_mista"
-    id = imp.create("r1", "x", 10)
+    id = imp.create(ME, 10)
     with pytest.raises(Refused) as e:
         upload(imp, id, "a.jpg", "x" * 11)
     assert e.value.code == "malo_mista"
     big = SimpleNamespace(read=lambda n: pytest.fail("nemá číst"))
     with pytest.raises(Refused) as e:
-        imp.add_file(id, "r1", "v.mp4", big, importer.MAX_FILE + 1)
+        imp.add_file(id, ME, "v.mp4", big, importer.MAX_FILE + 1)
     assert e.value.code == "prilis_velky"
-    assert imp.get(id, "r1")["soubory"] == []
+    assert imp.get(id, ME)["soubory"] == []
 
 
 def test_discard_and_purge(tmp_path):
     clock = [1000.0]
     imp = Imports(tmp_path / "work", clock=lambda: clock[0],
                   disk_usage=free(10 * 2**30))
-    old = imp.create("r1", "x")
+    old = imp.create(ME)
     clock[0] += importer.MAX_AGE - 10
-    fresh = imp.create("r1", "x")
+    fresh = imp.create(ME)
     upload(imp, fresh, "a.jpg", "x")
-    gone = imp.create("r1", "x")
-    imp.discard(gone, "r1")
+    gone = imp.create(ME)
+    imp.discard(gone, ME)
     assert not (imp.root / gone).exists()
     clock[0] += 20
     assert imp.purge() == [old]
@@ -131,7 +141,7 @@ def fake_exiftool(event_dir, names):
 
 
 def test_overview_mixed(imports):
-    id = imports.create("r1", "x")
+    id = imports.create(ME)
     for i in range(4):
         upload(imports, id, f"G9/P150{i}.JPG", f"j{i}")
         upload(imports, id, f"G9/RAW/P150{i}.RW2", f"r{i}")
@@ -140,7 +150,7 @@ def test_overview_mixed(imports):
     upload(imports, id, "IMG-20260427-WA0001.jpg", "w")
     upload(imports, id, "prezentace.pptx", "p")
     upload(imports, id, "Thumbs.db", "t")
-    o = imports.overview(id, "r1", exiftool=fake_exiftool)
+    o = imports.overview(id, ME, exiftool=fake_exiftool)
     assert o["pocty"] == {"foto": 5, "raw": 4, "video": 2,
                           "nepodporovany": 1}
     assert o["od"] == "2026-04-27" and o["do"] == "2026-04-29"
@@ -209,9 +219,12 @@ def test_root_hashes_cached(tree, tmp_path, monkeypatch):
     akce = tree({"akce/": {"a.jpg": "x"}}) / "akce"
     cache = tmp_path / "sha.json"
     calls = []
-    real = importer.file_sha256
-    monkeypatch.setattr(importer, "file_sha256",
-                        lambda p: calls.append(p) or real(p))
+    real = importer._sha256_steps
+
+    def counting(path):
+        calls.append(path)
+        return (yield from real(path))
+    monkeypatch.setattr(importer, "_sha256_steps", counting)
     importer.root_hashes(akce, {1}, cache)
     importer.root_hashes(akce, {1}, cache)
     assert len(calls) == 1
@@ -219,6 +232,28 @@ def test_root_hashes_cached(tree, tmp_path, monkeypatch):
     os.utime(akce / "a.jpg", ns=(1, 1))
     assert "y" not in importer.root_hashes(akce, {1}, cache).values()
     assert len(calls) == 2
+
+
+def test_plan_progress_events(tree, tmp_path, monkeypatch):
+    monkeypatch.setattr(importer, "STEP", 4)
+    monkeypatch.setattr(importer, "CHUNK", 2)
+    akce = tree({"akce/": {"a.jpg": "1234567890", "b.jpg": "abcdefghij",
+                           "c.jpg": "kratsi"}}) / "akce"
+    cache = tmp_path / "sha.json"
+    importer.root_hashes(akce, {10}, cache)  # a, b v cache
+    (akce / "d.jpg").write_text("0123456789")
+    events = list(importer.iter_plan(akce, [entry("n.jpg", "x" * 10)],
+                                     cache))
+    assert events == [
+        {"typ": "hash", "souboru": 3, "bajtu": 30},
+        # z cache hned hotové, pak d.jpg po 4 B a po souboru
+        {"typ": "hash_prubeh", "hotovo_souboru": 2, "hotovo_bajtu": 20},
+        {"typ": "hash_prubeh", "hotovo_souboru": 2, "hotovo_bajtu": 24},
+        {"typ": "hash_prubeh", "hotovo_souboru": 2, "hotovo_bajtu": 28},
+        {"typ": "hash_prubeh", "hotovo_souboru": 3, "hotovo_bajtu": 30},
+    ]
+    # Bez souborů shodné velikosti se nic neporovnává.
+    assert list(importer.iter_plan(akce, [entry("n.jpg", "x")], cache)) == []
 
 
 def test_plan_new_event_dry(tree):
@@ -233,7 +268,7 @@ def test_plan_new_event_dry(tree):
 # --- provedení -------------------------------------------------------------
 
 def make_import(imp, files):
-    id = imp.create("r1", "Spáčil, David")
+    id = imp.create(ME)
     for cesta, data in files.items():
         upload(imp, id, cesta, data)
     return id
@@ -246,7 +281,8 @@ def test_execute_new_event(imports, tmp_path):
     files.update({f"RAW/P{i:07}.RW2": f"r{i}" for i in range(40)})
     id = make_import(imports, files)
     path = importer.create_event(archiv, "2026-04-28 kontrola Stezky")
-    result = imports.execute(id, "r1", path)
+    result = last(imports.execute(id, ME, path))
+    assert result["typ"] == "vysledek" and result["smazano"] == []
     assert {o["stav"] for o in result["operace"]} == {"hotovo"}
     assert result["zahozeno"] and not (imports.root / id).exists()
     assert len(list(path.glob("*.JPG"))) == 40
@@ -254,6 +290,9 @@ def test_execute_new_event(imports, tmp_path):
     assert len(raws) == 40
     a = path / "P0000007.JPG"
     assert a.read_text() == "j7"
+    umask = os.umask(0)
+    os.umask(umask)
+    assert a.stat().st_mode & 0o777 == 0o666 & ~umask
     assert a.stat().st_mtime_ns == MTIME_MS * 1_000_000
     assert not list(path.rglob(".import-*"))
     ws = Workspace(archiv, tmp_path / "work")
@@ -261,13 +300,114 @@ def test_execute_new_event(imports, tmp_path):
     assert ws.list_events()[0]["souboru"] == 40
 
 
+def summary(e):
+    o = e.get("operace") if e["typ"] == "soubor" else {}
+    return (e["typ"], e.get("z") or o.get("z"),
+            e.get("bajtu") or o.get("stav"))
+
+
+def test_execute_events(imports, tree, monkeypatch):
+    monkeypatch.setattr(importer, "STEP", 4)
+    monkeypatch.setattr(importer, "CHUNK", 4)
+    akce = tree({"akce/": {"x.jpg": "x"}}) / "akce"
+    id = make_import(imports, {"a.jpg": "0123456789", "b.jpg": "b",
+                               "c.jpg": "x"})
+    events = list(imports.execute(id, ME, akce))
+    assert [summary(e) for e in events] == [
+        ("hash", None, 1), ("hash_prubeh", None, None),
+        ("start", None, 11),
+        ("prubeh", "a.jpg", 4), ("prubeh", "a.jpg", 8),
+        ("soubor", "a.jpg", "hotovo"),
+        ("soubor", "b.jpg", "hotovo"),
+        ("soubor", "c.jpg", "duplicita"),
+        ("vysledek", None, None),
+    ]
+
+
+def test_copy_progress_after_fsync(tree, monkeypatch):
+    """Průběh kopie = data zapsaná na disk, ne do cache (SMB)."""
+    monkeypatch.setattr(importer, "STEP", 4)
+    monkeypatch.setattr(importer, "CHUNK", 4)
+    root = tree({"src.jpg": "0123456789", "akce/": {}})
+    synced = []
+    real = os.fsync
+    monkeypatch.setattr(importer.os, "fsync",
+                        lambda fd: synced.append(os.fstat(fd).st_size)
+                        or real(fd))
+    sha = importer.file_sha256(root / "src.jpg")
+    steps = list(importer._copy(root / "src.jpg", root / "akce", "a.jpg",
+                                sha, 0))
+    assert steps == [4, 8] and synced[:2] == [4, 8]
+
+
+def test_execute_interrupted(imports, tree, monkeypatch):
+    """Zavření záložky = zavření generátoru uprostřed kopie."""
+    monkeypatch.setattr(importer, "STEP", 4)
+    monkeypatch.setattr(importer, "CHUNK", 4)
+    akce = tree({"akce/": {}}) / "akce"
+    id = make_import(imports, {"a.jpg": "a", "b.jpg": "0123456789",
+                               "c.jpg": "c"})
+    events = imports.execute(id, ME, akce)
+    for e in events:
+        if e["typ"] == "prubeh":
+            break
+    # a.jpg je už pryč ze stagingu i z import.json, b.jpg se kopíruje.
+    assert staged(imports, id) == ["import.json", "soubory/b.jpg",
+                                   "soubory/c.jpg"]
+    assert any(p.name.startswith(".import-") for p in akce.iterdir())
+    events.close()
+    assert sorted(p.name for p in akce.iterdir()) == ["a.jpg"]
+    assert [s["cesta"] for s in imports.get(id, ME)["soubory"]] == \
+        ["b.jpg", "c.jpg"]
+    upload(imports, id, "d.jpg", "d")  # příznak provádění je pryč
+
+
+def test_execute_running_refuses(imports, tree):
+    akce = tree({"akce/": {}}) / "akce"
+    id = make_import(imports, {"a.jpg": "a", "b.jpg": "b"})
+    first = imports.execute(id, ME, akce)
+    assert next(first)["typ"] == "start"
+    for action in (lambda: upload(imports, id, "c.jpg", "c"),
+                   lambda: imports.discard(id, ME),
+                   lambda: next(imports.execute(id, ME, akce))):
+        with pytest.raises(Refused) as e:
+            action()
+        assert e.value.code == "probiha"
+    assert imports.owned(ME)[0]["probiha"]
+    result = last(first)
+    assert [o["stav"] for o in result["operace"]] == ["hotovo", "hotovo"]
+    assert sorted(p.name for p in akce.iterdir()) == ["a.jpg", "b.jpg"]
+
+
+def test_purge_stale_tmp(imports, tree):
+    akce = tree({"akce/": {".import-stary.tmp": "", ".import-cerstvy.tmp": "",
+                           ".metadata-x.tmp": "", ".import-x.part": "",
+                           "RAW.ignored/": {".import-raw.tmp": ""}}}) / "akce"
+    old = importer.time.time() - importer.TMP_AGE - 60
+    for name in (".import-stary.tmp", ".metadata-x.tmp", ".import-x.part",
+                 "RAW.ignored/.import-raw.tmp"):
+        os.utime(akce / name, (old, old))
+    id = make_import(imports, {"a.jpg": "a"})
+    result = last(imports.execute(id, ME, akce))
+    assert result["smazano"] == [".import-stary.tmp",
+                                 "RAW.ignored/.import-raw.tmp"]
+    assert sorted(p.name for p in akce.iterdir()) == [
+        ".import-cerstvy.tmp", ".import-x.part", ".metadata-x.tmp",
+        "RAW.ignored", "a.jpg"]
+    assert list((akce / "RAW.ignored").iterdir()) == []
+
+
 def test_execute_collision_after_plan(imports, tree, monkeypatch):
     akce = tree({"akce/": {}}) / "akce"
     id = make_import(imports, {"a.jpg": "nový", "b.jpg": "b"})
-    stale = imports.plan(id, "r1", akce)
+    stale = last(imports.plan(id, ME, akce))
     (akce / "A.JPG").write_text("starý")
-    monkeypatch.setattr(importer, "plan", lambda *a: stale)
-    result = imports.execute(id, "r1", akce)
+
+    def stale_plan(*a):
+        return stale
+        yield
+    monkeypatch.setattr(importer, "iter_plan", stale_plan)
+    result = last(imports.execute(id, ME, akce))
     assert plan_ops(result) == [("a.jpg", "a.jpg", "blokovano"),
                                 ("b.jpg", "b.jpg", "hotovo")]
     assert (akce / "A.JPG").read_text() == "starý"
@@ -278,9 +418,9 @@ def test_execute_collision_after_plan(imports, tree, monkeypatch):
 def test_execute_collision_replanned(imports, tree):
     akce = tree({"akce/": {}}) / "akce"
     id = make_import(imports, {"a.jpg": "nový"})
-    imports.plan(id, "r1", akce)
+    last(imports.plan(id, ME, akce))
     (akce / "a.jpg").write_text("starý")
-    result = imports.execute(id, "r1", akce)
+    result = last(imports.execute(id, ME, akce))
     assert plan_ops(result) == [("a.jpg", "a.jpg", "blokovano")]
     assert (akce / "a.jpg").read_text() == "starý"
 
@@ -293,9 +433,9 @@ def test_execute_copy_error_continues(imports, tree, monkeypatch):
     def copy(src, event_dir, dst, sha, mtime):
         if dst == "b.jpg":
             raise PermissionError(13, "Permission denied", dst)
-        real(src, event_dir, dst, sha, mtime)
+        return (yield from real(src, event_dir, dst, sha, mtime))
     monkeypatch.setattr(importer, "_copy", copy)
-    result = imports.execute(id, "r1", akce)
+    result = last(imports.execute(id, ME, akce))
     assert plan_ops(result) == [("a.jpg", "a.jpg", "hotovo"),
                                 ("b.jpg", "b.jpg", "chyba"),
                                 ("c.jpg", "c.jpg", "hotovo")]
@@ -308,7 +448,8 @@ def test_execute_copy_error_continues(imports, tree, monkeypatch):
 def test_copy_cleans_tmp_on_changed_content(tree):
     root = tree({"src.jpg": "jiný obsah", "akce/": {}})
     with pytest.raises(OSError):
-        importer._copy(root / "src.jpg", root / "akce", "a.jpg", "0" * 64, 0)
+        importer._drain(importer._copy(root / "src.jpg", root / "akce",
+                                       "a.jpg", "0" * 64, 0))
     assert list((root / "akce").iterdir()) == []
 
 
@@ -325,12 +466,48 @@ def test_create_event_race(tmp_path, monkeypatch):
     assert e.value.code == "existuje"
 
 
+def test_activity_in_other_tab(imports, tree):
+    id = make_import(imports, {"a.jpg": "a"})
+    seen = []
+
+    class Slow(io.BytesIO):
+        def read(self, n=-1):
+            chunk = super().read(2)
+            if chunk:  # uprostřed nahrávání se dívá jiná záložka
+                seen.append(imports.activity(id, "r2")["nahrava"])
+                seen.append(imports.activity(id, "r1")["nahrava"])
+            return chunk
+    imports.add_file(id, ME, "v.mp4", Slow(b"0123"), 4, relace="r1")
+    assert seen[0] == [{"cesta": "v.mp4", "prijato": 0, "velikost": 4}]
+    assert seen[1] == []  # vlastní záložka
+    assert imports.activity(id, "r2") == {"nahrava": [], "probiha": False}
+    akce = tree({"akce/": {}}) / "akce"
+    events = imports.execute(id, ME, akce, "r1")
+    next(events)
+    assert imports.activity(id, "r2")["probiha"]
+    assert not imports.activity(id, "r1")["probiha"]
+    events.close()
+    assert not imports.activity(id, "r2")["probiha"]
+
+
+def test_owned_and_target(imports):
+    mine = make_import(imports, {"a.jpg": "a", "b.jpg": "bb"})
+    imports.create("Kopáčová, Jana")
+    imports.set_target(mine, ME, EVENT, False)
+    [item] = imports.owned("david Spacil")
+    assert item["id"] == mine and item["souboru"] == 2
+    assert item["velikost"] == 3 and item["cil"] == EVENT
+    assert not item["nova"] and not item["probiha"]
+    assert imports.overview(mine, ME, exiftool=fake_exiftool)["cil"] == EVENT
+    assert imports.owned("Novák, Petr") == []
+
+
 # --- API -------------------------------------------------------------------
 
-def api_upload(c, id, files, relace="r1"):
+def api_upload(c, id, files, jmeno=ME):
     for cesta, data in files.items():
         r = c.post(f"/api/import/{id}/soubor", data=data.encode(),
-                   query_string={"relace": relace, "cesta": cesta,
+                   query_string={"jmeno": jmeno, "cesta": cesta,
                                  "mtime": MTIME_MS})
         assert r.status_code == 200, r.json
 
@@ -340,7 +517,13 @@ def api_client(tmp_path, monkeypatch, zapis):
     return make_client(tmp_path, monkeypatch, zapis=zapis)
 
 
-R1 = {"relace": "r1", "jmeno": "Spáčil, David"}
+def stream(r):
+    assert r.status_code == 200, r.get_data(as_text=True)
+    assert r.mimetype == "application/x-ndjson"
+    return [json.loads(line) for line in r.get_data(as_text=True).splitlines()]
+
+
+R1 = {"relace": "r1", "jmeno": ME}
 R2 = {"relace": "r2", "jmeno": "Kopáčová, Jana"}
 
 
@@ -350,28 +533,46 @@ def test_api_dev_mode_plan_only(tmp_path, monkeypatch):
     id = c.post("/api/import", json=dict(R1, celkem=10)).json["id"]
     api_upload(c, id, {"Nove/n.jpg": "n", "v.mp4": "0123456789",
                        "x.pptx": "p"})
-    o = c.get(f"/api/import/{id}", query_string={"relace": "r1"}).json
+    o = c.get(f"/api/import/{id}", query_string={"jmeno": ME}).json
     assert o["pocty"] == {"foto": 1, "video": 1, "nepodporovany": 1}
     assert c.get(f"/api/import/{id}",
-                 query_string={"relace": "r2"}).status_code == 404
-    plan = c.post(f"/api/import/{id}/plan",
-                  json={"relace": "r1", "cil": EVENT}).json
+                 query_string={"jmeno": R2["jmeno"]}).status_code == 404
+    events = stream(c.post(f"/api/import/{id}/plan",
+                           json={"jmeno": ME, "cil": EVENT}))
+    # IMG-…jpg, pozn.txt a v.mp4 v akci mají velikost jako nahrané
+    assert [e["typ"] for e in events] == ["hash"] + ["hash_prubeh"] * 3 + \
+        ["plan"]
+    plan = events[-1]
+    assert plan["cil"] == EVENT and not plan["nova"]
     assert plan_ops(plan) == [("Nove/n.jpg", "n.jpg", "ok"),
                               ("v.mp4", "v.mp4", "duplicita")]
     r = c.post(f"/api/import/{id}/plan",
-               json={"relace": "r1", "nova": EVENT.upper()})
+               json={"jmeno": ME, "nova": EVENT.upper()})
     assert r.status_code == 409 and r.json["akce"] == EVENT
     c.post(f"/api/akce/{EVENT}/zamek", json=R1)
-    r = c.post(f"/api/import/{id}/provest", json={"relace": "r1",
-                                                  "cil": EVENT})
+    r = c.post(f"/api/import/{id}/provest", json=dict(R1, cil=EVENT))
     assert r.status_code == 403 and r.json["chyba"] == "vyvojovy_rezim"
     assert snapshot(archiv) == before
-    assert c.delete(f"/api/import/{id}", json={"relace": "r2"}) \
+    assert c.delete(f"/api/import/{id}", json={"jmeno": R2["jmeno"]}) \
         .status_code == 404
-    assert c.delete(f"/api/import/{id}", json={"relace": "r1"}) \
+    assert c.delete(f"/api/import/{id}", json={"jmeno": ME}) \
         .status_code == 200
     assert c.get(f"/api/import/{id}",
-                 query_string={"relace": "r1"}).status_code == 404
+                 query_string={"jmeno": ME}).status_code == 404
+
+
+def test_api_list(tmp_path, monkeypatch):
+    c, _ = api_client(tmp_path, monkeypatch, zapis=False)
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"a.jpg": "a"})
+    c.post("/api/import", json=R2)
+    stream(c.post(f"/api/import/{id}/plan",
+                  json={"jmeno": ME, "nova": "2026-04-28 nová"}))
+    [item] = c.get("/api/import", query_string={"jmeno": "spacil david"}) \
+        .json["importy"]
+    assert item["id"] == id and item["cil"] == "2026-04-28 nová"
+    assert item["nova"] and item["souboru"] == 1
+    assert c.get("/api/import").json["importy"] == []
 
 
 def test_api_existing_event_needs_lock(tmp_path, monkeypatch):
@@ -379,16 +580,21 @@ def test_api_existing_event_needs_lock(tmp_path, monkeypatch):
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"n.jpg": "n"})
     c.post(f"/api/akce/{EVENT}/zamek", json=R2)
-    body = {"relace": "r1", "cil": EVENT}
+    body = dict(R1, cil=EVENT)
     r = c.post(f"/api/import/{id}/provest", json=body)
     assert r.status_code == 423
     assert r.json["drzitel"]["jmeno"] == R2["jmeno"]
     assert not (archiv / EVENT / "n.jpg").exists()
     assert c.get(f"/api/import/{id}",
-                 query_string={"relace": "r1"}).json["pocty"] == {"foto": 1}
+                 query_string={"jmeno": ME}).json["pocty"] == {"foto": 1}
     c.delete(f"/api/akce/{EVENT}/zamek", json={"relace": "r2"})
     c.post(f"/api/akce/{EVENT}/zamek", json=R1)
-    r = c.post(f"/api/import/{id}/provest", json=body).json
+    events = stream(c.post(f"/api/import/{id}/provest", json=body))
+    assert [e["typ"] for e in events] == [
+        "hash", "hash_prubeh", "hash_prubeh", "start", "soubor",
+        "vysledek"]
+    r = events[-1]
+    assert r["cil"] == EVENT and r["zahozeno"]
     assert plan_ops(r) == [("n.jpg", "n.jpg", "hotovo")]
     assert (archiv / EVENT / "n.jpg").read_text() == "n"
     nove = c.get(f"/api/akce/{EVENT}").json["metadata"]["soubory"]
@@ -400,22 +606,56 @@ def test_api_new_event(tmp_path, monkeypatch):
     name = "2026-04-28 kontrola Stezky"
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"a.jpg": "a", "RAW/a.rw2": "r", "x.pptx": "p"})
-    r = c.post(f"/api/import/{id}/provest",
-               json={"relace": "r1", "nova": name}).json
+    r = stream(c.post(f"/api/import/{id}/provest",
+                      json=dict(R1, nova=name)))[-1]
     assert r["cil"] == name and not r["zahozeno"]
     assert sorted(os.listdir(archiv / name)) == ["RAW.ignored", "a.jpg"]
     lock = c.post(f"/api/akce/{name}/zamek", json=R2)
     assert lock.status_code == 409  # drží ho relace importu
-    assert c.post(f"/api/import/{id}/provest", json={
-        "relace": "r1", "nova": name}).json["chyba"] == "existuje"
+    assert c.post(f"/api/import/{id}/provest", json=dict(
+        R1, nova=name)).json["chyba"] == "existuje"
+
+
+def test_api_new_event_interrupted_releases_lock(tmp_path, monkeypatch):
+    """Zavřená záložka zámek nové akce nepřevezme; server ho uvolní."""
+    monkeypatch.setattr(importer, "STEP", 4)
+    monkeypatch.setattr(importer, "CHUNK", 4)
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
+    name = "2026-04-28 kontrola Stezky"
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"a.jpg": "0123456789", "b.jpg": "b"})
+    r = c.post(f"/api/import/{id}/provest", json=dict(R1, nova=name),
+               buffered=False)
+    chunks = iter(r.response)
+    assert b'"start"' in next(chunks)
+    assert b'"prubeh"' in next(chunks)
+    r.close()
+    assert os.listdir(archiv / name) == []
+    assert c.post(f"/api/akce/{name}/zamek", json=R2).status_code == 200
+
+
+def test_api_running_refused(tmp_path, monkeypatch):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
+    imports = c.application.config["IMPORTS"]
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"a.jpg": "a"})
+    c.post(f"/api/akce/{EVENT}/zamek", json=R1)
+    imports._running[id] = "r2"  # provedení v jiné záložce
+    r = c.post(f"/api/import/{id}/soubor", data=b"b",
+               query_string={"jmeno": ME, "cesta": "b.jpg"})
+    assert r.status_code == 409 and r.json["chyba"] == "probiha"
+    for r in (c.delete(f"/api/import/{id}", json={"jmeno": ME}),
+              c.post(f"/api/import/{id}/provest", json=dict(R1, cil=EVENT))):
+        assert r.status_code == 409 and r.json["chyba"] == "probiha"
+    assert not (archiv / EVENT / "a.jpg").exists()
 
 
 def test_api_upload_errors(tmp_path, monkeypatch):
     c, _ = api_client(tmp_path, monkeypatch, zapis=False)
     id = c.post("/api/import", json=R1).json["id"]
     url = f"/api/import/{id}/soubor"
-    q = {"relace": "r1", "cesta": "a.jpg"}
-    assert c.post(url, data=b"x", query_string=dict(q, relace="r2")) \
+    q = {"jmeno": ME, "cesta": "a.jpg"}
+    assert c.post(url, data=b"x", query_string=dict(q, jmeno=R2["jmeno"])) \
         .status_code == 404
     assert c.post(url, data=b"x", query_string=dict(q, cesta="")) \
         .status_code == 400
@@ -429,7 +669,7 @@ def test_purge_on_start(tmp_path, monkeypatch):
     from fotoarchiv.__main__ import main
     work = tmp_path / "work"
     imp = Imports(work, clock=lambda: 0, disk_usage=free(10 * 2**30))
-    old = imp.create("r1", "x")
+    old = imp.create(ME)
     (tmp_path / "archiv").mkdir()
     monkeypatch.setattr("fotoarchiv.app.Flask.run", lambda *a, **k: None)
     main(["--archiv", str(tmp_path / "archiv"), "--work", str(work)])

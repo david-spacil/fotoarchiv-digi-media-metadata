@@ -5,6 +5,8 @@ archivu se před potvrzením nic nezapíše. Plán má tvar plánu úklidu
 (operace s `blocked` a `duvod`), navíc `stav` ok / blokovano / duplicita.
 `execute` plán sestaví znovu a soubory zkopíruje bez přepsání: dočasný
 `.import-*.tmp` v cílové složce, kontrola cíle těsně před přejmenováním.
+Plán i provedení jsou generátory událostí průběhu (pro stream NDJSON);
+zavření generátoru uprostřed kopie smaže rozkopírovaný soubor.
 """
 
 import hashlib
@@ -21,7 +23,7 @@ from collections import Counter
 from datetime import date
 from pathlib import Path
 
-from . import scan
+from . import names, scan
 from .archive import EVENT_RE, IMPORT_TMP_PREFIX, is_metadata, is_skipped
 from .cleanup import BLOCKED, DONE, FAILED, RAW_DIR, Blocked, _key, is_raw
 
@@ -36,6 +38,8 @@ MAX_FILE = 20 * 2**30
 RESERVE = 2**30          # volné místo, které nahrávání na disku nechá
 MAX_AGE = 7 * 24 * 3600  # neaktivní importy se při startu smažou
 CHUNK = 1 << 20
+STEP = 64 * 2**20        # průběh hashování a kopie i uvnitř velkých souborů
+TMP_AGE = 3600           # starší `.import-*.tmp` v akci jsou po výpadku
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 
 OK = "ok"
@@ -70,12 +74,44 @@ def flat_name(path):
     return name
 
 
-def file_sha256(path):
-    digest = hashlib.sha256()
+def _drain(gen):
+    """Doběhne generátor a vrátí jeho návratovou hodnotu."""
+    while True:
+        try:
+            next(gen)
+        except StopIteration as stop:
+            return stop.value
+
+
+def _relay(gen, event):
+    """`yield from gen` s hodnotami převedenými přes `event`; vrátí výsledek
+    `gen`. Zavření zavře i `gen` (smaže tak rozkopírovaný soubor)."""
+    try:
+        while True:
+            try:
+                value = next(gen)
+            except StopIteration as stop:
+                return stop.value
+            yield event(value)
+    finally:
+        gen.close()
+
+
+def _sha256_steps(path):
+    """Po každých `STEP` bajtech vydá počet přečtených; vrátí sha256."""
+    digest, done, reported = hashlib.sha256(), 0, 0
     with open(path, "rb") as f:
         while chunk := f.read(CHUNK):
             digest.update(chunk)
+            done += len(chunk)
+            if done - reported >= STEP:
+                reported = done
+                yield done
     return digest.hexdigest()
+
+
+def file_sha256(path):
+    return _drain(_sha256_steps(path))
 
 
 # --- nová akce ---------------------------------------------------------------
@@ -117,36 +153,54 @@ def _listing(path):
         return set()
 
 
-def root_hashes(event_dir, sizes, cache_path):
+def iter_root_hashes(event_dir, sizes, cache_path):
     """{sha256: název} souborů v kořeni akce, jejichž velikost je v `sizes`.
 
     Na SMB se čte jen málo dat: jen soubory shodné velikosti, hashe se
-    cachují podle (název, velikost, mtime).
+    cachují podle (název, velikost, mtime). Generátor průběhu: `hash`
+    (kolik souborů a bajtů se porovná) a `hash_prubeh` (kolik je hotovo;
+    po každém souboru, u velkých i po `STEP`). Hashe z cache se počítají
+    hned jako hotové.
     """
     try:
         cache = json.loads(Path(cache_path).read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
         cache = {}
-    result, changed = {}, False
     with os.scandir(event_dir) as it:
-        entries = sorted((e for e in it if e.is_file()), key=lambda e: e.name)
-    for e in entries:
-        if is_skipped(e.name) or is_metadata(e.name):
-            continue
-        st = e.stat()
-        if st.st_size not in sizes:
-            continue
+        todo = [(e, e.stat()) for e in it if e.is_file()
+                and not is_skipped(e.name) and not is_metadata(e.name)]
+    todo = sorted(((e, st) for e, st in todo if st.st_size in sizes),
+                  key=lambda t: t[0].name)
+    if not todo:
+        return {}
+    yield {"typ": "hash", "souboru": len(todo),
+           "bajtu": sum(st.st_size for _, st in todo)}
+    shas, fresh, files, done = {}, [], 0, 0
+    for e, st in todo:
         hit = cache.get(e.name)
         if hit and hit["size"] == st.st_size and \
                 hit["mtime_ns"] == st.st_mtime_ns:
-            sha = hit["sha256"]
+            shas[e.name] = hit["sha256"]
+            files, done = files + 1, done + st.st_size
         else:
-            sha = file_sha256(e.path)
-            cache[e.name] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
-                             "sha256": sha}
-            changed = True
-        result.setdefault(sha, e.name)
-    if changed:
+            fresh.append((e, st))
+
+    def progress(n=0):
+        return {"typ": "hash_prubeh", "hotovo_souboru": files,
+                "hotovo_bajtu": done + n}
+    if files:
+        yield progress()
+    for e, st in fresh:
+        sha = yield from _relay(_sha256_steps(e.path), progress)
+        shas[e.name] = sha
+        cache[e.name] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
+                         "sha256": sha}
+        files, done = files + 1, done + st.st_size
+        yield progress()
+    result = {}
+    for name in sorted(shas):
+        result.setdefault(shas[name], name)
+    if fresh:
         cache_path = Path(cache_path)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache_path.with_suffix(".tmp")
@@ -155,8 +209,17 @@ def root_hashes(event_dir, sizes, cache_path):
     return result
 
 
+def root_hashes(event_dir, sizes, cache_path):
+    return _drain(iter_root_hashes(event_dir, sizes, cache_path))
+
+
 def plan(event_dir, entries, sha_cache=None):
-    """Plán importu souborů `entries` (záznamy z `import.json`).
+    return _drain(iter_plan(event_dir, entries, sha_cache))
+
+
+def iter_plan(event_dir, entries, sha_cache=None):
+    """Plán importu souborů `entries` (záznamy z `import.json`); generátor
+    průběhu porovnání (`iter_root_hashes`), plán vrátí.
 
     `event_dir` = složka cílové akce, None = nová akce (prázdná). Média jdou
     do kořene, RAWy do `RAW.ignored/`. Duplicita (stejný sha256 jako soubor
@@ -169,8 +232,9 @@ def plan(event_dir, entries, sha_cache=None):
     root_dup, root, raw = {}, set(), set()
     if event_dir is not None:
         sizes = {e["velikost"] for e in supported}
-        root_dup = root_hashes(event_dir, sizes, sha_cache) if sha_cache \
-            else {}
+        if sha_cache:
+            root_dup = yield from iter_root_hashes(event_dir, sizes,
+                                                   sha_cache)
         root = _listing(event_dir)
         raw = _listing(os.path.join(event_dir, RAW_DIR))
 
@@ -207,23 +271,68 @@ def plan(event_dir, entries, sha_cache=None):
     }
 
 
+def purge_tmp(event_dir, max_age=TMP_AGE):
+    """Smaže `.import-*.tmp` starší než `max_age` v kořeni akce
+    a v `RAW.ignored/` (zbytky po výpadku SMB); vrátí jejich cesty.
+
+    Volá se jen se zámkem akce, takže čerstvý dočasný soubor patří jen
+    souběžnému importu, který zámek vylučuje; hodina kryje nepřesné
+    hodiny SMB.
+    """
+    removed, now = [], time.time()
+    for sub in ("", RAW_DIR):
+        try:
+            with os.scandir(os.path.join(event_dir, sub)) as it:
+                old = [e for e in it if e.name.startswith(IMPORT_TMP_PREFIX)
+                       and e.name.endswith(".tmp") and e.is_file()
+                       and now - e.stat().st_mtime > max_age]
+        except FileNotFoundError:
+            continue
+        for e in sorted(old, key=lambda e: e.name):
+            rel = f"{sub}/{e.name}" if sub else e.name
+            try:
+                os.unlink(e.path)
+            except OSError as err:
+                log.warning("import %s: %s nejde smazat: %s",
+                            os.path.basename(event_dir), rel, err)
+                continue
+            log.info("import %s: smazán starý dočasný soubor %s",
+                     os.path.basename(event_dir), rel)
+            removed.append(rel)
+    return removed
+
+
 def _copy(src, event_dir, dst, sha, mtime_ns):
-    """Kopie ze stagingu do akce, která nikdy nepřepíše existující cíl."""
+    """Kopie ze stagingu do akce, která nikdy nepřepíše existující cíl.
+
+    Generátor: po každých `STEP` bajtech vydá počet zkopírovaných.
+    Zavření uprostřed smaže dočasný soubor."""
     dst_path = os.path.join(event_dir, dst)
     target_dir = os.path.dirname(dst_path)
     if os.path.basename(target_dir) == RAW_DIR and \
             not os.path.isdir(target_dir):
         os.mkdir(target_dir)
     # Staging a archiv jsou na různých souborových systémech: kopie do
-    # dočasného jména vedle cíle, pak přejmenování.
-    fd, tmp = tempfile.mkstemp(dir=target_dir, prefix=IMPORT_TMP_PREFIX,
-                               suffix=".tmp")
+    # dočasného jména vedle cíle, pak přejmenování. Ne mkstemp: ten
+    # zakládá 0600, práva mají jít podle umask jako u běžné kopie.
+    tmp = os.path.join(target_dir, f"{IMPORT_TMP_PREFIX}"
+                       f"{secrets.token_hex(8)}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
     try:
-        digest = hashlib.sha256()
+        digest, done, reported = hashlib.sha256(), 0, 0
         with open(src, "rb") as fin, os.fdopen(fd, "wb") as fout:
             while chunk := fin.read(CHUNK):
                 fout.write(chunk)
                 digest.update(chunk)
+                done += len(chunk)
+                if done - reported >= STEP:
+                    # Na SMB zápis končí v cache jádra: průběh hlásit až po
+                    # fsync, jinak ukazatel předběhne přenos a přerušení
+                    # čeká na odeslání celé cache.
+                    fout.flush()
+                    os.fsync(fout.fileno())
+                    reported = done
+                    yield done
             fout.flush()
             os.fsync(fout.fileno())
         if digest.hexdigest() != sha:
@@ -242,32 +351,40 @@ def _copy(src, event_dir, dst, sha, mtime_ns):
 def execute(event_dir, entries, staging, sha_cache=None):
     """Sestaví plán znovu a zkopíruje jeho neblokované soubory.
 
-    Vrátí (výsledek, přenesené záznamy). Operace dostanou `stav` hotovo /
-    blokovano / duplicita / chyba a `chyba`; selhání jednoho souboru
-    ostatní nezastaví.
+    Generátor událostí: průběh porovnání (`iter_plan`), `start` (kolik
+    souborů a bajtů se přenese), `prubeh` (bajty souboru `z`, po `STEP`),
+    `soubor` (operace s výsledným stavem, po každém souboru) a nakonec
+    `vysledek` (plán s `stav` hotovo / blokovano / duplicita / chyba
+    a `chyba`, `smazano` = staré dočasné soubory). Selhání jednoho
+    souboru ostatní nezastaví.
     """
-    result = plan(event_dir, entries, sha_cache)
+    removed = purge_tmp(event_dir)
+    result = yield from iter_plan(event_dir, entries, sha_cache)
     by_path = {e["cesta"]: e for e in entries}
-    done = []
+    todo = [o for o in result["operace"] if not o["blocked"]]
+    yield {"typ": "start", "souboru": len(todo),
+           "bajtu": sum(o["velikost"] for o in todo)}
     for o in result["operace"]:
         o["chyba"] = None
-        if o["stav"] == DUPLICATE:
-            continue
-        entry = by_path[o["z"]]
-        try:
-            if o["blocked"]:
-                raise Blocked(o["duvod"])
-            _copy(Path(staging) / entry["ulozeno"], event_dir, o["do"],
-                  entry["sha256"], entry["mtime_ns"])
-            o["stav"] = DONE
-            done.append(entry)
-        except Blocked as e:
-            o["stav"], o["duvod"] = BLOCKED, str(e)
-        except OSError as e:
-            o["stav"], o["chyba"] = FAILED, str(e)
-        log.info("import %s: %s → %s: %s %s", os.path.basename(event_dir),
-                 o["z"], o["do"], o["stav"], o["chyba"] or o["duvod"] or "")
-    return result, done
+        if o["stav"] != DUPLICATE:
+            entry = by_path[o["z"]]
+            try:
+                if o["blocked"]:
+                    raise Blocked(o["duvod"])
+                yield from _relay(
+                    _copy(Path(staging) / entry["ulozeno"], event_dir,
+                          o["do"], entry["sha256"], entry["mtime_ns"]),
+                    lambda n: {"typ": "prubeh", "z": o["z"], "bajtu": n})
+                o["stav"] = DONE
+            except Blocked as e:
+                o["stav"], o["duvod"] = BLOCKED, str(e)
+            except OSError as e:
+                o["stav"], o["chyba"] = FAILED, str(e)
+            log.info("import %s: %s → %s: %s %s",
+                     os.path.basename(event_dir), o["z"], o["do"], o["stav"],
+                     o["chyba"] or o["duvod"] or "")
+        yield {"typ": "soubor", "operace": o}
+    yield dict(result, typ="vysledek", smazano=removed)
 
 
 # --- staging -------------------------------------------------------------------
@@ -275,9 +392,12 @@ def execute(event_dir, entries, staging, sha_cache=None):
 class Imports:
     """Rozpracované importy v `work/import/<id>/`.
 
-    `import.json` drží relaci, jméno, čas poslední aktivity a nahrané
-    soubory (cesta ve výběru, uložené jméno, velikost, mtime, sha256).
-    Soubor se do něj zapíše až po úplném nahrání.
+    `import.json` drží jméno vlastníka, časy založení a poslední aktivity,
+    zamýšlený cíl a nahrané soubory (cesta ve výběru, uložené jméno,
+    velikost, mtime, sha256). Soubor se do něj zapíše až po úplném
+    nahrání. Import patří jménu (porovnání jako u návrhů jmen), ne
+    záložce; cizí se chová jako neexistující. Probíhající provedení
+    drží příznak v paměti (server je jeden proces).
     """
 
     def __init__(self, work, clock=time.time, disk_usage=shutil.disk_usage):
@@ -286,6 +406,8 @@ class Imports:
         self.clock = clock
         self.disk_usage = disk_usage
         self._mutex = threading.Lock()
+        self._running = {}  # id → relace (záložka), která provádí
+        self._uploads = {}  # id → {token: rozpracované nahrávání}
 
     def dir(self, id):
         if not isinstance(id, str) or not ID_RE.match(id):
@@ -301,22 +423,53 @@ class Imports:
                        encoding="utf-8")
         os.replace(tmp, path / RECORD)
 
-    def get(self, id, relace):
-        """Záznam importu relace; cizí nebo neexistující vyhodí KeyError."""
+    @staticmethod
+    def _owner(jmeno):
+        return names.normalize(jmeno) if isinstance(jmeno, str) else ""
+
+    def get(self, id, jmeno):
+        """Záznam importu uživatele; cizí nebo neexistující vyhodí
+        KeyError."""
         try:
             record = json.loads((self.dir(id) / RECORD).read_text("utf-8"))
         except (FileNotFoundError, ValueError):
             raise KeyError(id) from None
-        if not relace or record.get("relace") != relace:
+        owner = self._owner(jmeno)
+        if not owner or self._owner(record.get("jmeno")) != owner:
             raise KeyError(id)
         return record
+
+    def check_idle(self, id):
+        """Vyhodí Refused `probiha`, když se import právě provádí."""
+        if id in self._running:
+            raise Refused("probiha")
+
+    def owned(self, jmeno):
+        """Rozpracované importy uživatele, nejnovější aktivita první."""
+        result = []
+        if not self.root.is_dir():
+            return result
+        for path in self.root.iterdir():
+            try:
+                record = self.get(path.name, jmeno)
+            except KeyError:
+                continue
+            files = record["soubory"]
+            result.append({
+                "id": path.name, "zalozeno": record["zalozeno"],
+                "aktivita": record["aktivita"], "souboru": len(files),
+                "velikost": sum(s["velikost"] for s in files),
+                "cil": record.get("cil"), "nova": record.get("nova", False),
+                "probiha": path.name in self._running,
+                "nahrava": bool(self._uploads.get(path.name))})
+        return sorted(result, key=lambda i: -i["aktivita"])
 
     def check_space(self, size):
         free = self.disk_usage(self.root).free
         if size + RESERVE > free:
             raise Refused("malo_mista", volno=free)
 
-    def create(self, relace, jmeno, celkem=0):
+    def create(self, jmeno, celkem=0):
         """Založí import; `celkem` = součet velikostí ohlášený klientem."""
         self.root.mkdir(parents=True, exist_ok=True)
         self.check_space(celkem)
@@ -324,18 +477,30 @@ class Imports:
         path = self.root / id
         (path / FILES_DIR).mkdir(parents=True)
         now = self.clock()
-        self._write(path, {"relace": relace, "jmeno": jmeno,
-                           "zalozeno": now, "aktivita": now, "soubory": []})
+        self._write(path, {"jmeno": jmeno, "zalozeno": now, "aktivita": now,
+                           "cil": None, "nova": False, "soubory": []})
         return id
 
-    def add_file(self, id, relace, cesta, stream, length, mtime_ms=None):
+    def activity(self, id, relace):
+        """Co s importem právě dělají jiné záložky než `relace`."""
+        uploads = [{"cesta": u["cesta"], "prijato": u["prijato"],
+                    "velikost": u["velikost"]}
+                   for u in list(self._uploads.get(id, {}).values())
+                   if u["relace"] != relace]
+        return {"nahrava": sorted(uploads, key=lambda u: u["cesta"]),
+                "probiha": id in self._running
+                and self._running[id] != relace}
+
+    def add_file(self, id, jmeno, cesta, stream, length, mtime_ms=None,
+                 relace=None):
         """Uloží jeden nahraný soubor ze streamu; vrátí jeho záznam.
 
         Zapisuje do dočasného jména, do `import.json` jde až úplný soubor.
         Stejná `cesta` nahraná znovu nahradí předchozí. `Thumbs.db` se
-        zahodí (None).
+        zahodí (None). Během provedení importu odmítne (`probiha`).
         """
-        self.get(id, relace)
+        self.get(id, jmeno)
+        self.check_idle(id)
         name = flat_name(cesta)
         if length is None:
             raise Refused("bez_delky")
@@ -349,6 +514,12 @@ class Imports:
         self.check_space(length)
         fd, tmp = tempfile.mkstemp(dir=path / FILES_DIR,
                                    prefix=IMPORT_TMP_PREFIX, suffix=".tmp")
+        # Rozpracované nahrávání vidí jiné záložky (`activity`).
+        token = object()
+        progress = {"relace": relace, "cesta": cesta, "prijato": 0,
+                    "velikost": length}
+        with self._mutex:
+            self._uploads.setdefault(id, {})[token] = progress
         try:
             digest, size = hashlib.sha256(), 0
             with os.fdopen(fd, "wb") as f:
@@ -356,13 +527,15 @@ class Imports:
                     f.write(chunk)
                     digest.update(chunk)
                     size += len(chunk)
+                    progress["prijato"] = size
             if size != length:
                 raise Refused("neuplny")
             if mtime_ms is not None:
                 ns = int(mtime_ms) * 1_000_000
                 os.utime(tmp, ns=(ns, ns))
             with self._mutex:
-                record = self.get(id, relace)
+                record = self.get(id, jmeno)
+                self.check_idle(id)
                 for old in [s for s in record["soubory"]
                             if s["cesta"] == cesta]:
                     record["soubory"].remove(old)
@@ -387,6 +560,11 @@ class Imports:
                 self._write(path, record)
         finally:
             Path(tmp).unlink(missing_ok=True)
+            with self._mutex:
+                uploads = self._uploads.get(id, {})
+                uploads.pop(token, None)
+                if not uploads:
+                    self._uploads.pop(id, None)
         return entry
 
     def _remove(self, id):
@@ -394,9 +572,10 @@ class Imports:
         (self.work / "cache" / "scan" / f"import-{id}.json").unlink(
             missing_ok=True)
 
-    def discard(self, id, relace):
-        self.get(id, relace)
+    def discard(self, id, jmeno):
+        self.get(id, jmeno)
         with self._mutex:
+            self.check_idle(id)
             self._remove(id)
 
     def purge(self, max_age=MAX_AGE):
@@ -418,9 +597,10 @@ class Imports:
                 removed.append(path.name)
         return removed
 
-    def overview(self, id, relace, exiftool=scan.run_exiftool):
-        """Přehled nahraných souborů: typy, data a přístroje z EXIF."""
-        record = self.get(id, relace)
+    def overview(self, id, jmeno, exiftool=scan.run_exiftool, relace=None):
+        """Přehled nahraných souborů: typy, data a přístroje z EXIF;
+        `jinde` = co s importem dělají jiné záložky než `relace`."""
+        record = self.get(id, jmeno)
         path = self.dir(id)
         files, _ = scan.scan(path / FILES_DIR, self.work / "cache", exiftool,
                              cache_name=f"import-{id}")
@@ -444,6 +624,9 @@ class Imports:
                                  if i["pristroj"]}),
             "nepodporovane": [i["cesta"] for i in items
                               if i["typ"] == "nepodporovany"],
+            "cil": record.get("cil"),
+            "nova": record.get("nova", False),
+            "jinde": self.activity(id, relace),
         }
 
     def sha_cache(self, event_dir):
@@ -451,28 +634,54 @@ class Imports:
             return None
         return self.work / "cache" / "sha256" / f"{Path(event_dir).name}.json"
 
-    def plan(self, id, relace, event_dir):
-        record = self.get(id, relace)
-        return plan(event_dir, record["soubory"], self.sha_cache(event_dir))
-
-    def execute(self, id, relace, event_dir):
-        """Provede import; přenesené soubory zmizí ze stagingu, prázdný
-        staging se smaže."""
-        record = self.get(id, relace)
-        path = self.dir(id)
-        result, done = execute(event_dir, record["soubory"], path,
-                               self.sha_cache(event_dir))
+    def set_target(self, id, jmeno, cil, nova):
+        """Uloží zamýšlený cíl (název akce, nová?) pro návrat k importu."""
         with self._mutex:
-            record = self.get(id, relace)
-            moved = {e["cesta"] for e in done}
-            for e in done:
-                (path / e["ulozeno"]).unlink(missing_ok=True)
+            record = self.get(id, jmeno)
+            record.update(cil=cil, nova=bool(nova), aktivita=self.clock())
+            self._write(self.dir(id), record)
+
+    def plan(self, id, jmeno, event_dir):
+        """Generátor průběhu porovnání, nakonec událost `plan`."""
+        record = self.get(id, jmeno)
+        result = yield from iter_plan(event_dir, record["soubory"],
+                                      self.sha_cache(event_dir))
+        yield dict(result, typ="plan")
+
+    def execute(self, id, jmeno, event_dir, relace=None):
+        """Generátor událostí provedení (`execute`); přenesený soubor
+        zmizí ze stagingu hned po přenosu, prázdný staging se na konci
+        smaže. Odmítnutí (`probiha`, cizí import) vyhodí už první
+        `next()`; zavření generátoru příznak provádění uvolní."""
+        record = self.get(id, jmeno)
+        path = self.dir(id)
+        with self._mutex:
+            self.check_idle(id)
+            self._running[id] = relace
+        try:
+            by_path = {e["cesta"]: e for e in record["soubory"]}
+            for event in execute(event_dir, record["soubory"], path,
+                                 self.sha_cache(event_dir)):
+                if event["typ"] == "soubor" and \
+                        event["operace"]["stav"] == DONE:
+                    self._moved(id, jmeno, by_path[event["operace"]["z"]])
+                elif event["typ"] == "vysledek":
+                    with self._mutex:
+                        left = self.get(id, jmeno)["soubory"]
+                        event["zahozeno"] = not left
+                        if not left:
+                            self._remove(id)
+                yield event
+        finally:
+            self._running.pop(id, None)
+
+    def _moved(self, id, jmeno, entry):
+        """Odebere přenesený soubor ze stagingu i z `import.json`."""
+        with self._mutex:
+            path = self.dir(id)
+            record = self.get(id, jmeno)
+            (path / entry["ulozeno"]).unlink(missing_ok=True)
             record["soubory"] = [s for s in record["soubory"]
-                                 if s["cesta"] not in moved]
+                                 if s["cesta"] != entry["cesta"]]
             record["aktivita"] = self.clock()
-            result["zahozeno"] = not record["soubory"]
-            if record["soubory"]:
-                self._write(path, record)
-            else:
-                self._remove(id)
-        return result
+            self._write(path, record)
