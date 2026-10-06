@@ -11,6 +11,7 @@ import os
 import unicodedata
 
 from .archive import is_skipped
+from .scan import MEDIA_EXT, extension
 
 log = logging.getLogger(__name__)
 
@@ -18,6 +19,8 @@ RAW_EXT = {"rw2", "cr2", "cr3", "nef", "arw", "dng", "orf", "raf"}
 RAW_DIR = "RAW.ignored"
 K_ODSTRANENI = "k_odstraneni.ignored"
 IGNORED = ".ignored"
+
+SAMPLES = 8
 
 MOVE = "presunout"
 KEEP = "ponechat"
@@ -40,8 +43,17 @@ def _scan_dir(path):
     return sorted(files), sorted(dirs)
 
 
+def samples(files, k=SAMPLES):
+    """Až `k` souborů rovnoměrně z celé složky; média mají přednost."""
+    media = [f for f in files if extension(f) in MEDIA_EXT]
+    pool = media or files
+    n = len(pool)
+    return [pool[i * n // k] for i in range(k)] if n > k else pool
+
+
 def subfolders(event_dir):
-    """Podsložky bez `.ignored` s počty souborů a RAWů a cílem ponechání."""
+    """Podsložky bez `.ignored` s počty souborů a RAWů, cílem ponechání
+    a ukázkami obsahu."""
     _, dirs = _scan_dir(event_dir)
     result = []
     for name in dirs:
@@ -56,6 +68,7 @@ def subfolders(event_dir):
             "souboru": len(counted),
             "rawu": raws,
             "podslozek": len(nested),
+            "ukazky": samples(counted),
             "cil": RAW_DIR if mostly_raw else name + IGNORED,
             # Návrh volby: RAWovou složku ponechat, ostatní k rozhodnutí.
             "navrh": KEEP if mostly_raw else None,

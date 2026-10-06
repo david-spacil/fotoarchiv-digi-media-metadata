@@ -148,6 +148,15 @@ dialog .buttons { display: flex; gap: 8px; justify-content: flex-end; }
 
 .strip { display: flex; gap: 4px; margin: 4px 0 6px; overflow: hidden; }
 .strip img { height: 72px; width: auto; background: #e2e8f0; }
+.samples { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 6px; }
+.samples figure { margin: 0; width: 112px; font-size: 11px; }
+.samples img { display: block; height: 72px; max-width: 112px;
+  background: #e2e8f0; cursor: zoom-in; }
+.samples span { display: block; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: #4a5568; }
+dialog.sample { padding: 8px; cursor: zoom-out; }
+dialog.sample img { display: block; max-width: 90vw; max-height: 80vh; }
+dialog.sample p { margin: 6px 0 0; }
 .eventbar .export { margin-left: auto; display: flex; gap: 8px;
   align-items: baseline; }
 #export-status { font-size: 12px; color: #276749; white-space: nowrap; }
