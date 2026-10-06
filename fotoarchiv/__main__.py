@@ -7,7 +7,7 @@ import logging
 import sys
 from pathlib import Path
 
-from . import immich, importer, xmp
+from . import immich, importer, index, xmp
 from .app import create_app
 from .archive import Workspace, adopt
 
@@ -50,8 +50,8 @@ def exportovat(argv):
     parser = argparse.ArgumentParser(
         prog="python -m fotoarchiv exportovat",
         description="Zapíše XMP sidecary zadané akce, nebo všech akcí "
-                    "s _metadata.json (jen chybějící a změněné). Zámky "
-                    "akcí nekontroluje.")
+                    "s _metadata.json (jen chybějící a změněné), a "
+                    "přegeneruje index archivu. Zámky akcí nekontroluje.")
     common(parser)
     parser.add_argument("akce", nargs="?",
                         help="název složky akce (bez něj všechny)")
@@ -81,6 +81,11 @@ def exportovat(argv):
         for error in result["chyby"]:
             print(f"  {error['soubor']}: {error['chyba']}")
         failed = failed or bool(result["chyby"])
+    warnings = index.write(ws)
+    for warning in warnings:
+        print(f"varování: {warning}")
+    if not warnings:
+        print(f"index: {index.target_dir(ws)}")
     if failed:
         sys.exit(1)
 

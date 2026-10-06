@@ -13,6 +13,7 @@ from flask import Flask, Response, abort, jsonify, request, send_file
 
 from . import (cleanup, geocode, immich, importer, lock, model, names, scan,
                thumbs, xmp)
+from . import index as archive_index
 from .archive import SCHEMA, Conflict, Workspace
 
 STATIC = Path(__file__).parent / "static"
@@ -184,7 +185,8 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         result = xmp.export(ws, nazev)
         if result is None:
             return {"chyba": "bez_metadat"}, 409
-        return dict(result, export_version=ws.export_version(nazev))
+        return dict(result, export_version=ws.export_version(nazev),
+                    index=archive_index.write(ws))
 
     @app.post("/api/akce/<nazev>/dokoncit")
     def akce_finish(nazev):
@@ -209,7 +211,8 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
         except Conflict as e:
             return {"chyba": "konflikt", "version": e.current_version}, 409
         return dict(result, dokonceno=doc["dokonceno"], version=version,
-                    export_version=ws.export_version(nazev))
+                    export_version=ws.export_version(nazev),
+                    index=archive_index.write(ws))
 
     def cleanup_args(path, doc, body):
         """(volby, RAWy z kořene, k vyřazení) pro plán úklidu.
@@ -493,6 +496,7 @@ def create_app(archiv, work, zapis=False, locks=None, kontakt=None,
                     event["skupiny"] = dict(
                         write_groups(nazev, path, had_doc, event["skupiny"]),
                         **event["skupiny"])
+                    event["index"] = archive_index.write(ws)
                 yield event
                 finished = event["typ"] == "vysledek"
         stream = tagged()

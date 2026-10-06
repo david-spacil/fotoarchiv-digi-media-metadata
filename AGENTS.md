@@ -50,9 +50,10 @@ obě se testují proti `tests/fixtures/inheritance/*.json` — měnit spolu.
 
 Pravidla, která se táhnou přes víc částí README a snadno se poruší:
 
-- **Zdroj pravdy je `_metadata.json` ve složce akce.** XMP sidecary a CSV
-  index jsou čistě generované výstupy — nikdy z nich nečíst zpět a nikdy je
-  needitovat ručně.
+- **Zdroj pravdy je `_metadata.json` ve složce akce.** XMP sidecary a index
+  (`_INDEX.html`, `_INDEX.md`, `index.py`) jsou čistě generované výstupy —
+  nikdy z nich nečíst zpět a nikdy je needitovat ručně. Index se
+  přegeneruje jen po importu a exportu, ne při uložení.
 - **Originály fotek a videí se nemění** (žádný zápis EXIF/XMP do souboru).
 - **Dědění akce → skupina → soubor**, nižší úroveň přepisuje vyšší. Sidecar
   obsahuje hodnoty už rozepsané (zděděné), JSON jen to, co je na dané úrovni

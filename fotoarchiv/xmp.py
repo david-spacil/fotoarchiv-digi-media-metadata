@@ -176,8 +176,12 @@ def sidecar(doc, akce, soubor, geometry=None):
     return HEAD + "\n".join(lines) + "\n" + TAIL
 
 
-def write_atomic(path, data):
-    """Zápis přes dočasný soubor (začíná tečkou) ve stejné složce."""
+def write_atomic(path, data, mode=None):
+    """Zápis přes dočasný soubor (začíná tečkou) ve stejné složce.
+
+    `mkstemp` zakládá soubor s právy 0600; `mode` je nastaví před
+    přejmenováním (na SMB bez unixových rozšíření chmod nic neudělá).
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=XMP_TMP_PREFIX,
                                suffix=".tmp")
@@ -186,6 +190,8 @@ def write_atomic(path, data):
             f.write(data)
             f.flush()
             os.fsync(f.fileno())
+        if mode is not None:
+            os.chmod(tmp, mode)
         os.replace(tmp, path)
     except BaseException:
         Path(tmp).unlink(missing_ok=True)

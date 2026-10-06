@@ -44,7 +44,8 @@ Na Windows místo `.venv/bin/` použít `.venv\Scripts\`.
 
 - Na první úrovni složky akcí `YYYY-MM-DD název`. Zpracovávají se jen
   ty; ostatní (`přetřídit`, `přednášky SKLEP TIC`) se nechávají beze
-  změny.
+  změny. Výjimkou je generovaný index `_INDEX.html` a `_INDEX.md`
+  (viz [Výstupy](#výstupy)).
 - Ve složkách jsou JPG, mp4, RW2, občas png/zip a `Thumbs.db`
   (ignorovat). Některé akce mají podsložky (`RAW`, `Video`, …), viz
   [Podsložky a RAW](#podsložky-a-raw).
@@ -249,8 +250,27 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
   (`přetřídit`, `přednášky SKLEP TIC`). Testovací knihovna vidí
   archiv pod `/mnt/media/fotoarchiv/…`; aplikace z ní čte jen
   pojmenované obličeje (viz Aplikace, Immich).
-- **Index** celého archivu (CSV, jeden řádek na akci) nahrazuje ručně
-  vedený `_metadata.xlsx`. Generuje se, needituje.
+- **Index** celého archivu pro lidi v Průzkumníku, místo ručně
+  vedeného `_metadata.xlsx`. Generuje se, needituje; zdrojem jsou jen
+  `_metadata.json` a soubory v kořeni akcí. Obsahuje všechny složky
+  akcí (i nezpracované) podle data sestupně:
+  - `_INDEX.html`: jeden soubor bez externích zdrojů, karta na akci
+    (náhled prvního JPEG, datum, název, stav, místa, fotografové,
+    účastníci, osoby z obličejů s počtem, počty foto/video, přístroje),
+    odkaz do složky akce; s JavaScriptem hledání bez diakritiky
+    a filtry roku a stavu. Upozornění na generování jen v komentáři.
+  - `_INDEX.md`: upozornění, že je soubor generovaný, a tabulka
+    `fancy_grid` (Datum, Akce, Místa akce, Fotili, Foto, Video).
+
+  Fotografové jsou seřazení podle počtu souborů akce ve výsledných
+  (zděděných) `autori`, zkráceně `Příjmení J.`. Index se přegeneruje
+  po provedení importu, po exportu z aplikace (Exportovat, dokončení)
+  a na konci `python -m fotoarchiv exportovat`, ne při uložení.
+  Zapisuje se atomicky a jen při změně obsahu (bez času generování);
+  selhání je jen varování. V produkčním režimu jde do kořene archivu
+  s relativními odkazy, ve vývojovém do `.work/index/` s odkazy
+  `file://` do archivu. `_metadata.xlsx` aplikace nemění; smazat ho je
+  na člověku.
 
 ## Aplikace
 

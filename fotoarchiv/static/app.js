@@ -1823,6 +1823,7 @@ async function runExport(finish) {
     state.exportNote = (finish && !r.dokonceno
       ? "Export selhal, akce není dokončená: " : "Exportováno: ") +
       exportResult(r);
+    if (r.index?.length) state.exportNote += ` · Index: ${r.index.join("; ")}`;
   } catch (err) {
     if (name !== state.name) return;
     if (err.status === 409 && err.data?.chyba === "konflikt") {
@@ -3093,6 +3094,9 @@ function renderImportResult() {
     r.skupiny && !r.skupiny.zapsano ? h("p", { class: "notice error" },
       `Skupiny se nepodařilo zapsat (${r.skupiny.chyba}); přenesené ` +
       "soubory jsou v akci bez skupiny, rozdělte je na ploše.") : null,
+    r.index?.length ? h("p", { class: "notice error" },
+      `Index archivu se nepodařilo aktualizovat: ${r.index.join("; ")}`)
+      : null,
     r.skupiny?.zapsano && r.skupiny.navrh &&
       Object.keys(r.skupiny.prirazeni).length
       ? h("p", { class: "meta" }, "Skupiny se použijí jako návrh při " +

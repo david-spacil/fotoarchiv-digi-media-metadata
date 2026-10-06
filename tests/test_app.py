@@ -280,12 +280,15 @@ def test_export_endpoint(client, tmp_path):
     d = c.get(f"/api/akce/{EVENT}").json["export"]
     assert d == {"kontrola": {"zapsano": 3, "nezmeneno": 0, "chyby": []},
                  "version": None}
+    # Uložení ani kontrola nanečisto index negenerují.
+    assert not (tmp_path / "work" / "index").exists()
     url = f"/api/akce/{EVENT}/export"
     assert c.post(url, json={"relace": "r2"}).status_code == 423
     r = c.post(url, json={"relace": "r1"})
     assert r.status_code == 200
     assert r.json == {"zapsano": 3, "nezmeneno": 0, "chyby": [],
-                      "export_version": version}
+                      "export_version": version, "index": []}
+    assert (tmp_path / "work" / "index" / "_INDEX.html").exists()
     assert (tmp_path / "work" / "xmp" / EVENT / "foto.jpg.xmp").exists()
     assert c.get(f"/api/akce/{EVENT}").json["export"]["kontrola"][
         "zapsano"] == 0
@@ -306,6 +309,9 @@ def test_finish(prod):
     assert r.json["zapsano"] == 3
     assert r.json["export_version"] == r.json["version"]
     assert (archiv / EVENT / "foto.jpg.xmp").exists()
+    assert r.json["index"] == []
+    assert "kontrola" in (archiv / "_INDEX.md").read_text()
+    assert "hotovo" in (archiv / "_INDEX.html").read_text()
     event = c.get("/api/akce").json[0]
     assert event["stav"] == "hotovo" and not event["zmeneno_po_exportu"]
     # Sidecary nejsou nezpracované soubory ani se nepočítají.
@@ -318,7 +324,7 @@ def test_finish_export_error(prod, monkeypatch):
     c, archiv = prod
     _, version = saved(c)
 
-    def failing(path, data):
+    def failing(path, data, mode=None):
         raise OSError("zápis selhal")
 
     monkeypatch.setattr("fotoarchiv.xmp.write_atomic", failing)
@@ -326,6 +332,7 @@ def test_finish_export_error(prod, monkeypatch):
                json={"relace": "r1", "version": version})
     assert r.status_code == 200 and r.json["dokonceno"] is None
     assert len(r.json["chyby"]) == 3
+    assert len(r.json["index"]) == 2
     assert json.loads((archiv / EVENT / "_metadata.json").read_text())[
         "dokonceno"] is None
     assert c.get("/api/akce").json[0]["stav"] == "rozpracovano"
@@ -341,6 +348,9 @@ def test_cli_export(tmp_path, monkeypatch, capsys):
     out = capsys.readouterr().out
     assert f"{EVENT}: zapsáno 3, nezměněno 0, selhalo 0" in out
     assert "přeskočeno: 2020-01-01 bez metadat" in out
+    assert f"index: {tmp_path / 'work' / 'index'}" in out
+    assert "bez metadat" in (tmp_path / "work" / "index" / "_INDEX.md") \
+        .read_text()
     assert snapshot(archiv) == before
     main(["exportovat", EVENT, "--archiv", str(archiv), "--work", work])
     assert "zapsáno 0, nezměněno 3" in capsys.readouterr().out

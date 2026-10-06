@@ -773,6 +773,11 @@ def test_api_new_event(tmp_path, monkeypatch):
                       json=dict(R1, nova=name)))[-1]
     assert r["cil"] == name and not r["zahozeno"]
     assert sorted(os.listdir(archiv / name)) == ["RAW.ignored", "a.jpg"]
+    assert r["index"] == []
+    row = next(line for line in (archiv / "_INDEX.md").read_text()
+               .splitlines() if "kontrola Stezky" in line)
+    assert [c.strip() for c in row.strip("│").split("│")][-2:] == ["1", "0"]
+    assert 'data-stav="nezpracovano"' in (archiv / "_INDEX.html").read_text()
     lock = c.post(f"/api/akce/{name}/zamek", json=R2)
     assert lock.status_code == 409  # drží ho relace importu
     assert c.post(f"/api/import/{id}/provest", json=dict(
