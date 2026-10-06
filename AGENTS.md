@@ -37,7 +37,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 .venv/bin/python -m pytest -q                       # testy Pythonu
 .venv/bin/python -m pytest tests/test_cleanup.py::test_collision_blocks
-node --test tests/js                                # dědění v JS
+node --test tests/js/*.test.mjs                     # testy JS
 ```
 
 Systémově: `exiftool`, `ffmpeg` (bez něj video bez náhledu), `node` jen
