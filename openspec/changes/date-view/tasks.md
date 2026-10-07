@@ -49,3 +49,11 @@
   v prohlížeči
 - [x] 4.4 Testovací archiv: soubor se dvěma autory, s pěti autory
   a bez autorů; aktualizovat `README.md` o značku autorů
+
+## 5. Značka autorů i v zobrazení podle data
+
+- [x] 5.1 `markFn()` vrací značku autorů v obou zobrazeních, značka
+  skupiny (barva skupiny, název v popisku) se odstraní; ověřit
+  v prohlížeči scénáře Značka autorů po skupinách i podle data a že
+  dlaždice podle data nemá název skupiny
+- [x] 5.2 Aktualizovat `README.md` (značka autorů v obou zobrazeních)

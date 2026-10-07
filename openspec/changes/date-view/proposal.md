@@ -3,8 +3,8 @@
 Skupiny pomáhají při editaci, ale při prohlížení akce rozhazují fotky:
 snímky z různých přístrojů téže chvíle leží daleko od sebe (issue #3).
 Chybí pohled, kde jsou všechny soubory akce za sebou podle data.
-V zobrazení po skupinách zase není vidět, kdo které fotky mohl
-pořídit a kde autoři chybí.
+V žádném zobrazení navíc není vidět, kdo které fotky mohl pořídit a kde
+autoři chybí.
 
 ## What Changes
 
@@ -16,12 +16,9 @@ pořídit a kde autoři chybí.
   bez data jsou na konci v oddílu „Bez data“.
 - Klik na hlavičku dne vybere soubory toho dne (jako u „Bez skupiny“).
   Skupina jako celek jde vybrat jen v zobrazení po skupinách.
-- V zobrazení podle data nese každá dlaždice v mřížce i v pásu barevný
-  proužek své skupiny. Dlaždice v mřížce má navíc název skupiny
-  v popisku. Soubor bez skupiny proužek nemá.
 - Šipky, Shift-výběr a výběr tažením se řídí aktuálním zobrazeným
   pořadím. Výběr i aktuální soubor zůstanou při přepnutí zachované.
-- V zobrazení po skupinách nese dlaždice v mřížce i v pásu pruh podle
+- V obou zobrazeních nese dlaždice v mřížce i v pásu pruh podle
   výsledných (zděděných) autorů. Každá osoba akce má vlastní barvu
   a pruh se dělí na úseky v barvách autorů, nejvýš tři barevné, další
   autoři jako jeden šedý úsek. Soubor bez autorů má šrafovaný pruh,
@@ -35,10 +32,9 @@ pořídit a kde autoři chybí.
 
 ### Modified Capabilities
 - `metadata-workspace`: mřížka umí kromě skupin zobrazit soubory podle
-  data s předěly po dnech a se značkou skupiny na dlaždici; po
-  skupinách nese dlaždice značku autorů.
+  data s předěly po dnech; dlaždice nese značku autorů.
 - `loupe-view`: filmový pás se řídí zvoleným zobrazením (předěly
-  skupin, nebo dnů, a značky autorů, nebo skupin).
+  skupin, nebo dnů) a nese značky autorů.
 
 ## Impact
 

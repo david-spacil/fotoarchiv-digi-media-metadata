@@ -17,7 +17,7 @@ soubory oddílu. Datum pořízení je řetězec `RRRR-MM-DD` nebo
 
 **Non-Goals:**
 - Ukládání volby na server nebo do `_metadata.json`.
-- Vlastní barvy skupin nastavitelné uživatelem a legenda barev.
+- Vlastní barvy osob nastavitelné uživatelem a legenda barev.
 - Změny průvodce, lišty chybějících údajů a exportu.
 
 ## Decisions
@@ -40,26 +40,23 @@ soubory oddílu. Datum pořízení je řetězec `RRRR-MM-DD` nebo
   ne `Intl`, aby výsledek nezávisel na ICU v Node ani v prohlížeči.
   Alternativa: přidat funkce do `datetime.js`. Ten ale řeší úpravu
   hodnoty pole, ne rozvržení plochy.
-- **Barva skupiny podle pořadí skupiny v `groupIds()`.** Index určuje
-  barvu z pevné palety (8 dobře odlišitelných odstínů) přes CSS
-  proměnnou `--gc` na dlaždici. Proužek je levý okraj dlaždice v mřížce
-  a spodní okraj v pásu. Barva je tak v rámci akce stabilní
-  a nezávislá na názvu. Alternativa: hash názvu. Ten dá stabilitu mezi
-  akcemi, ale častěji kolize u akcí s 2–3 skupinami.
 - **Přepínač jako druhá dvojice tlačítek ve stylu `.views`.** Přepnutí
   zavolá `renderGrid()` (ten překreslí i pás) a zachová `state.sel`
   i `state.current`. Aktuální soubor se pak posune do viditelné oblasti.
   Vybraná hlavička skupiny (`state.group`) se při přepnutí na Podle
   data zruší a formulář přejde na akci. Hlavička skupiny tam totiž
   není vidět.
-
+- **Značka autorů v obou zobrazeních, ne značka skupiny.** Po skupinách
+  je příslušnost ke skupině vidět z oddílu. Podle data skupina (obvykle
+  přístroj) při prohlížení nic nepřidá, autoři ano. Jedna značka v obou
+  zobrazeních je také jednodušší kód i výklad. Alternativa: podle data
+  značka skupiny (první verze změny) se ukázala jako zbytečná.
 - **Značka jako pseudoelement s proměnnou `--stops`.** Rámeček
   (`border`) má jen jednu barvu na hranu, pruh autorů jich potřebuje
   víc. Dlaždice se značkou dostane třídu `mark` a inline proměnnou
   `--stops` (zarážky `linear-gradient`). V mřížce je pruh `::before`
   v levém 6px okraji (svisle dělený), v pásu `::after` 4px pod
-  dlaždicí (vodorovně). Značka skupiny přejde na týž mechanismus
-  s jednou barvou a vypadá stejně jako dosud. Soubor bez autorů má
+  dlaždicí (vodorovně). Soubor bez autorů má
   třídu `noauth` se šrafováním (`repeating-linear-gradient`).
   Alternativa: `border-image` s gradientem. Ten se ale vztahuje na
   všechny hrany a kolidoval by s rámečkem výběru.
@@ -79,9 +76,6 @@ soubory oddílu. Datum pořízení je řetězec `RRRR-MM-DD` nebo
 
 ## Risks / Trade-offs
 
-- [Víc než 8 skupin → opakované barvy] → Název skupiny v popisku
-  dlaždice v mřížce rozliší skupinu vždy. V pásu se spoléhá na tooltip
-  s názvem souboru a skupiny.
 - [Akce bez dat, např. ještě nezpracovaná] → Celá mřížka je jeden oddíl
   „Bez data“. Je to správné chování a zároveň připomínka, co chybí.
 - [Hodně autorů v 6px pruhu → nečitelné proužky] → Nejvýš tři barevné

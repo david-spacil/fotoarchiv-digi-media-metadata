@@ -72,24 +72,8 @@ soubory oddílu.
 - **THEN** jsou vybrané všechny soubory toho dne a formulář upravuje
   soubory
 
-### Requirement: Značka skupiny v zobrazení podle data
-V zobrazení podle data SHALL dlaždice v mřížce i v pásu nést barevný
-proužek své skupiny; soubory téže skupiny MUST mít stejnou barvu.
-Dlaždice v mřížce SHALL mít v popisku název skupiny. Soubor bez skupiny
-SHALL zůstat bez proužku i názvu. V zobrazení po skupinách se značka
-nezobrazuje.
-
-#### Scenario: Dlaždice s proužkem
-- **WHEN** fotka `P1503720.JPG` patří do skupiny `Panasonic DC-G9`
-- **THEN** její dlaždice má proužek barvy této skupiny a v popisku
-  `Panasonic DC-G9`
-
-#### Scenario: Soubor bez skupiny
-- **WHEN** soubor nepatří do žádné skupiny
-- **THEN** jeho dlaždice nemá proužek ani název skupiny
-
-### Requirement: Značka autorů v zobrazení po skupinách
-V zobrazení po skupinách SHALL dlaždice v mřížce i v pásu nést pruh
+### Requirement: Značka autorů na dlaždici
+Na pracovní ploše SHALL dlaždice v mřížce i v pásu nést pruh
 podle výsledných autorů souboru. Každá osoba akce MUST mít jednu barvu;
 pruh se dělí na stejné úseky v barvách autorů, nejvýš tři, další autoři
 SHALL tvořit jeden šedý úsek. Soubor bez autorů SHALL mít šrafovaný
@@ -128,3 +112,9 @@ k vyřazení a průvodce značku nemají.
 #### Scenario: Soubor k vyřazení
 - **WHEN** soubor je označený k vyřazení
 - **THEN** jeho dlaždice nemá pruh autorů
+
+#### Scenario: Autoři v zobrazení podle data
+- **WHEN** v zobrazení podle data leží pod jedním dnem soubory dvou
+  skupin s různými autory
+- **THEN** jejich dlaždice mají pruhy v barvách svých autorů a popisek
+  neuvádí název skupiny

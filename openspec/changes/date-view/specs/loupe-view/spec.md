@@ -18,10 +18,10 @@ aktuální soubor.
 - **WHEN** je zvoleno zobrazení podle data a soubory akce jsou z 27.
   a 28. 4. 2026
 - **THEN** pás ukáže soubory obou dnů za sebou s předělem a datem
-  každého dne a dlaždice nesou proužek barvy své skupiny
+  každého dne a dlaždice nesou pruh v barvách svých autorů
 
 #### Scenario: Autoři v pásu
-- **WHEN** je zvoleno zobrazení po skupinách a soubor má dva autory
+- **WHEN** soubor má dva autory
 - **THEN** dlaždice v pásu má pod sebou pruh ze dvou úseků v barvách
   autorů
 
