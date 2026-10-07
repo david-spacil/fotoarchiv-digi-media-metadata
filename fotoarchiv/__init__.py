@@ -1,1 +1,1 @@
-"""Prototyp průvodce metadaty digitální fotodokumentace ARÚB."""
+"""Průvodce metadaty digitální fotodokumentace ARÚB."""

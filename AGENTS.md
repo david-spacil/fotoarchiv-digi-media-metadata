@@ -4,8 +4,8 @@ Pokyny pro AI agenty (Claude Code, Codex aj.) pracující v tomto repozitáři.
 
 ## Stav
 
-Prototyp: Flask server v `fotoarchiv/`, klient v `fotoarchiv/static/`
-(čisté ES moduly bez build kroku). Bez přepínače vývojový režim: archiv
+Flask server v `fotoarchiv/`, klient v `fotoarchiv/static/` (čisté ES
+moduly bez build kroku). Bez přepínače vývojový režim: archiv
 jen čte, `_metadata.json` a cache ukládá do `.work/`. S
 `--zapis-do-archivu` produkční: `_metadata.json` ve složce akce, úklid
 a import se provádějí; cache a nahrané soubory importu

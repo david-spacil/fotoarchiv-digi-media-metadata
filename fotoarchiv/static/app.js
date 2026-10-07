@@ -1,4 +1,4 @@
-// Klient prototypu: seznam akcí, průvodce prvním otevřením a pracovní
+// Klient: seznam akcí, průvodce prvním otevřením a pracovní
 // plocha. Stav (dokument `_metadata.json`) drží klient a ukládá ho celý.
 
 import { parts, withDay, withTime } from "./datetime.js";
