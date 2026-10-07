@@ -103,7 +103,7 @@ skupinu, když je vybrána hlavička skupiny, a vybrané soubory, když je
 vybrán jeden nebo více souborů. Zděděné hodnoty SHALL být viditelně
 odlišené od zadaných a MUST jít přepsat i vrátit na zděděné. Vyprázdnění
 pole SHALL znamenat vrácení na zděděné (pole se smaže); přepsání na
-prázdnou hodnotu prototyp nepodporuje.
+prázdnou hodnotu aplikace nepodporuje.
 
 #### Scenario: Hromadné přepsání
 - **WHEN** uživatel vybere 12 souborů a zadá popis

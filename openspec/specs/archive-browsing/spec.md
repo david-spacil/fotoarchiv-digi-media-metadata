@@ -75,7 +75,7 @@ starý, nebo celý nový, i při výpadku během zápisu.
 
 ### Requirement: Převzetí z pracovního adresáře
 Aplikace SHALL nabídnout jednorázové převzetí `_metadata.json`
-z pracovního adresáře prototypu do archivu. Převzetí MUST přeskočit
+z pracovního adresáře do archivu. Převzetí MUST přeskočit
 akce, které už `_metadata.json` v archivu mají, a vypsat je.
 
 #### Scenario: Akce už má metadata v archivu
