@@ -3,7 +3,7 @@
 
 import { parts, withDay, withTime } from "./datetime.js";
 import { missing, resolve, resolveGroup } from "./inherit.js";
-import { byDay, dayLabel } from "./sections.js";
+import { byDay, dayLabel, personIndex, stripeStops } from "./sections.js";
 
 // --- pomocné -------------------------------------------------------------
 
@@ -836,13 +836,65 @@ function dateLayout() {
   return state.mode === "workspace" && state.layout === "datum";
 }
 
-// Barva skupiny podle jejího pořadí v akci (paleta je v CSS).
-const GROUP_COLORS = 8;
+// --- značky dlaždic ----------------------------------------------------------
+//
+// Podle data: barva skupiny. Po skupinách: pruh z barev autorů. Barvy
+// jsou z palety `--p0…--p7` v CSS podle pořadí skupiny, resp. osoby
+// v akci. Značka = `{ stops, title, label }`; `stops` jsou zarážky
+// gradientu pruhu, `null` = bez autorů (šrafování).
 
-function groupMark(f) {
-  const gid = state.doc.soubory[f]?.skupina;
-  const i = groupIds().indexOf(gid);
-  return i < 0 ? null : { name: groupName(gid), color: i % GROUP_COLORS };
+const PALETTE = 8;
+const color = (i) => `var(--p${i % PALETTE})`;
+
+function surname(name) {
+  return name.split(",")[0].trim();
+}
+
+function dot(c) {
+  return h("i", { class: "dot", style: `--c: ${c}` });
+}
+
+// Funkce soubor → značka (nebo null) pro aktuální zobrazení.
+function markFn() {
+  if (state.mode !== "workspace") return () => null;
+  if (dateLayout()) {
+    const groups = groupIds();
+    return (f) => {
+      const gid = state.doc.soubory[f]?.skupina;
+      const i = groups.indexOf(gid);
+      if (i < 0) return null;
+      const name = groupName(gid);
+      return { stops: stripeStops([color(i)]), title: name,
+        label: [dot(color(i)), name] };
+    };
+  }
+  const authors = (f) => (resolve(state.doc, f).autori?.hodnota || [])
+    .filter((n) => typeof n === "string" && n.trim());
+  const files = Object.keys(state.doc.soubory);
+  const people = personIndex(files.flatMap(authors), nameKey);
+  return (f) => {
+    if (discarded(f)) return null;
+    const names = authors(f);
+    if (!names.length) {
+      return { stops: null, title: "bez autorů", label: ["bez autorů"] };
+    }
+    const colors = names.map((n) => color(people.get(nameKey(n))));
+    // Jména se zalamují jen mezi sebou, ne uvnitř.
+    const label = names.slice(0, 3).flatMap((n, i) =>
+      [i ? " " : "", h("span", { class: "an" }, dot(colors[i]), surname(n))]);
+    if (names.length > 3) label.push(` +${names.length - 3}`);
+    return { stops: stripeStops(colors), title: names.join("; "), label };
+  };
+}
+
+// Třídy a atributy dlaždice se značkou.
+function markAttrs(mark, f) {
+  if (!mark) return { cls: "", title: f, style: null };
+  return {
+    cls: mark.stops ? " mark" : " mark noauth",
+    title: `${f} · ${mark.title}`,
+    style: mark.stops ? `--stops: ${mark.stops}` : null,
+  };
 }
 
 // Oddíl: `key` jednoznačně v rámci zobrazení, `gid` jen u skupiny.
@@ -870,11 +922,12 @@ function sections() {
   return result;
 }
 
-function tile(f) {
+function tile(f, markOf) {
   const info = state.scan[f] || {};
   const present = state.present.has(f);
   const datum = resolve(state.doc, f).datum?.hodnota;
-  const mark = dateLayout() ? groupMark(f) : null;
+  const mark = markOf(f);
+  const m = markAttrs(mark, f);
   const thumb = present
     ? h("img", {
       src: eventUrl(state.name, `/nahled/${encodeURIComponent(f)}`),
@@ -886,26 +939,26 @@ function tile(f) {
   return h("div", {
     class: `tile${present ? "" : " missing"}${info.video ? " video" : ""}` +
       `${state.sel.has(f) ? " selected" : ""}${discarded(f) ? " discard" : ""}` +
-      `${mark ? ` gmark gc${mark.color}` : ""}`,
-    dataset: { file: f },
-    title: mark ? `${f} · ${mark.name}` : f,
+      m.cls,
+    dataset: { file: f }, title: m.title, style: m.style,
   }, thumb,
   h("div", { class: "cap" }, h("span", { class: "fn" }, f),
     h("span", { class: "dt" }, datum ? datum.replace("T", " ") : "bez data"),
-    mark && h("span", { class: "gn" }, mark.name)));
+    mark && h("span", { class: "gn" }, mark.label)));
 }
 
 function renderGrid() {
   const grid = document.getElementById("grid");
   if (!grid) return;
   const secs = sections();
+  const markOf = markFn();
   state.order = secs.flatMap((s) => s.files);
   const nodes = secs.map((s) => h("section", {},
     h("h3", {
       class: `ghead${s.gid && state.group === s.gid ? " selected" : ""}`,
       dataset: { group: s.gid || "", key: s.key },
     }, s.title, h("span", { class: "count" }, ` ${s.files.length}`)),
-    h("div", { class: "tiles" }, s.files.map(tile))));
+    h("div", { class: "tiles" }, s.files.map((f) => tile(f, markOf)))));
   const other = state.detail?.nezpracovane || [];
   if (other.length) {
     nodes.push(h("details", { class: "other" },
@@ -1208,17 +1261,16 @@ function step(dir, extend) {
   }
 }
 
-function filmTile(f) {
+function filmTile(f, markOf) {
   const info = state.scan[f] || {};
   const present = state.present.has(f);
-  const mark = dateLayout() ? groupMark(f) : null;
+  const m = markAttrs(markOf(f), f);
   return h("div", {
     class: `ftile${present ? "" : " missing"}` +
       `${state.sel.has(f) ? " selected" : ""}` +
       `${discarded(f) ? " discard" : ""}` +
-      `${f === state.current ? " current" : ""}` +
-      `${mark ? ` gmark gc${mark.color}` : ""}`,
-    dataset: { file: f }, title: mark ? `${f} · ${mark.name}` : f,
+      `${f === state.current ? " current" : ""}` + m.cls,
+    dataset: { file: f }, title: m.title, style: m.style,
   }, present
     ? h("img", { src: thumbUrl(f), loading: "lazy", alt: "", draggable: false,
       onerror: (e) => e.target.replaceWith(
@@ -1230,13 +1282,14 @@ function renderFilm(secs) {
   const film = document.getElementById("film");
   if (!film || state.view !== "loupe") return;
   const scroll = film.scrollLeft;
+  const markOf = markFn();
   film.replaceChildren(...(secs || sections()).map((s) =>
     h("div", { class: "fsec" },
       h("div", {
         class: `fhead${s.gid && state.group === s.gid ? " selected" : ""}`,
         dataset: { group: s.gid || "", key: s.key }, title: s.title,
       }, s.title),
-      s.files.map(filmTile))));
+      s.files.map((f) => filmTile(f, markOf)))));
   film.scrollLeft = scroll;
   revealCurrent();
 }
@@ -2108,7 +2161,8 @@ function renderPanel() {
   if (state.mode === "wizard") return renderWizardPanel(panel);
   const placeBox = h("div");
   const onChange = (key) => {
-    changed({ grid: key === "datum" });
+    // Datum mění pořadí, autoři značky (a dědí se na soubory pod úrovní).
+    changed({ grid: key === "datum" || key === "autori" });
     if (key === "misto" || key === "gps") renderPlaces(placeBox);
   };
   const afterGroupChange = () => {

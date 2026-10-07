@@ -3,7 +3,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { byDay, dayLabel } from "../../fotoarchiv/static/sections.js";
+import {
+  byDay, dayLabel, personIndex, REST_COLOR, stripeStops,
+} from "../../fotoarchiv/static/sections.js";
 
 const dates = {
   "P1503701.JPG": "2026-04-27T10:00:00",
@@ -47,4 +49,26 @@ test("bez dat jen oddíl bez data, prázdný vstup bez oddílů", () => {
 test("popisek dne", () => {
   assert.equal(dayLabel("2026-04-28"), "út 28. 4. 2026");
   assert.equal(dayLabel("2026-03-01"), "ne 1. 3. 2026");
+});
+
+// Značka autorů (scénáře „Značka autorů v zobrazení po skupinách“).
+const key = (n) => n.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+  .toLowerCase().match(/[\p{L}\p{N}_]+/gu)?.sort().join(" ") || "";
+
+test("barvy osob: pořadí podle klíče, jiný zápis téže osoby", () => {
+  const idx = personIndex(["Zkušební, Petr", "Spáčil, David",
+    "spacil, david", "David Spáčil", ""], key);
+  assert.deepEqual([...idx], [["david spacil", 0], ["petr zkusebni", 1]]);
+});
+
+test("pruh: jeden, dva a tři úseky", () => {
+  assert.equal(stripeStops(["red"]), "red 0% 100%");
+  assert.equal(stripeStops(["red", "blue"]), "red 0% 50%, blue 50% 100%");
+  assert.equal(stripeStops(["a", "b", "c"]),
+    "a 0% 33.33%, b 33.33% 66.67%, c 66.67% 100%");
+});
+
+test("pruh: víc než tři autoři → šedý úsek", () => {
+  assert.equal(stripeStops(["a", "b", "c", "d", "e"]),
+    `a 0% 25%, b 25% 50%, c 50% 75%, ${REST_COLOR} 75% 100%`);
 });

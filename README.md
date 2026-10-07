@@ -349,7 +349,11 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    v jednom pořadí podle data pořízení, s předěly po dnech
    („út 28. 4. 2026“) a soubory bez data na konci. Dlaždice pak nese
    barevný proužek a název své skupiny; klik na hlavičku dne vybere
-   jeho soubory. Průvodce je vždy po skupinách.
+   jeho soubory. Po skupinách nese dlaždice pruh podle výsledných
+   autorů: každá osoba akce má svou barvu, pruh se dělí na úseky
+   v barvách autorů (nejvýš tři, další jako šedý úsek, v popisku
+   „+N“), soubor bez autorů má šrafovaný pruh a soubor k vyřazení
+   žádný. Průvodce je vždy po skupinách a bez značek.
 
    Datum pořízení má dva vstupy s nativním výběrem prohlížeče: den
    a čas (se sekundami). Prázdný čas = hodnota jen s datem (WhatsApp);

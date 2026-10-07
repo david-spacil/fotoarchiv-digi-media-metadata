@@ -31,6 +31,25 @@ export function byDay(files, dateOf) {
   return result;
 }
 
+// Barvy osob: klíč jména → index podle seřazených klíčů. `keyOf`
+// sjednotí zápisy téže osoby (bez diakritiky, velikosti písmen
+// a pořadí slov).
+export function personIndex(names, keyOf) {
+  const keys = [...new Set(names.map(keyOf).filter(Boolean))].sort();
+  return new Map(keys.map((k, i) => [k, i]));
+}
+
+// Zarážky `linear-gradient` pro stejně dlouhé úseky barev; nad `max`
+// barev zbytek jako jeden šedý úsek.
+export const REST_COLOR = "#a0aec0";
+
+export function stripeStops(colors, max = 3) {
+  const shown = colors.length > max
+    ? [...colors.slice(0, max), REST_COLOR] : colors;
+  const pct = (i) => `${+(i * 100 / shown.length).toFixed(2)}%`;
+  return shown.map((c, i) => `${c} ${pct(i)} ${pct(i + 1)}`).join(", ");
+}
+
 // `2026-04-28` → `út 28. 4. 2026`.
 export function dayLabel(day) {
   const [y, m, d] = day.split("-").map(Number);
