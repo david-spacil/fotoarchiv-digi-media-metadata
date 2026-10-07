@@ -334,6 +334,9 @@ Lokální webová aplikace spouštěná nad složkou archivu.
 2. **Při prvním otevření akce průvodce:** úklid (podsložky, RAW) →
    načtení a skupiny → údaje akce → autoři skupin. Průvodce provede
    vším povinným; údaje jednotlivých souborů se doplňují na ploše.
+   V kroku autoři skupin jdou nad skupinami zadat i autoři celé akce:
+   skupiny bez vlastních autorů je zdědí (fotila-li celou akci stejná
+   parta, stačí je zadat jednou).
    Existuje-li k akci návrh skupin z importu, krok skupin použije jeho
    skupiny a přiřazení pro soubory v kořeni, které návrh uvádí;
    ostatní dostanou automatický návrh. Prvním uložením
