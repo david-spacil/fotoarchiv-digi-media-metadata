@@ -45,6 +45,18 @@ podsložek“ a „jedna nová skupina“ fungují jako u nahrané složky.
 *Alternativa:* uložit výpis do `import.json` při založení. Zastará,
 jakmile někdo ve zdroji něco změní; plán se stejně sestavuje znovu.
 
+### Snímek plánu jako měřítko provedení
+Každý plán uloží do `import.json` `plan_zdroj` = [{cesta, velikost,
+mtime_ns}]. Provedení sestaví záznamy z aktuálního zdroje jako dosud
+a porovná je se snímkem: chybějící → operace `chyba` „ve zdroji už
+není“, jiná velikost/mtime → `blokovano` „změnil se po plánu“, mimo
+snímek → do plánu nejdou, výsledek je nese v `po_planu` (cesty).
+Bez snímku → 409 `bez_planu`. Jen import se zdrojem; u nahraných
+souborů obsah stagingu mění jen aplikace.
+
+*Alternativa:* seznam cest posílaný klientem s provedením. Po reloadu
+mezi plánem a provedením chybí a klientovi by se muselo věřit.
+
 ### Hash jen u možných duplicit
 `iter_plan` potřebuje `sha256` u každého záznamu. U zdroje ho server
 spočítá jen pro soubory, jejichž velikost má soubor v kořeni cílové
@@ -118,8 +130,8 @@ nového. Ze stránky Přetřídit klient pošle i navržený cíl
   (jméno, velikost, mtime), postupné zobrazení; v provozu běží server
   u archivu.
 - [Přerušení během přesunu] → každý přesun je atomický rename; přesunuté
-  jsou v akci, zbytek ve zdroji, opakovaný import pokračuje (přesunuté
-  ze zdroje zmizely). Skupiny se zapíší jen za dokončené provedení —
+  jsou v akci, zbytek ve zdroji; opakovaný import potřebuje nový plán
+  (jinak by přesunuté hlásil jako zmizelé). Skupiny se zapíší jen za dokončené provedení —
   stejně jako u kopie.
 - [Změna cest v `přetřídit` vs. Immich] → Immich `přetřídit` vynechává;
   cílové akce dostávají nové soubory jako při běžném importu.

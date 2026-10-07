@@ -81,10 +81,15 @@ MUST přeskočit i s obsahem.
 V produkčním režimu SHALL provedení importu se zdrojem v `přetřídit`
 soubory do akce přesunout, ne zkopírovat. Přesun MUST NOT přepsat
 existující soubor a MUST zachovat obsah i čas změny. Plán SHALL server
-sestavit znovu ze současného obsahu zdroje; soubor, který ze zdroje
-mezitím zmizel, MUST výsledek uvést jako selhaný. Duplicity, blokované
-a nepodporované soubory MUST zůstat ve zdroji. Ve vývojovém režimu
-MUST zdroj i archiv zůstat beze změny.
+při každém sestavení uložit k importu jako snímek souborů zdroje
+(cesta, velikost, čas změny); měřítkem provedení je poslední plán.
+Provedení bez uloženého plánu MUST server odmítnout. Soubor ze snímku,
+který ve zdroji při provedení není, MUST výsledek uvést jako selhaný;
+soubor, jehož velikost nebo čas změny se od plánu změnily, MUST zůstat
+ve zdroji a výsledek ho uvede jako blokovaný. Soubor, který do zdroje
+přibyl po plánu, MUST NOT server přesunout a výsledek ho SHALL uvést
+zvlášť. Duplicity, blokované a nepodporované soubory MUST zůstat ve
+zdroji. Ve vývojovém režimu MUST zdroj i archiv zůstat beze změny.
 
 #### Scenario: Přesun do nové akce
 - **WHEN** uživatel v produkčním režimu provede import `BONGO ZK`
@@ -96,6 +101,20 @@ MUST zdroj i archiv zůstat beze změny.
 - **WHEN** jeden soubor zdroje má stejný obsah jako soubor v kořeni
   cílové akce
 - **THEN** zůstane ve zdroji a výsledek ho uvede jako duplicitu
+
+#### Scenario: Zmizel po plánu
+- **WHEN** po sestavení plánu někdo ze zdroje smaže `a.jpg`
+- **THEN** výsledek uvede `a.jpg` jako selhaný („ve zdroji už není“)
+
+#### Scenario: Přibyl po plánu
+- **WHEN** po sestavení plánu přibude do zdroje `nova.jpg`
+- **THEN** `nova.jpg` zůstane ve zdroji a výsledek ho uvede jako
+  přibylý po plánu
+
+#### Scenario: Změnil se po plánu
+- **WHEN** se `b.jpg` po sestavení plánu změní velikost
+- **THEN** `b.jpg` zůstane ve zdroji a výsledek ho uvede jako
+  blokovaný („změnil se po plánu“)
 
 ### Requirement: Úklid zdroje
 Po provedení SHALL server smazat podsložky zdroje a nakonec zdrojovou

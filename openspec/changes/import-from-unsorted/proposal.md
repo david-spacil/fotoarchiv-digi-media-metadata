@@ -22,7 +22,9 @@ poznat, co je hotové.
   do `RAW.ignored/`); podsložky `*.ignored` ve zdroji se přeskočí.
 - Provedení importu ze zdroje soubory **přesouvá** (přejmenování na
   stejném svazku), nekopíruje. Duplicity, blokované a nepodporované
-  soubory zůstanou ve zdroji. Vyprázdněné podsložky a zdrojová složka
+  soubory zůstanou ve zdroji. Měřítkem je poslední plán: co od něj
+  zmizelo, se změnilo nebo přibylo, se nepřesune a výsledek to uvede.
+  Vyprázdněné podsložky a zdrojová složka
   (prázdné, nebo jen s `Thumbs.db`) se smažou; složka se zbytky
   v přehledu zůstane.
 - Zdrojovou složku během provedení drží zámek, aby ji dva importy
