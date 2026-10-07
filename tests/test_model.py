@@ -105,3 +105,12 @@ def test_keep_faces_from_stored_version():
     model.keep_faces(doc, stored)
     assert doc == {"soubory": {"a.jpg": {"popis": "x", "obliceje": [face]},
                                "b.jpg": {}}}
+
+
+def test_incomplete_authors_only_on_event():
+    doc = {"akce": {"autori": ["Spáčil, David"]},
+           "skupiny": {"g9": {"nazev": "G9"}},
+           "soubory": {"P1503712.JPG": {"skupina": "g9"},
+                       "IMG-20260428-WA0001.jpg": {}}}
+    present = {"P1503712.JPG", "IMG-20260428-WA0001.jpg"}
+    assert "autori" not in model.incomplete(doc, present)

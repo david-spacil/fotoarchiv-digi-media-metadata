@@ -85,3 +85,15 @@ test("soubory k vyřazení se nepočítají", () => {
   assert.deepEqual(m.souboryBezSkupiny, []);
   assert.deepEqual(m.souboryBezMista, []);
 });
+
+test("skupina se zděděnými autory akce nechybí", () => {
+  const doc = {
+    akce: { autori: ["Spáčil, David"] },
+    skupiny: { g9: { nazev: "G9" }, mobil: {} },
+    soubory: {
+      "P1503712.JPG": { skupina: "g9" },
+      "20260428_101500.jpg": { skupina: "mobil" },
+    },
+  };
+  assert.deepEqual(missing(doc).skupinyBezAutoru, []);
+});
