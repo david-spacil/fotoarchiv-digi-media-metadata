@@ -1,0 +1,36 @@
+# Kontejner se staví z repozitáře (Dockerfile). Work je bind mount
+# na hostiteli — správce ručně edituje work/uzivatele.json, proto není
+# pojmenovaný volume.
+services:
+  fotoarchiv:
+    build: .
+    image: fotoarchiv-digi-media-metadata:latest
+    # init: Python jinak ignoruje SIGTERM (je PID 1) a kontejner
+    # by končil až timeoutem.
+    init: true
+    restart: unless-stopped
+    # UID/GID pod kterým běží kontejner; mělo by odpovídat UID/GID
+    # CIFS mountu archivu (viz README). Image sám běží jako 1000:1000,
+    # ale funguje s libovolným UID (nezapisuje mimo /work a /archiv).
+    user: "${FOTOARCHIV_UID:-1000}:${FOTOARCHIV_GID:-1000}"
+    volumes:
+      # Povinný: cesta k archivu na hostiteli (.env FOTOARCHIV_ARCHIV).
+      - "${FOTOARCHIV_ARCHIV:?Nastav FOTOARCHIV_ARCHIV v .env}:/archiv"
+      - ./work:/work
+    ports:
+      - "${FOTOARCHIV_PUBLISH:-127.0.0.1:5000}:5000"
+    # Výchozí je produkční režim (zápis _metadata.json do archivu).
+    # Vývojový režim: nahraď command za
+    #   [--archiv, /archiv, --work, /work, --host, 0.0.0.0, --port, 5000]
+    # (bez --zapis-do-archivu). Až poběží reverzní proxy s HTTPS,
+    # přidej --https (cookie relace jen přes HTTPS).
+    command:
+      - --archiv
+      - /archiv
+      - --work
+      - /work
+      - --zapis-do-archivu
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "5000"

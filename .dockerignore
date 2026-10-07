@@ -1,0 +1,19 @@
+# Repozitář netřeba v image: jen kód aplikace a requirements.
+.git
+.gitignore
+.venv
+.work
+work
+__pycache__
+*.pyc
+.pytest_cache
+tests
+openspec
+.claude
+.env
+.env.example
+compose.yaml
+Dockerfile
+.dockerignore
+*.md
+run.sh

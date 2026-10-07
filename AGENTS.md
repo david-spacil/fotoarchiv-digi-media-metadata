@@ -35,6 +35,8 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv exportovat [AKCE] --archiv … --work .work
 # → XMP sidecary jedné/všech akcí (jen změněné); bez --zapis-do-archivu
 #   do .work/xmp/; --obliceje přidá oblasti obličejů pro obnovu Immiche
+cp .env.example .env && docker compose up -d --build
+# → nasazení na server (produkční režim, ./work), viz README, Docker
 
 .venv/bin/python -m pytest -q                       # testy Pythonu
 .venv/bin/python -m pytest tests/test_cleanup.py::test_collision_blocks
