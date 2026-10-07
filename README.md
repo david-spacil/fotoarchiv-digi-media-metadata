@@ -148,9 +148,13 @@ Poznámky:
 ## Archiv
 
 - Na první úrovni složky akcí `YYYY-MM-DD název`. Zpracovávají se jen
-  ty; ostatní (`přetřídit`, `přednášky SKLEP TIC`) se nechávají beze
-  změny. Výjimkou je generovaný index `_INDEX.html` a `_INDEX.md`
-  (viz [Výstupy](#výstupy)).
+  ty; ostatní (`přetřídit`, `přednášky SKLEP TIC`, `fotky mimo akce`)
+  se nechávají beze změny. Výjimkou je generovaný index `_INDEX.html`
+  a `_INDEX.md` (viz [Výstupy](#výstupy)).
+- `přetřídit` drží nezatříděné akce k importu, `fotky mimo akce`
+  materiál, který akcí není (sbírky, portréty, výběry pro web, podklady
+  na večírky). Kopie, které při zploštění `přetřídit` vyšly jako
+  duplicity, leží v `přetřídit/_duplicity.ignored/` (viz issue #5).
 - Ve složkách jsou JPG, mp4, RW2, občas png/zip a `Thumbs.db`
   (ignorovat). Některé akce mají podsložky (`RAW`, `Video`, …), viz
   [Podsložky a RAW](#podsložky-a-raw).
@@ -356,9 +360,9 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
   export pak sidecary vrátí do běžného tvaru.
 - **Immich** bude archiv číst jako externí knihovnu jen pro čtení
   s výjimkami `**/*.ignored/**` a nezpracovávanými složkami první úrovně
-  (`přetřídit`, `přednášky SKLEP TIC`). Testovací knihovna vidí
-  archiv pod `/mnt/media/fotoarchiv/…`; aplikace z ní čte jen
-  pojmenované obličeje (viz Aplikace, Immich).
+  (`přetřídit`, `přednášky SKLEP TIC`, `fotky mimo akce`). Testovací
+  knihovna vidí archiv pod `/mnt/media/fotoarchiv/…`; aplikace z ní čte
+  jen pojmenované obličeje (viz Aplikace, Immich).
 - **Index** celého archivu pro lidi v Průzkumníku, místo ručně
   vedeného `_metadata.xlsx`. Generuje se, needituje; zdrojem jsou jen
   `_metadata.json` a soubory v kořeni akcí. Obsahuje všechny složky
