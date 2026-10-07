@@ -344,6 +344,16 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    hodnoty jsou ve formuláři vidět a jdou přepsat. Lišta ukazuje, co
    chybí („2 skupiny bez autorů, 14 souborů bez data“).
 
+   Přepínač **Po skupinách / Podle data** (pamatuje si ho prohlížeč,
+   platí pro mřížku i lupu) ukáže místo skupin všechny soubory akce
+   v jednom pořadí podle data pořízení, s předěly po dnech
+   („út 28. 4. 2026“) a soubory bez data na konci; klik na hlavičku
+   dne vybere jeho soubory. V obou zobrazeních nese dlaždice pruh podle
+   výsledných autorů: každá osoba akce má svou barvu, pruh se dělí na
+   úseky v barvách autorů (nejvýš tři, další jako šedý úsek,
+   v popisku „+N“), soubor bez autorů má šrafovaný pruh a soubor
+   k vyřazení žádný. Průvodce je vždy po skupinách a bez značek.
+
    Datum pořízení má dva vstupy s nativním výběrem prohlížeče: den
    a čas (se sekundami). Prázdný čas = hodnota jen s datem (WhatsApp);
    smazání času ponechá den, smazání dne smaže celé datum, čas bez dne
@@ -353,10 +363,10 @@ Lokální webová aplikace spouštěná nad složkou archivu.
 
    Místo mřížky jde přepnout na **lupu** (Enter, dvojklik na dlaždici
    nebo přepínač; zpět Esc): velká fotka nebo přehrávač videa a pod ní
-   filmový pás celé akce se skupinami oddělenými předělem. Šipky
-   přepínají aktuální soubor a vyberou jen jej, Shift+šipky výběr
-   rozšiřují; klik do pásu vybírá jako v mřížce. Výběr i formulář jsou
-   s mřížkou společné.
+   filmový pás celé akce s oddíly (skupinami, nebo dny) oddělenými
+   předělem. Šipky přepínají aktuální soubor a vyberou jen jej,
+   Shift+šipky výběr rozšiřují; klik do pásu vybírá jako v mřížce.
+   Výběr i formulář jsou s mřížkou společné.
 
    **Vyřazení:** klávesa Del nebo tlačítko „Vyřadit“ v panelu označí
    vybrané soubory k vyřazení (jsou-li už všechny označené, označení
