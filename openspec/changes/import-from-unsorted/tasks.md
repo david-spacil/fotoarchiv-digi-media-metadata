@@ -38,7 +38,7 @@
   zrušení importu bez zbylých přenositelných souborů; zahození zdroj
   nemění; ověřit scénáři „Vyprázdněná složka“, „Zbytky“, „Zahození
   importu ze zdroje“
-- [ ] 2.6 Snímek plánu (`plan_zdroj` v `import.json` při každém plánu)
+- [x] 2.6 Snímek plánu (`plan_zdroj` v `import.json` při každém plánu)
   a porovnání v provedení (zmizelý → chyba, změněný → blokováno,
   přibylý → `po_planu`, bez snímku → `bez_planu`); ověřit testy
   scénářů „Zmizel po plánu“, „Přibyl po plánu“, „Změnil se po plánu“
@@ -66,7 +66,7 @@
   přehled a plán bez nahrávání; výsledek se zbytky zdroje
   a „Rozpracované importy“ se zdrojem; ověřit ručně (scénáře „Zdroj
   místo nahrání“, „Zbytky zdroje ve výsledku“)
-- [ ] 4.3 Výsledek: přibylé po plánu zvlášť; odmítnutí `bez_planu`
+- [x] 4.3 Výsledek: přibylé po plánu zvlášť; odmítnutí `bez_planu`
   vrátí průvodce na krok Cíl
 
 ## 5. Dokumentace a ověření
