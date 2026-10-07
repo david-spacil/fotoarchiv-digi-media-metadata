@@ -85,9 +85,9 @@ main.list, main.loading, main.wizard { padding: 12px 16px; overflow: auto; }
 .tile .gn { color: #444; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; }
 
-/* Značky dlaždic: podle data barva skupiny, po skupinách pruh z barev
-   autorů. Barvy z palety podle pořadí skupiny, resp. osoby v akci;
-   zarážky gradientu nese inline `--stops`, `noauth` = bez autorů. */
+/* Značka dlaždice: pruh z barev autorů. Barvy z palety podle pořadí
+   osoby v akci; zarážky gradientu nese inline `--stops`, `noauth` =
+   bez autorů. */
 :root { --p0: #3182ce; --p1: #dd6b20; --p2: #38a169; --p3: #d53f8c;
   --p4: #805ad5; --p5: #d69e2e; --p6: #319795; --p7: #718096;
   --noauth: repeating-linear-gradient(45deg, #c53030 0 2px,

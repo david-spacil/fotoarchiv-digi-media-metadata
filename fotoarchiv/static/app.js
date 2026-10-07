@@ -838,10 +838,10 @@ function dateLayout() {
 
 // --- značky dlaždic ----------------------------------------------------------
 //
-// Podle data: barva skupiny. Po skupinách: pruh z barev autorů. Barvy
-// jsou z palety `--p0…--p7` v CSS podle pořadí skupiny, resp. osoby
-// v akci. Značka = `{ stops, title, label }`; `stops` jsou zarážky
-// gradientu pruhu, `null` = bez autorů (šrafování).
+// Pruh z barev výsledných autorů souboru (v obou zobrazeních). Barvy
+// jsou z palety `--p0…--p7` v CSS podle pořadí osoby v akci. Značka =
+// `{ stops, title, label }`; `stops` jsou zarážky gradientu pruhu,
+// `null` = bez autorů (šrafování).
 
 const PALETTE = 8;
 const color = (i) => `var(--p${i % PALETTE})`;
@@ -857,17 +857,6 @@ function dot(c) {
 // Funkce soubor → značka (nebo null) pro aktuální zobrazení.
 function markFn() {
   if (state.mode !== "workspace") return () => null;
-  if (dateLayout()) {
-    const groups = groupIds();
-    return (f) => {
-      const gid = state.doc.soubory[f]?.skupina;
-      const i = groups.indexOf(gid);
-      if (i < 0) return null;
-      const name = groupName(gid);
-      return { stops: stripeStops([color(i)]), title: name,
-        label: [dot(color(i)), name] };
-    };
-  }
   const authors = (f) => (resolve(state.doc, f).autori?.hodnota || [])
     .filter((n) => typeof n === "string" && n.trim());
   const files = Object.keys(state.doc.soubory);
