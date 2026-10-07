@@ -4,10 +4,11 @@ Jen standardní knihovna, aby běžel i na serveru u archivu. Postup:
 
     plan      mapa přesunů + sha256 → plan.csv (nic nemění)
     provest   provede plan.csv, každý krok zapíše do logu
+    uklid     smaže zdrojové složky z logu, ve kterých zbyl jen Thumbs.db
     zpet      vrátí kroky z logu v opačném pořadí
     kontrola  porovná sha256 před a po (stejný multiset obsahů)
 
-Nic se nemaže: duplicity jdou do `_duplicity.ignored/<původní cesta>`,
+Nic se nemaže (kromě Thumbs.db v `uklid`): duplicity jdou do `_duplicity.ignored/<původní cesta>`,
 existující soubor se nikdy nepřepíše. Hashe ve formátu `sha256sum`
 s cestami relativními ke kořeni `přetřídit` (`./…` nebo bez tečky).
 """
@@ -174,10 +175,50 @@ def execute(koren, plan_rows, log_path):
     return done
 
 
+def tidy(koren, log_path, dry=False):
+    """Smaže zdrojové složky z logu, ve kterých zbyl nanejvýš Thumbs.db,
+    a nadřazené, které tím zůstaly prázdné. Vrací počet smazaných složek."""
+    with open(log_path, encoding="utf-8", newline="") as f:
+        steps = list(csv.DictReader(f, delimiter=";"))
+    sources = {os.path.dirname(s["zdroj"]) for s in steps if s["zdroj"]}
+    removed = 0
+    gone = set()
+    with open(os.devnull if dry else log_path, "a", encoding="utf-8",
+              newline="") as log:
+        writer = csv.writer(log, delimiter=";")
+        for rel in sorted(sources, key=lambda p: -p.count("/")):
+            while rel:
+                path = os.path.join(koren, rel)
+                if rel in gone or not os.path.isdir(path):
+                    break
+                rest = [n for n in os.listdir(path)
+                        if os.path.join(rel, n) not in gone]
+                if any(n.lower() not in SKIP for n in rest):
+                    break
+                if dry:
+                    print(f"  {rel}  {rest}")
+                    gone.add(rel)
+                    removed += 1
+                    rel = os.path.dirname(rel)
+                    continue
+                for name in rest:
+                    os.remove(os.path.join(path, name))
+                    writer.writerow(["smazat", os.path.join(rel, name), ""])
+                os.rmdir(path)
+                writer.writerow(["rmdir", "", rel])
+                log.flush()
+                os.fsync(log.fileno())
+                removed += 1
+                rel = os.path.dirname(rel)
+    return removed
+
+
 def undo(koren, log_path):
     with open(log_path, encoding="utf-8", newline="") as f:
         steps = list(csv.DictReader(f, delimiter=";"))
     for step in reversed(steps):
+        if step["akce"] == "smazat":
+            continue  # Thumbs.db se nevrací
         if step["akce"] == "rmdir":
             os.makedirs(os.path.join(koren, step["cil"]), exist_ok=True)
         elif step["akce"] == "mkdir":
@@ -210,6 +251,10 @@ def main(argv=None):
     s.add_argument("--koren", required=True)
     s.add_argument("--plan", required=True)
     s.add_argument("--log", required=True)
+    s = sub.add_parser("uklid")
+    s.add_argument("--koren", required=True)
+    s.add_argument("--log", required=True)
+    s.add_argument("--nanecisto", action="store_true")
     s = sub.add_parser("zpet")
     s.add_argument("--koren", required=True)
     s.add_argument("--log", required=True)
@@ -235,6 +280,9 @@ def main(argv=None):
         with open(args.plan, encoding="utf-8", newline="") as f:
             rows = list(csv.DictReader(f, delimiter=";"))
         print(f"provedeno {execute(args.koren, rows, args.log)} kroků")
+    elif args.cmd == "uklid":
+        n = tidy(args.koren, args.log, args.nanecisto)
+        print(f"{'ke smazání' if args.nanecisto else 'smazáno'} {n} složek")
     elif args.cmd == "zpet":
         print(f"vráceno {undo(args.koren, args.log)} kroků")
     else:

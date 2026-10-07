@@ -142,3 +142,20 @@ def test_execute_refuses_changed_size(pretrid, tmp_path_factory):
     with pytest.raises(SystemExit):
         pretridit.execute(pretrid, as_dicts(rows),
                           tmp_path_factory.mktemp("log") / "log.csv")
+
+
+def test_tidy_removes_only_thumbs_shells(pretrid, tmp_path_factory):
+    _, rows, _ = plan(pretrid, MAPA)
+    (pretrid / "DOD 2016/fb/Thumbs.db").write_text("x")
+    log = tmp_path_factory.mktemp("log") / "log.csv"
+    pretridit.execute(pretrid, as_dicts(rows), log)
+    before = snapshot(pretrid)
+    assert pretridit.tidy(pretrid, log, dry=True) == 3
+    assert snapshot(pretrid) == before
+    assert pretridit.tidy(pretrid, log) == 3
+    # Složka jen s Thumbs.db zmizí i s prázdným rodičem, jinde nic.
+    assert not (pretrid / "_personalia/Fotografie/DOD 2016").exists()
+    assert not (pretrid / "DOD 2016/fb").exists()
+    assert (pretrid / "_personalia/Fotografie/Ze života/z.jpg").exists()
+    pretridit.undo(pretrid, log)
+    assert (pretrid / "Jubilea/Stuchlík 70/s.jpg").read_text() == "S"
