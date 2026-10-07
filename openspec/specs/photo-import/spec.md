@@ -20,8 +20,9 @@ předvybraným cílem).
 
 ### Requirement: Výběr a nahrání souborů
 Průvodce SHALL přijmout jednotlivé soubory i celou složku (přetažením
-i výběrem). Soubory z podsložek vybrané složky SHALL zpracovat, jako
-by ležely v jedné úrovni. Nahrané soubory MUST server uložit do
+i výběrem), nebo jako zdroj složku v `přetřídit` (viz
+`unsorted-import`). Soubory z podsložek vybrané složky SHALL zpracovat,
+jako by ležely v jedné úrovni. Nahrané soubory MUST server uložit do
 pracovního adresáře mimo archiv a do archivu MUST NOT zapisovat dřív,
 než uživatel import potvrdí. Průvodce SHALL ukazovat průběh nahrávání.
 
@@ -32,6 +33,12 @@ než uživatel import potvrdí. Průvodce SHALL ukazovat průběh nahrávání.
 #### Scenario: Složka s podsložkou
 - **WHEN** uživatel vybere složku s `a.jpg` a `Video/b.mp4`
 - **THEN** přehled obsahuje `a.jpg` i `b.mp4`
+
+#### Scenario: Zdroj místo nahrání
+- **WHEN** uživatel v kroku Soubory zvolí ze složky `přetřídit` složku
+  `HLOZEK`
+- **THEN** průvodce nic nenahrává a přejde na přehled souborů
+  `HLOZEK`
 
 ### Requirement: Podporované soubory
 Import SHALL přijmout média, která aplikace zpracovává (jpg, jpeg,
@@ -145,12 +152,21 @@ Po provedení SHALL průvodce ukázat přenesené, blokované, duplicitní
 a selhané soubory (s chybou). Selhání jednoho souboru MUST NOT zastavit
 ostatní. Úspěšně přenesené soubory MUST server z pracovního adresáře
 odstranit; nepřenesené SHALL zůstat, dokud uživatel import nezahodí.
-Průvodce SHALL nabídnout otevřít cílovou akci.
+U importu ze zdroje v `přetřídit` SHALL výsledek uvést, co ve zdroji
+zůstalo a zda zdrojová složka zanikla; import, ve kterém nezůstal žádný
+přenositelný soubor, SHALL server zrušit. Průvodce SHALL nabídnout
+otevřít cílovou akci.
 
 #### Scenario: Otevření akce po importu
 - **WHEN** import do stávající akce s `_metadata.json` skončí
 - **THEN** po otevření akce jsou přenesené soubory mezi novými soubory
   akce
+
+#### Scenario: Zbytky zdroje ve výsledku
+- **WHEN** import ze složky `DOD 2016` přesune všechna média a zbyde
+  jeden `.docx`
+- **THEN** výsledek uvede, že ve zdroji zůstal jeden soubor a složka
+  `DOD 2016` zůstala
 
 ### Requirement: Rozpracované importy
 Import SHALL patřit uživateli (jménu), pod kterým vznikl, ne záložce
@@ -187,12 +203,17 @@ upozornit (u nahrávání se jménem souboru a přijatým objemem).
 
 ### Requirement: Zahození importu
 Uživatel SHALL moci rozpracovaný import zahodit; server MUST pak
-smazat jeho soubory z pracovního adresáře. Importy neaktivní déle než
-7 dní SHALL server smazat při startu.
+smazat jeho soubory z pracovního adresáře. U importu ze zdroje
+v `přetřídit` MUST zahození zdroj ponechat beze změny. Importy
+neaktivní déle než 7 dní SHALL server smazat při startu.
 
 #### Scenario: Zahození před potvrzením
 - **WHEN** uživatel po nahrání import zahodí
 - **THEN** pracovní adresář importu je smazaný a archiv beze změny
+
+#### Scenario: Zahození importu ze zdroje
+- **WHEN** uživatel zahodí import ze složky `FotoKoule`
+- **THEN** složka `přetřídit/FotoKoule` zůstane beze změny
 
 ### Requirement: Volba skupin
 V kroku volby cíle SHALL průvodce nabídnout rozdělení importovaných
