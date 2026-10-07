@@ -2454,6 +2454,26 @@ function renderEventStep() {
 }
 
 function renderAuthorsStep() {
+  // Řádek autorů skupiny se vykreslí jednou; po změně autorů akce se
+  // nahradí novým, ať ukazuje aktuální zděděnou hodnotu.
+  const groupRows = {};
+  const groupRow = (gid) =>
+    fieldRow(targetsFor("skupina", [gid]), "autori", () => {});
+  const onEventChange = () => {
+    for (const gid of Object.keys(groupRows)) {
+      const row = groupRow(gid);
+      groupRows[gid].replaceWith(row);
+      groupRows[gid] = row;
+    }
+    delete finishBtn.dataset.confirm;
+    finishBtn.textContent = "Dokončit průvodce";
+    warn.textContent = "";
+  };
+  const eventBox = h("fieldset", { class: "tools" },
+    h("legend", {}, "Celá akce"),
+    h("p", { class: "meta" },
+      "Skupiny bez vlastních autorů zdědí autory akce."),
+    fieldRow(targetsFor("akce", []), "autori", onEventChange));
   const rows = groupIds().map((gid) => {
     const count = Object.values(state.doc.soubory)
       .filter((r) => r.skupina === gid).length;
@@ -2471,7 +2491,7 @@ function renderAuthorsStep() {
         alt: "", title: f, loading: "lazy",
         onerror: (e) => e.target.remove(),
       }))),
-      fieldRow(targetsFor("skupina", [gid]), "autori", () => {}));
+      groupRows[gid] = groupRow(gid));
   });
   const finish = async () => {
     const m = missing(state.doc, state.present);
@@ -2501,7 +2521,7 @@ function renderAuthorsStep() {
   app.replaceChildren(...wizardFrame(h("main", { class: "wizard" },
     h("p", { class: "meta" }, "Autoři = fotil někdo z uvedených. " +
       "U jednotlivých fotek jde autory přepsat na ploše."),
-    rows, warn), nav));
+    eventBox, rows, warn), nav));
 }
 
 // --- import ---------------------------------------------------------------
