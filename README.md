@@ -148,13 +148,16 @@ Poznámky:
 ## Archiv
 
 - Na první úrovni složky akcí `YYYY-MM-DD název`. Zpracovávají se jen
-  ty; ostatní (`přetřídit`, `přednášky SKLEP TIC`, `fotky mimo akce`)
-  se nechávají beze změny. Výjimkou je generovaný index `_INDEX.html`
-  a `_INDEX.md` (viz [Výstupy](#výstupy)).
+  ty; ostatní (`přednášky SKLEP TIC`, `fotky mimo akce`) se nechávají
+  beze změny. Výjimkou je generovaný index `_INDEX.html` a `_INDEX.md`
+  (viz [Výstupy](#výstupy)) a `přetřídit`, ze které v produkčním
+  režimu přesouvá soubory import (viz [Import](#import)).
 - `přetřídit` drží nezatříděné akce k importu, `fotky mimo akce`
   materiál, který akcí není (sbírky, portréty, výběry pro web, podklady
   na večírky). Kopie, které při zploštění `přetřídit` vyšly jako
-  duplicity, leží v `přetřídit/_duplicity.ignored/` (viz issue #5).
+  duplicity, leží v `přetřídit/_duplicity.ignored/` (viz issue #5);
+  složky a podsložky s příponou `.ignored` import nenabízí ani
+  nepřesouvá.
 - Ve složkách jsou JPG, mp4, RW2, občas png/zip a `Thumbs.db`
   (ignorovat). Některé akce mají podsložky (`RAW`, `Video`, …), viz
   [Podsložky a RAW](#podsložky-a-raw).
@@ -472,6 +475,15 @@ plán → výsledek.
   „Moje rozpracované importy“ (založeno, počet a velikost souborů,
   zamýšlený cíl, poslední aktivita) s tlačítky Pokračovat a Zahodit.
   Cizí import není vidět a jeho adresa hlásí „nenalezen“.
+
+  Místo nahrání jde zvolit **složku v `přetřídit`** („ze složky
+  přetřídit“, nebo ze stránky *Přetřídit*, viz níže). Nic se
+  nenahrává, průvodce rovnou ukáže přehled. Jednotkou je celá složka
+  první úrovně; její podsložky se berou jako u nahrané složky
+  (zploštění, skupiny podle podsložek, RAWy do `RAW.ignored/`),
+  podsložky `*.ignored` se i s obsahem přeskočí. Seznam souborů se
+  sestavuje pokaždé z aktuálního obsahu složky. Opakované zvolení
+  téže složky otevře rozpracovaný import uživatele.
 - **Přehled:** počty fotek, videí a RAWů, rozsah dat z EXIF (WhatsApp
   z názvu), přístroje, nepodporované soubory. Přijímají se média
   aplikace (jpg, jpeg, png, mp4, mov) a RAWy; `Thumbs.db` se tiše
@@ -534,6 +546,36 @@ plán → výsledek.
   další import ho doplní) a použije ho průvodce akce. Když zápis
   selže (např. `_metadata.json` mezitím upravený mimo aplikaci),
   soubory zůstanou v archivu a výsledek uvede, že jsou bez skupiny.
+- **Import ze složky `přetřídit`:** provedení soubory **přesouvá**
+  (přejmenování na stejném svazku, obsah i čas změny zůstanou), nic
+  nekopíruje. Měřítkem je poslední plán (snímek cest, velikostí a časů
+  změny v `import.json`; provedení bez něj server odmítne a snímek
+  spotřebuje): soubor, který od plánu ze zdroje zmizel, je selhaný,
+  změněný blokovaný a přibylý se nepřesune a výsledek ho uvede zvlášť.
+  Přesun nepřepíše existující soubor; přesun na jiný svazek je
+  selhání souboru. Duplicity, blokované a nepodporované soubory
+  zůstanou ve zdroji. Sha256 se u zdroje počítá jen u souborů, jejichž
+  velikost má soubor v kořeni cílové akce nebo jiný soubor výběru
+  (cache v `.work/cache/sha256/`). Po provedení server smaže odspodu
+  podsložky a nakonec zdrojovou složku, jsou-li prázdné nebo jen
+  s `Thumbs.db`; složky `*.ignored` nechá. Výsledek uvede, co ve
+  zdroji zůstalo a zda složka zanikla. Import bez zbylých podporovaných
+  souborů ve zdroji se zruší; zahození importu zdroj nemění. Varianty
+  se stejným jménem (např. `Procházka 60/JPEG orig`) se navzájem
+  zablokují a nepřesune se nic z nich: podsložku přejmenujte na
+  `.ignored` a import zopakujte. Ve vývojovém režimu přehled i plán
+  fungují, provedení ne.
+- **Stránka Přetřídit** (odkaz ze seznamu akcí): složky první úrovně
+  `přetřídit` (bez `.ignored`) s počty fotek, videí, RAWů a ostatních
+  souborů, podsložkami, rozsahem dat z EXIF, datem z názvu
+  (`d.m.yyyy`, `yyyy_mm_dd`, `yyyy_m_d`, `dd_mm_yyyy`; samotný rok jen
+  informativně) a navrženou akcí `YYYY-MM-DD název` (datum nejstarší
+  den z EXIF, jinak z názvu, jinak ho doplní uživatel; název = název
+  složky). Výpis přijde hned, údaje z EXIF se doplňují po složkách
+  (stream); EXIF se cachuje podle jména, velikosti a času změny.
+  Složka s rozpracovaným importem uživatele je zvýrazněná. Kliknutí
+  založí (nebo obnoví) import s navrženou novou akcí jako cílem
+  a otevře přehled.
 - **Výsledek:** přenesené, blokované, duplicitní a selhané soubory;
   přenesené zmizí z pracovního adresáře, ostatní tam zůstanou, dokud
   uživatel import nezahodí. Importy neaktivní přes 7 dní server smaže
@@ -635,6 +677,11 @@ workerů ne). Do archivu se žádný soubor zámku nezapisuje.
 - Drží-li zámek akce jiná záložka téhož jména, hláška místo „Akci
   upravuje …“ radí zavřít původní záložku. Zámek nové akce, který
   server vzal pro provedení importu, se při přerušení provedení uvolní.
+- Provedení importu ze složky `přetřídit` drží navíc zámek zdroje
+  `přetřídit/<složka>` (vlastní relace vedle zámku cílové akce,
+  heartbeat po přesunutém souboru). Jiné provedení importu téže složky
+  server odmítne s uvedením, kdo ji přesouvá; po skončení nebo
+  přerušení se zámek uvolní.
 
 Metadata (JPG, mp4) čte `exiftool`. Náhledy
 (320 px do mřížky, 1600 px do lupy) se cachují lokálně mimo archiv —

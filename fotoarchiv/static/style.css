@@ -252,3 +252,4 @@ section.pending .row { gap: 12px; margin: 0; }
 header .settings-link { color: #cbd5e0; font-size: 12px; font-weight: 400; }
 .settings { max-width: 640px; }
 main.auth { margin: 24px auto; width: 100%; }
+.list tr.mine td { background: #fffff0; }

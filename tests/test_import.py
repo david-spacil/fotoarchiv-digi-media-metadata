@@ -958,3 +958,222 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     assert c.get(f"/api/akce/{name}/skupiny").json["zdroj"] == "metadata"
     assert not (tmp_path / "work" / "navrhy-skupin" / f"{name}.json") \
         .exists()
+
+
+# --- zdroj v přetřídit -----------------------------------------------------
+
+@pytest.fixture
+def source(tmp_path):
+    """(Imports se zdrojem, archiv); `build(spec)` naplní `přetřídit`."""
+    archiv = tmp_path / "archiv"
+    (archiv / "přetřídit").mkdir(parents=True)
+    imp = Imports(tmp_path / "work", disk_usage=free(10 * 2**30),
+                  source_root=archiv / "přetřídit")
+
+    def build(spec):
+        make_tree(archiv / "přetřídit", spec)
+        return imp, archiv
+    return build
+
+
+def test_source_create(source):
+    imp, archiv = source({"DOD 2019/": {"a.jpg": "a"},
+                          "_duplicity.ignored/": {}, "x.txt": "x"})
+    for bad in ("../x", "..", "a/b", "_duplicity.ignored", "x.txt", "neni",
+                "", 7):
+        with pytest.raises(Refused) as e:
+            imp.create(ME, zdroj=bad)
+        assert e.value.code == "neplatny_zdroj", bad
+    id = imp.create(ME, zdroj="DOD 2019", cil="2019-05-01 DOD 2019",
+                    nova=True)
+    assert imp.create("david spacil", zdroj="DOD 2019") == id
+    other = imp.create("Kopáčová, Jana", zdroj="DOD 2019")
+    assert other != id
+    [item] = imp.owned(ME)
+    assert item["zdroj"] == "DOD 2019" and item["souboru"] == 1
+    assert item["cil"] == "2019-05-01 DOD 2019" and item["nova"]
+    with pytest.raises(Refused) as e:
+        upload(imp, id, "b.jpg", "b")
+    assert e.value.code == "ma_zdroj"
+    assert sorted(os.listdir(imp.root / id)) == ["import.json"]
+
+
+def test_source_overview_skips_ignored(source):
+    imp, _ = source({"Procházka 60/": {
+        "a.jpg": "a", "Thumbs.db": "t", "JPEG orig.ignored/": {"a.jpg": "x"},
+        "NEF/": {"a.nef": "r"}}})
+    id = imp.create(ME, zdroj="Procházka 60")
+    o = imp.overview(id, ME, exiftool=fake_exiftool)
+    assert [s["cesta"] for s in o["soubory"]] == [
+        "Procházka 60/NEF/a.nef", "Procházka 60/a.jpg"]
+    assert o["pocty"] == {"foto": 1, "raw": 1} and o["zdroj"] == "Procházka 60"
+
+
+def test_source_groups_by_subfolder(source):
+    imp, _ = source({"Vánoční večírek 2019_Pavlov/": {
+        "Pavlov/": {"a.jpg": "a", "b.jpg": "bb"},
+        "Pavlov2/": {"c.jpg": "ccc"}}})
+    id = imp.create(ME, zdroj="Vánoční večírek 2019_Pavlov")
+    plan = last(imp.plan(id, ME, None, {}, {"rezim": "podslozky"}))
+    assert sorted(g["nazev"] for g in plan["skupiny"]["nove"].values()) == [
+        "Pavlov", "Pavlov2"]
+    assert {o["z"].rsplit("/", 1)[-1]: o["skupina"]
+            for o in plan["operace"]} == {"a.jpg": "pavlov",
+                                          "b.jpg": "pavlov",
+                                          "c.jpg": "pavlov2"}
+
+
+def counting_sha(monkeypatch):
+    calls = []
+    real = importer._sha256_steps
+
+    def counting(path):
+        calls.append(os.path.basename(path))
+        return (yield from real(path))
+    monkeypatch.setattr(importer, "_sha256_steps", counting)
+    return calls
+
+
+def test_source_hash_only_same_size(source, monkeypatch):
+    imp, archiv = source({"HLOZEK/": {"a.jpg": "1", "b.jpg": "22",
+                                      "c.txt": "333"}})
+    make_tree(archiv, {f"{EVENT}/": {"x.jpg": "4444", "y.txt": "1"}})
+    calls = counting_sha(monkeypatch)
+    id = imp.create(ME, zdroj="HLOZEK")
+    events = list(imp.plan(id, ME, archiv / EVENT))
+    # a.jpg má velikost jako y.txt v akci: čte se jen a.jpg a y.txt.
+    assert sorted(calls) == ["a.jpg", "y.txt"]
+    assert [e["typ"] for e in events][-1] == "plan"
+    calls.clear()
+    last(imp.plan(id, ME, None))
+    assert calls == []  # nová akce, žádné shodné velikosti
+
+
+def test_source_duplicate_stays(source):
+    imp, archiv = source({"HLOZEK/": {"a.jpg": "dup", "b.jpg": "jiny",
+                                      "c.jpg": "aaa", "d/": {"e.jpg": "aaa"}}})
+    make_tree(archiv, {f"{EVENT}/": {"x.jpg": "dup"}})
+    id = imp.create(ME, zdroj="HLOZEK")
+    last(imp.plan(id, ME, archiv / EVENT))
+    result = last(imp.execute(id, ME, archiv / EVENT))
+    assert plan_ops(result) == [
+        ("HLOZEK/a.jpg", "a.jpg", "duplicita"),
+        ("HLOZEK/b.jpg", "b.jpg", "hotovo"),
+        ("HLOZEK/c.jpg", "c.jpg", "hotovo"),
+        ("HLOZEK/d/e.jpg", "e.jpg", "duplicita")]
+    src = archiv / "přetřídit" / "HLOZEK"
+    assert sorted(p.name for p in src.rglob("*")) == ["a.jpg", "d", "e.jpg"]
+    assert result["zdroj_zbyva"] == {"foto": 2}
+    assert not result["zdroj_smazan"] and not result["zahozeno"]
+    assert imp.owned(ME)[0]["souboru"] == 2
+
+
+def test_source_execute_moves(source):
+    # Různé velikosti: bez možné duplicity se nic nehashuje.
+    files = {f"P{i}.JPG": "j" * (i + 2) for i in range(5)}
+    imp, archiv = source({"BONGO ZK/": files | {"Thumbs.db": "t",
+                                                "RAW/": {"P0.RW2": "r"}}})
+    src = archiv / "přetřídit" / "BONGO ZK"
+    os.utime(src / "P3.JPG", ns=(MTIME_MS * 10**6, MTIME_MS * 10**6))
+    id = imp.create(ME, zdroj="BONGO ZK")
+    last(imp.plan(id, ME, None))
+    path = importer.create_event(archiv, "2017-05-10 BONGO ZK")
+    events = list(imp.execute(id, ME, path))
+    assert [e["typ"] for e in events] == ["start"] + ["soubor"] * 6 + \
+        ["vysledek"]
+    result = events[-1]
+    assert {o["stav"] for o in result["operace"]} == {"hotovo"}
+    assert sorted(os.listdir(path)) == [f"P{i}.JPG" for i in range(5)] + [
+        "RAW.ignored"]
+    assert (path / "RAW.ignored" / "P0.RW2").read_text() == "r"
+    assert (path / "P3.JPG").read_text() == "jjjjj"
+    assert (path / "P3.JPG").stat().st_mtime_ns == MTIME_MS * 10**6
+    assert not src.exists()
+    assert result["zdroj_smazan"] and result["zdroj_zbyva"] == {}
+    assert result["zahozeno"] and not (imp.root / id).exists()
+
+
+def test_source_execute_blocked_and_vanished(source, monkeypatch):
+    imp, archiv = source({"DOD/": {"a.jpg": "novy", "b.jpg": "b",
+                                   "c.jpg": "c", "d.jpg": "d"}})
+    make_tree(archiv, {f"{EVENT}/": {"A.JPG": "stary"}})
+    src = archiv / "přetřídit" / "DOD"
+    real = importer._move
+
+    def move(s, event_dir, dst):
+        if dst == "c.jpg":
+            os.unlink(s)  # mezitím zmizel ze zdroje
+        if dst == "d.jpg":
+            raise OSError(18, "Invalid cross-device link")
+        return (yield from real(s, event_dir, dst))
+    monkeypatch.setattr(importer, "_move", move)
+    id = imp.create(ME, zdroj="DOD")
+    last(imp.plan(id, ME, archiv / EVENT))
+    result = last(imp.execute(id, ME, archiv / EVENT))
+    assert plan_ops(result) == [("DOD/a.jpg", "a.jpg", "blokovano"),
+                                ("DOD/b.jpg", "b.jpg", "hotovo"),
+                                ("DOD/c.jpg", "c.jpg", "chyba"),
+                                ("DOD/d.jpg", "d.jpg", "chyba")]
+    assert "už není" in result["operace"][2]["chyba"]
+    assert "cross-device" in result["operace"][3]["chyba"]
+    assert (archiv / EVENT / "A.JPG").read_text() == "stary"
+    assert sorted(os.listdir(src)) == ["a.jpg", "d.jpg"]
+    assert result["zdroj_zbyva"] == {"foto": 2}
+
+
+def test_source_prune_leftovers(source):
+    imp, archiv = source({"DOD 2016/": {
+        "a.jpg": "a", "DOD 2016 _ fb/": {"b.jpg": "b", "x.docx": "d"},
+        "prazdna/": {"Thumbs.db": "t", "hloubka/": {}},
+        "JPEG orig.ignored/": {"a.jpg": "a"}}})
+    id = imp.create(ME, zdroj="DOD 2016")
+    last(imp.plan(id, ME, None))
+    path = importer.create_event(archiv, "2016-05-01 DOD 2016")
+    result = last(imp.execute(id, ME, path))
+    src = archiv / "přetřídit" / "DOD 2016"
+    assert sorted(os.listdir(src)) == ["DOD 2016 _ fb", "JPEG orig.ignored"]
+    assert os.listdir(src / "DOD 2016 _ fb") == ["x.docx"]
+    assert os.listdir(src / "JPEG orig.ignored") == ["a.jpg"]
+    assert result["zdroj_zbyva"] == {"nepodporovany": 1}
+    assert not result["zdroj_smazan"]
+    assert result["zahozeno"]  # nic přenositelného nezůstalo
+
+
+def test_source_discard_keeps_source(source):
+    imp, archiv = source({"FotoKoule/": {"a.jpg": "a", "b/": {"c.jpg": "c"}}})
+    before = snapshot(archiv)
+    id = imp.create(ME, zdroj="FotoKoule")
+    imp.overview(id, ME, exiftool=fake_exiftool)
+    last(imp.plan(id, ME, None))
+    imp.discard(id, ME)
+    assert not (imp.root / id).exists()
+    assert snapshot(archiv) == before
+
+
+def test_source_against_last_plan(source):
+    imp, archiv = source({"DOD/": {"a.jpg": "a", "b.jpg": "bb",
+                                   "c.jpg": "ccc"}})
+    src = archiv / "přetřídit" / "DOD"
+    id = imp.create(ME, zdroj="DOD")
+    with pytest.raises(Refused) as e:
+        next(imp.execute(id, ME, archiv))
+    assert e.value.code == "bez_planu"
+    last(imp.plan(id, ME, None))
+    (src / "a.jpg").unlink()                 # zmizel po plánu
+    (src / "b.jpg").write_text("bbbb")       # změnil se po plánu
+    (src / "nova.jpg").write_text("n")       # přibyl po plánu
+    path = importer.create_event(archiv, "2019-05-01 DOD")
+    result = last(imp.execute(id, ME, path))
+    assert plan_ops(result) == [("DOD/a.jpg", "a.jpg", "chyba"),
+                                ("DOD/b.jpg", "b.jpg", "blokovano"),
+                                ("DOD/c.jpg", "c.jpg", "hotovo")]
+    assert result["operace"][0]["chyba"] == "ve zdroji už není"
+    assert result["operace"][1]["duvod"] == "změnil se po plánu"
+    assert result["po_planu"] == ["DOD/nova.jpg"]
+    assert os.listdir(path) == ["c.jpg"]
+    assert sorted(os.listdir(src)) == ["b.jpg", "nova.jpg"]
+    assert not result["zahozeno"]
+    # Snímek je spotřebovaný: další provedení chce nový plán.
+    with pytest.raises(Refused) as e:
+        next(imp.execute(id, ME, path))
+    assert e.value.code == "bez_planu"

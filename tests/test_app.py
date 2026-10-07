@@ -1,4 +1,5 @@
 import io
+import os
 import json
 
 import pytest
@@ -683,3 +684,88 @@ def test_contact_option_migrated(tmp_path, monkeypatch, capsys):
     main(args + ["--kontakt", "jiny@example.cz"])  # už nastaveno: ignoruje
     assert "ignoruje" in capsys.readouterr().out
     assert contact.load() == "archiv@example.cz"
+
+
+# --- přetřídit -------------------------------------------------------------
+
+def ndjson(r):
+    assert r.status_code == 200, r.get_data(as_text=True)
+    return [json.loads(line) for line in r.get_data(as_text=True).splitlines()]
+
+
+def unsorted_tree(archiv):
+    make_tree(archiv, {"přetřídit/": {
+        "DOD 2019/": {"a.jpg": "a", "b.jpg": "bb", "NEF/": {"a.nef": "r"}},
+        "_duplicity.ignored/": {"a.jpg": "a"}, "pozn.txt": "x"}})
+
+
+def test_api_pretridit(client):
+    c, archiv = client
+    assert ndjson(c.get("/api/pretridit")) == [{"typ": "vypis",
+                                                "slozky": []}]
+    unsorted_tree(archiv)
+    events = ndjson(c.get("/api/pretridit"))
+    [item] = events[0]["slozky"]
+    assert item["nazev"] == "DOD 2019"
+    assert item["pocty"] == {"foto": 2, "raw": 1}
+    assert item["podslozky"] == ["NEF"]
+    assert events[1]["typ"] == "slozka" and events[1]["navrh"]["akce"] is None
+    assert ndjson(c.get("/api/pretridit?exif=0")) == events[:1]
+
+
+def test_api_source_dev_mode(client):
+    c, archiv = client
+    unsorted_tree(archiv)
+    before = snapshot(archiv)
+    for bad in ("../x", "_duplicity.ignored", "pozn.txt"):
+        r = c.post("/api/import", json=dict(R1, zdroj=bad))
+        assert r.status_code == 400 and r.json["chyba"] == "neplatny_zdroj"
+    body = dict(R1, zdroj="DOD 2019", cil="2019-05-01 DOD 2019", nova=True)
+    id = c.post("/api/import", json=body).json["id"]
+    assert c.post("/api/import", json=body).json["id"] == id
+    o = c.get(f"/api/import/{id}", query_string={"jmeno": R1["jmeno"]}).json
+    assert o["zdroj"] == "DOD 2019" and o["pocty"] == {"foto": 2, "raw": 1}
+    assert o["cil"] == "2019-05-01 DOD 2019" and o["nova"]
+    plan = ndjson(c.post(f"/api/import/{id}/plan", json={
+        "jmeno": R1["jmeno"], "nova": "2019-05-01 DOD 2019"}))[-1]
+    assert [(o["z"], o["stav"]) for o in plan["operace"]] == [
+        ("DOD 2019/NEF/a.nef", "ok"), ("DOD 2019/a.jpg", "ok"),
+        ("DOD 2019/b.jpg", "ok")]
+    r = c.post(f"/api/import/{id}/provest",
+               json=dict(R1, nova="2019-05-01 DOD 2019"))
+    assert r.status_code == 403 and r.json["chyba"] == "vyvojovy_rezim"
+    assert c.delete(f"/api/import/{id}", json=R1).status_code == 200
+    assert snapshot(archiv) == before
+
+
+def test_api_source_lock(prod):
+    c, archiv = prod
+    unsorted_tree(archiv)
+    jana = c.post("/api/import", json=dict(R2, zdroj="DOD 2019")).json["id"]
+    david = c.post("/api/import", json=dict(R1, zdroj="DOD 2019")).json["id"]
+    r = c.post(f"/api/import/{david}/provest",
+               json=dict(R1, nova="2019-05-01 DOD David"))
+    assert r.status_code == 409 and r.json["chyba"] == "bez_planu"
+    assert c.application.config["LOCKS"].holder("přetřídit/DOD 2019") is None
+    for id, who, name in ((jana, R2, "Jana"), (david, R1, "David")):
+        ndjson(c.post(f"/api/import/{id}/plan", json={
+            "jmeno": who["jmeno"], "nova": f"2019-05-01 DOD {name}"}))
+    r = c.post(f"/api/import/{jana}/provest",
+               json=dict(R2, nova="2019-05-01 DOD Jana"), buffered=False)
+    chunks = iter(r.response)
+    assert b'"hash"' in next(chunks)  # a.jpg a a.nef mají stejnou velikost
+    refused = c.post(f"/api/import/{david}/provest",
+                     json=dict(R1, nova="2019-05-01 DOD David"))
+    assert refused.status_code == 409
+    assert refused.json["chyba"] == "zdroj_obsazen"
+    assert refused.json["drzitel"]["jmeno"] == R2["jmeno"]
+    assert not (archiv / "2019-05-01 DOD David").exists()
+    r.close()  # přerušení uvolní zámek zdroje
+    r = c.post(f"/api/import/{david}/provest",
+               json=dict(R1, nova="2019-05-01 DOD David"))
+    result = ndjson(r)[-1]
+    r.close()
+    assert result["typ"] == "vysledek" and result["zahozeno"]
+    moved = sorted(os.listdir(archiv / "2019-05-01 DOD David"))
+    assert "RAW.ignored" in moved
+    assert c.application.config["LOCKS"].holder("přetřídit/DOD 2019") is None

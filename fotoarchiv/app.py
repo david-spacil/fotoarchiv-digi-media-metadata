@@ -18,9 +18,9 @@ from flask import (Flask, Response, abort, g, jsonify, redirect, request,
                    send_file, session)
 
 from . import (auth, cleanup, geocode, immich, importer, lock, model, names,
-               scan, thumbs, xmp)
+               scan, thumbs, unsorted, xmp)
 from . import index as archive_index
-from .archive import SCHEMA, Conflict, Workspace
+from .archive import SCHEMA, UNSORTED, Conflict, Workspace
 
 STATIC = Path(__file__).parent / "static"
 
@@ -50,7 +50,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         geocoder = geocode.Geocoder(cache_dir, contact.load)
     accounts = auth.Auth(ws.work)
     name_index = names.NameIndex(ws.metadata_files)
-    imports = importer.Imports(ws.work)
+    unsorted_root = ws.archiv / UNSORTED
+    imports = importer.Imports(ws.work, source_root=unsorted_root)
     immich_settings = immich.Settings(ws.work)
     sync = immich.Sync(ws, locks, immich_settings, name_index.names,
                        fetch=immich_fetch, interval=immich_interval)
@@ -518,20 +519,35 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             return {"zapsano": False, "navrh": not had_doc, "chyba": str(e)}
         return {"zapsano": True, "navrh": False}
 
+    @app.get("/api/pretridit")
+    def pretridit():
+        """Stream NDJSON přehledu `přetřídit`: `vypis`, pak `slozka` po
+        složkách (údaje z EXIF). `exif=0` = jen výpis."""
+        exif = request.args.get("exif") != "0"
+        events = unsorted.iter_overview(unsorted_root, cache_dir, exif=exif)
+        return ndjson(events)
+
     @app.get("/api/import")
     def import_list():
         return {"importy": imports.owned(request.args.get("jmeno"))}
 
     @app.post("/api/import")
     def import_create():
+        """Nový import; se `zdroj` (složka v `přetřídit`) bez nahrávání,
+        případně s navrženým cílem (`cil`, `nova`)."""
         body = request.get_json(force=True)
         celkem = body.get("celkem", 0)
         if not isinstance(celkem, int) or celkem < 0:
             abort(400)
+        zdroj, cil = body.get("zdroj"), body.get("cil")
+        if cil is not None and not isinstance(cil, str):
+            abort(400)
         try:
-            id = imports.create(body_field(body, "jmeno").strip(), celkem)
+            id = imports.create(body_field(body, "jmeno").strip(), celkem,
+                                zdroj=zdroj, cil=cil,
+                                nova=bool(body.get("nova")))
         except importer.Refused as e:
-            return refused(e, 507)
+            return refused(e, 400 if e.code == "neplatny_zdroj" else 507)
         return {"id": id, "limit": importer.MAX_FILE}
 
     @app.post("/api/import/<id>/soubor")
@@ -550,8 +566,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                                      mtime, request.args.get("relace"))
         except importer.Refused as e:
             return refused(e, {"bez_delky": 411, "prilis_velky": 413,
-                               "malo_mista": 507,
-                               "probiha": 409}.get(e.code, 400))
+                               "malo_mista": 507, "probiha": 409,
+                               "ma_zdroj": 409}.get(e.code, 400))
         except KeyError:
             abort(404)  # mezitím zahozeno
         return {"soubor": entry}
@@ -588,7 +604,12 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     @app.post("/api/import/<id>/provest")
     def import_execute(id):
         """Stream průběhu provedení, nakonec `vysledek`. Odmítnutí před
-        začátkem kopírování je obyčejná JSON odpověď."""
+        začátkem kopírování je obyčejná JSON odpověď.
+
+        Import ze zdroje drží po dobu provedení zámek `přetřídit/<složka>`
+        (obsazený = 409 `zdroj_obsazen` s držitelem). Zámek má vlastní
+        relaci: jedna relace drží nejvýš jeden zámek a ta drží cílovou
+        akci."""
         body = request.get_json(force=True)
         jmeno = body.get("jmeno")
         record = check_import(id, jmeno)
@@ -599,11 +620,26 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         pripojit = body.get("pripojit")
         if pripojit is not None and not isinstance(pripojit, dict):
             abort(400)
+        source_key = f"{UNSORTED}/{record['zdroj']}" \
+            if record.get("zdroj") else None
+        source_relace = f"{relace}#{UNSORTED}"
+        created = False
+
+        def release_source():
+            if source_key:
+                locks.release(source_key, source_relace)
         try:
             imports.check_idle(id)
+            imports.check_plan(record)
             nazev, path = import_target(body)
             existing = existing_groups(nazev, path)
             importer.check_groups(volba, existing)
+            if source_key:
+                ok, info = locks.acquire(source_key, source_relace,
+                                         g.user["jmeno"] or record["jmeno"],
+                                         session.get("id"))
+                if not ok:
+                    return {"chyba": "zdroj_obsazen", "drzitel": info}, 409
             had_doc = path is not None and ws.load(nazev)[0] is not None
             created = path is None
             if created:
@@ -613,13 +649,16 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 locks.acquire(nazev, relace, record["jmeno"],
                               session.get("id"))
         except importer.Refused as e:
+            release_source()
             return refused(e)
         denied = require_lock(nazev, body)
         if denied:
+            release_source()
             return denied
         finished = False
 
         def release():
+            release_source()
             # Klient bez výsledku (zavřená záložka) zámek nové akce
             # nepřevezme ani neobnovuje: neblokovat akci do vypršení.
             if created and not finished:
@@ -639,6 +678,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         def tagged():
             nonlocal finished
             for event in events:
+                if event["typ"] == "soubor" and source_key:
+                    locks.heartbeat(source_key, source_relace)
                 if event["typ"] == "vysledek":
                     event["cil"] = nazev
                     # Zámek akce drží tato relace, klient akci nemá

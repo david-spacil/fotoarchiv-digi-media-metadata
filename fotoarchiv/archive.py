@@ -20,6 +20,8 @@ METADATA_NAME = "_metadata.json"
 TMP_PREFIX = ".metadata-"
 XMP_TMP_PREFIX = ".xmp-"
 IMPORT_TMP_PREFIX = ".import-"
+# Nezatříděné akce v kořeni archivu; mění je jen import (`unsorted`).
+UNSORTED = "přetřídit"
 
 
 def is_skipped(name):

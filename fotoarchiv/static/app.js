@@ -68,8 +68,9 @@ async function api(url, opts = {}) {
 
 // POST se streamem NDJSON (průběh dlouhých operací): `onEvent` pro každý
 // řádek, vrátí poslední událost. Odmítnutí před startem je JSON s chybou.
+// `body` null = GET.
 async function apiStream(url, body, onEvent) {
-  const r = await fetch(url, { method: "POST",
+  const r = await fetch(url, body === null ? {} : { method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body) });
   if (!r.ok) {
@@ -387,6 +388,8 @@ async function route() {
   if (state.locked && state.locked !== name) releaseLock();
   if (location.hash === "#/nastaveni") {
     await showSettings();
+  } else if (location.hash === "#/pretridit") {
+    await showUnsorted();
   } else if (im) {
     await openImport(im[1] ? decodeURIComponent(im[1]) : null,
       new URLSearchParams(im[2] || ""));
@@ -455,7 +458,8 @@ async function showList() {
   app.replaceChildren(header(), h("main", { class: "list" },
     h("div", { class: "row" }, h("h1", {}, "Akce"),
       h("button", { onclick: () => { location.hash = "#/import"; } },
-        "Importovat fotky a videa…")),
+        "Importovat fotky a videa…"),
+      h("a", { href: "#/pretridit" }, "Přetřídit")),
     pendingImports(pending),
     h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Datum"), h("th", {}, "Akce"),
@@ -472,9 +476,8 @@ function fmtTime(seconds) {
 function pendingImports(items) {
   if (!items.length) return null;
   const discard = async (it, button) => {
-    if (!(await confirmDialog("Zahodit import?", [
-      `Nahrané soubory (${it.souboru}) se smažou z pracovního adresáře ` +
-      "serveru. Archiv zůstane beze změny."], "Zahodit"))) return;
+    if (!(await confirmDialog("Zahodit import?", [discardText(it.zdroj,
+      it.souboru)], "Zahodit"))) return;
     button.disabled = true;
     button.textContent = "Zahazuji…";
     try {
@@ -497,7 +500,8 @@ function pendingImports(items) {
         const button = h("button", { disabled: it.probiha,
           onclick: () => discard(it, button) }, "Zahodit");
         return h("tr", {},
-          h("td", {}, fmtTime(it.zalozeno)),
+          h("td", {}, fmtTime(it.zalozeno), it.zdroj ? h("span",
+            { class: "meta" }, ` ze složky ${UNSORTED}/${it.zdroj}`) : null),
           h("td", { class: "num" }, it.souboru),
           h("td", { class: "num" }, fmtSize(it.velikost)),
           h("td", {}, !it.cil ? h("span", { class: "meta" }, "nezvolen")
@@ -510,6 +514,125 @@ function pendingImports(items) {
             h("a", { href: `#/import/${encodeURIComponent(it.id)}` },
               "Pokračovat"), button)));
       }))));
+}
+
+function discardText(zdroj, n) {
+  return zdroj ? `Import se zahodí; složka ${UNSORTED}/${zdroj} zůstane ` +
+    "beze změny."
+    : `Nahrané soubory (${n}) se smažou z pracovního adresáře serveru. ` +
+      "Archiv zůstane beze změny.";
+}
+
+// --- přetřídit -------------------------------------------------------------
+
+// Složky první úrovně `přetřídit` jako kandidáti na import ze zdroje:
+// výpis hned, údaje z EXIF se doplňují po složkách (stream).
+
+const UNSORTED = "přetřídit";
+let unsortedRun = 0;
+
+function countsText(c) {
+  return ["foto", "video", "raw", "nepodporovany"].filter((t) => c[t])
+    .map((t) => plural(c[t], ...TYP[t])).join(", ") || "prázdná";
+}
+
+// Založí (nebo vrátí rozpracovaný) import ze složky a otevře přehled.
+async function importFromSource(zdroj, navrh, button) {
+  if (button) setBusy(button, "Zakládám…");
+  const body = { jmeno: userName(), zdroj };
+  if (navrh) Object.assign(body, { cil: navrh, nova: true });
+  try {
+    const r = await api("/api/import", { method: "POST", body });
+    imp.id = null; // přehled se načte znovu
+    location.hash = `#/import/${encodeURIComponent(r.id)}` +
+      (imp.cil && !navrh ? `?cil=${encodeURIComponent(imp.cil)}` : "");
+  } catch (err) {
+    if (button) button.textContent = `Nejde: ${err.data?.chyba ||
+      err.message}`;
+  }
+}
+
+async function showUnsorted() {
+  state.mode = "pretridit";
+  state.name = null;
+  const run = ++unsortedRun;
+  app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
+  if (!userName()) await askName();
+  const own = new Map((await api(
+    `/api/import?jmeno=${encodeURIComponent(userName())}`)
+    .then((r) => r.importy).catch(() => []))
+    .filter((it) => it.zdroj).map((it) => [it.zdroj, it]));
+  const status = h("p", { class: "meta" }, "Načítám složky…");
+  const tbody = h("tbody");
+  const rows = new Map();
+  app.replaceChildren(header(), h("main", { class: "list" },
+    h("div", { class: "row" }, h("a", { href: "#/" }, "← Akce"),
+      h("h1", {}, "Přetřídit")),
+    h("p", { class: "notice" }, `Složky první úrovně ${UNSORTED} v kořeni ` +
+      "archivu. Import složky soubory do akce přesune; duplicity, " +
+      "blokované a nepodporované zůstanou ve složce. Podsložky s příponou " +
+      ".ignored se přeskočí."),
+    status,
+    h("table", {},
+      h("thead", {}, h("tr", {}, h("th", {}, "Složka"),
+        h("th", {}, "Souborů"), h("th", {}, "Podsložky"),
+        h("th", {}, "Data z EXIF"), h("th", {}, "Z názvu"),
+        h("th", {}, "Navržená akce"), h("th"))),
+      tbody)));
+  const fill = (row, it) => {
+    row.dates.textContent = it.od ? (it.od === it.do ? fmtDate(it.od)
+      : `${fmtDate(it.od)} – ${fmtDate(it.do)}`) : "nezjištěno";
+    row.navrh = it.navrh.akce;
+    row.proposal.replaceChildren(it.navrh.akce ? h("code", {}, it.navrh.akce)
+      : h("span", { class: "meta" }, "bez data – doplníte v průvodci"));
+  };
+  const addRows = (items) => {
+    for (const it of items) {
+      const mine = own.get(it.nazev);
+      const z = it.z_nazvu;
+      const row = { dates: h("td", { class: "meta" }, "…"),
+        proposal: h("td", { class: "meta" }, "…"),
+        navrh: z.datum ? `${z.datum} ${it.nazev}` : null };
+      const button = h("button", { onclick: () =>
+        importFromSource(it.nazev, row.navrh, button) },
+      mine ? "Pokračovat v importu" : "Importovat");
+      rows.set(it.nazev, row);
+      tbody.append(h("tr", { class: mine ? "mine" : "" },
+        h("td", {}, it.nazev, mine ? h("span", { class: "badge" },
+          " rozpracovaný import") : null),
+        h("td", {}, countsText(it.pocty),
+          h("span", { class: "meta" }, ` · ${fmtSize(it.velikost)}`)),
+        h("td", {}, it.podslozky.length ? it.podslozky.join(", ")
+          : h("span", { class: "meta" }, "—")),
+        row.dates,
+        h("td", {}, z.datum ? fmtDate(z.datum) : z.rok ? `rok ${z.rok}`
+          : h("span", { class: "meta" }, "—")),
+        row.proposal,
+        h("td", {}, button)));
+    }
+  };
+  try {
+    await apiStream("/api/pretridit", null, (ev) => {
+      if (run !== unsortedRun || state.mode !== "pretridit") return;
+      if (ev.typ === "vypis") {
+        addRows(ev.slozky);
+        status.textContent = ev.slozky.length
+          ? `${plural(ev.slozky.length, "složka", "složky", "složek")}; ` +
+            "čtu data z EXIF…"
+          : `Složka ${UNSORTED} je prázdná nebo v archivu není.`;
+      } else if (ev.typ === "slozka") {
+        const row = rows.get(ev.nazev);
+        if (row) fill(row, ev);
+        status.textContent = ev.hotovo === ev.celkem
+          ? plural(ev.celkem, "složka", "složky", "složek")
+          : `Čtu data z EXIF: ${ev.hotovo} z ${ev.celkem}`;
+      }
+    });
+  } catch (err) {
+    if (run === unsortedRun) {
+      status.textContent = `Přehled nejde načíst: ${err.message}`;
+    }
+  }
 }
 
 // --- otevření akce --------------------------------------------------------
@@ -2564,7 +2687,8 @@ const imp = {
   id: null, step: 0, cil: null, picked: [], failed: [], uploading: false,
   overview: null, target: null, targetError: null, plan: null,
   result: null, lockHolder: null, error: null, busy: null,
-  groups: null, targetGroups: null, pripojit: {},
+  groups: null, targetGroups: null, pripojit: {}, unsorted: null,
+  sourceHolder: null,
 };
 
 function importUrl(rest = "") {
@@ -2592,7 +2716,8 @@ async function openImport(id, params) {
       id, step: 0, cil: params.get("cil"), picked: [], failed: [],
       uploading: false, overview: null, target: null, targetError: null,
       plan: null, result: null, lockHolder: null, error: null, busy: null,
-      groups: null, targetGroups: null, pripojit: {},
+      groups: null, targetGroups: null, pripojit: {}, unsorted: null,
+      sourceHolder: null,
     });
   }
   app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
@@ -2608,7 +2733,7 @@ async function openImport(id, params) {
           "jinému uživateli."), h("a", { href: "#/" }, "← Akce")));
       return;
     }
-    if (imp.overview.soubory.length) imp.step = 1;
+    if (imp.overview.soubory.length || imp.overview.zdroj) imp.step = 1;
   }
   renderImport();
 }
@@ -2688,8 +2813,7 @@ async function discardImport(e) {
   const button = e?.currentTarget;
   const n = imp.overview?.soubory.length || 0;
   if (imp.id && !(await confirmDialog("Zahodit import?", [
-    `Nahrané soubory (${n}) se smažou z pracovního adresáře serveru. ` +
-    "Archiv zůstane beze změny."], "Zahodit"))) return;
+    discardText(imp.overview?.zdroj, n)], "Zahodit"))) return;
   if (imp.id) {
     const label = button?.textContent;
     if (button) setBusy(button, "Zahazuji…");
@@ -2772,6 +2896,8 @@ function renderPick() {
   ". Soubory z podsložek se zpracují, jako by ležely v jedné úrovni.",
   fileInput, dirInput);
 
+  const fromSource = !imp.id && !imp.picked.length && !imp.uploading
+    ? unsortedChoice() : null;
   const tooBig = imp.picked.filter((p) => p.file.size > limit);
   const todo = imp.picked.filter((p) => p.file.size <= limit);
   const total = todo.reduce((s, p) => s + p.file.size, 0);
@@ -2790,6 +2916,7 @@ function renderPick() {
     uploaded ? h("p", {}, `Už nahráno: ${plural(uploaded, "soubor",
       "soubory", "souborů")}.`) : null,
     imp.uploading ? null : zone,
+    fromSource,
     imp.error ? h("p", { class: "notice error" }, imp.error) : null,
     imp.uploading ? progressBox("Nahrávám…") : null,
     imp.picked.length ? h("p", {}, `K nahrání: ${plural(todo.length,
@@ -2816,6 +2943,37 @@ function renderPick() {
       imp.failed.length ? "Nahrát znovu" : "Nahrát")),
   ];
   app.replaceChildren(...importFrame(body, nav));
+}
+
+// Krok Soubory: místo nahrání složka v `přetřídit` (výpis bez EXIF).
+function unsortedChoice() {
+  const box = h("fieldset", { class: "folder" },
+    h("legend", {}, `Nebo ze složky ${UNSORTED} v archivu`));
+  if (!imp.unsorted) {
+    box.append(h("button", { class: "link", onclick: async (e) => {
+      setBusy(e.currentTarget, "Načítám…");
+      const last = await apiStream("/api/pretridit?exif=0", null, () => {})
+        .catch(() => null);
+      imp.unsorted = last?.slozky || [];
+      renderPick();
+    } }, "Ukázat složky…"));
+    return box;
+  }
+  if (!imp.unsorted.length) {
+    box.append(h("p", { class: "meta" }, `Složka ${UNSORTED} je prázdná ` +
+      "nebo v archivu není."));
+    return box;
+  }
+  box.append(h("p", { class: "meta" }, "Soubory se nenahrávají; import " +
+    "je do akce přesune."), h("table", { class: "ops" },
+    imp.unsorted.map((it) => {
+      const button = h("button", { class: "link", onclick: () =>
+        importFromSource(it.nazev, null, button) }, it.nazev);
+      return h("tr", {}, h("td", {}, button),
+        h("td", {}, countsText(it.pocty)),
+        h("td", { class: "num" }, fmtSize(it.velikost)));
+    })));
+  return box;
 }
 
 function uploadOne(item, onProgress) {
@@ -2912,7 +3070,8 @@ function renderOverview() {
   h("td", { class: "num" }, fmtSize(f.velikost))));
   const body = h("main", { class: "wizard" },
     imp.error ? h("p", { class: "notice error" }, imp.error) : null,
-    h("p", {}, `Nahráno ${plural(o.soubory.length, "soubor", "soubory",
+    h("p", {}, (o.zdroj ? `Ve složce ${UNSORTED}/${o.zdroj} je `
+      : "Nahráno ") + `${plural(o.soubory.length, "soubor", "soubory",
       "souborů")}: ${parts.join(", ") || "žádná média"}.`),
     h("p", {}, "Datum: ", h("strong", {}, dates)),
     h("p", {}, "Přístroje: ", o.pristroje.join(", ") || "nezjištěny"),
@@ -2924,7 +3083,8 @@ function renderOverview() {
       h("table", { class: "ops" }, rows)));
   app.replaceChildren(...importFrame(body, [
     h("span", { class: "row" },
-      h("button", { onclick: () => goStep(0) }, "← Přidat soubory"),
+      o.zdroj ? null : h("button", { onclick: () => goStep(0) },
+        "← Přidat soubory"),
       h("button", { onclick: discardImport }, "Zahodit import")),
     h("button", { class: "primary", disabled: !media,
       onclick: () => goStep(2) }, "Pokračovat"),
@@ -3029,7 +3189,7 @@ function renderTarget() {
       : o.cil && events.some((e) => e.nazev === o.cil)
         ? { mode: "stavajici", cil: o.cil, datum: o.od || "", nazev: "" }
         : { mode: "nova", cil: events[0]?.nazev, datum: o.od || "",
-          nazev: "" };
+          nazev: o.zdroj || "" };
   const t = imp.target;
   const radio = (mode, label) => h("label", {},
     h("input", { type: "radio", name: "cil", checked: t.mode === mode,
@@ -3184,8 +3344,15 @@ function renderImportPlan() {
   const n = countBy(p.operace);
   const zapis = state.info.zapis;
   const holder = imp.lockHolder;
+  const zdroj = imp.overview?.zdroj;
   const body = h("main", { class: "wizard" },
-    zapis
+    zapis && zdroj
+      ? h("p", { class: "notice" }, "Po potvrzení se soubory přesunou ze " +
+        `složky ${UNSORTED}/${zdroj}, média do kořene akce, RAWy do ` +
+        "RAW.ignored. Nic se nepřepíše; blokované, duplicitní " +
+        "a nepodporované soubory zůstanou ve zdroji. Prázdné složky zdroje " +
+        "se smažou.")
+      : zapis
       ? h("p", { class: "notice" }, "Po potvrzení se soubory zkopírují do " +
         "archivu, média do kořene akce, RAWy do RAW.ignored. Nic se " +
         "nepřepíše; blokované a duplicitní soubory zůstanou v pracovním " +
@@ -3197,8 +3364,12 @@ function renderImportPlan() {
     h("p", {}, `Přenese se ${n("ok")}, blokováno ${n("blokovano")}, ` +
       `duplicit ${n("duplicita")}.`),
     holder ? h("p", { class: "notice readonly" },
-      `${holderText(holder)} Import teď nejde provést; nahrané ` +
-      "soubory zůstávají v pracovním adresáři.") : null,
+      `${holderText(holder)} Import teď nejde provést; ` + (zdroj
+        ? "soubory zůstávají ve zdroji."
+        : "nahrané soubory zůstávají v pracovním adresáři.")) : null,
+    imp.sourceHolder ? h("p", { class: "notice readonly" },
+      `Složku ${UNSORTED}/${zdroj} právě přesouvá ` +
+      `${imp.sourceHolder.jmeno}. Import teď nejde provést.`) : null,
     p.nepodporovane.length ? h("p", { class: "meta" },
       `Nepodporované (nepřenesou se): ${p.nepodporovane.join(", ")}`) : null,
     importPlanGroups(p),
@@ -3212,7 +3383,8 @@ function renderImportPlan() {
   const go = h("button", { class: "primary", onclick: () => {
     if (!go.dataset.confirm) {
       go.dataset.confirm = "1";
-      go.textContent = "Opravdu zkopírovat do archivu?";
+      go.textContent = zdroj ? "Opravdu přesunout do archivu?"
+        : "Opravdu zkopírovat do archivu?";
       return;
     }
     executeImport(go);
@@ -3230,6 +3402,8 @@ async function executeImport(button) {
   imp.busy = "provest";
   setBusy(button, "Připravuji…");
   const p = imp.plan;
+  const zdroj = imp.overview?.zdroj;
+  imp.sourceHolder = null;
   if (!p.nova && !(await acquireLock(p.cil))) {
     imp.busy = null;
     imp.lockHolder = state.readonly;
@@ -3237,7 +3411,10 @@ async function executeImport(button) {
     return renderImport();
   }
   app.replaceChildren(...importFrame(h("main", { class: "wizard" },
-    h("p", {}, "Kopíruji do archivu. Zavření stránky kopírování zastaví: " +
+    h("p", {}, zdroj ? `Přesouvám ze složky ${UNSORTED}/${zdroj}. Zavření ` +
+      "stránky přesun zastaví: přesunuté soubory zůstanou v akci, ostatní " +
+      "ve zdroji."
+      : "Kopíruji do archivu. Zavření stránky kopírování zastaví: " +
       "přenesené soubory zůstanou v archivu, ostatní v pracovním " +
       "adresáři."), progressBox("Připravuji…")), []));
   let start = null;
@@ -3263,7 +3440,8 @@ async function executeImport(button) {
           copied += ev.operace.velikost;
         }
         setProgress(start.bajtu ? (copied + now) / start.bajtu : 1,
-          `Zkopírováno ${files} z ${start.souboru} · ` +
+          `${zdroj ? "Přesunuto" : "Zkopírováno"} ${files} z ` +
+          `${start.souboru} · ` +
           `${fmtSize(copied + now)} z ${fmtSize(start.bajtu)}`);
       }
     });
@@ -3280,15 +3458,27 @@ async function executeImport(button) {
       imp.targetError = { text: `Složka ${err.data.akce} mezitím vznikla.` };
       return goStep(2);
     }
+    if (err.status === 409 && err.data?.chyba === "bez_planu") {
+      imp.targetError = { text: "Plán už neplatí (import se mezitím " +
+        "provedl jinde); sestavte ho znovu." };
+      if (!p.nova) releaseLock();
+      return goStep(2);
+    }
+    if (err.status === 409 && err.data?.chyba === "zdroj_obsazen") {
+      imp.sourceHolder = err.data.drzitel || { jmeno: "jiný uživatel" };
+      if (!p.nova) releaseLock();
+      return renderImport();
+    }
     if (err.status === 409 && err.data?.chyba === "probiha") {
       imp.targetError = { text: "Import se právě provádí v jiné záložce." };
       return goStep(2);
     }
     if (err.status) throw err;
     // Spojení se přerušilo uprostřed: přenesené jsou v archivu.
-    imp.targetError = { text: `Kopírování se přerušilo (${err.message}). ` +
-      "Přenesené soubory jsou v archivu, ostatní zůstaly v pracovním " +
-      "adresáři; sestavte plán znovu." };
+    imp.targetError = { text: `Přenos se přerušil (${err.message}). ` +
+      "Přenesené soubory jsou v archivu, ostatní zůstaly " +
+      (zdroj ? "ve zdroji" : "v pracovním adresáři") +
+      "; sestavte plán znovu." };
     state.events = await api("/api/akce").catch(() => state.events);
     try {
       await loadOverview();
@@ -3308,12 +3498,26 @@ async function executeImport(button) {
 function renderImportResult() {
   const r = imp.result;
   const n = countBy(r.operace);
+  const zdroj = imp.overview?.zdroj;
+  const left = Object.values(r.zdroj_zbyva || {}).reduce((a, b) => a + b, 0);
   const body = h("main", { class: "wizard" },
     h("p", { class: n("chyba") ? "notice error" : "notice" },
       `Přeneseno ${n("hotovo")}, blokováno ${n("blokovano")}, duplicit ` +
-      `${n("duplicita")}, chyba ${n("chyba")}.` + (r.zahozeno ? ""
+      `${n("duplicita")}, chyba ${n("chyba")}.` + (r.zahozeno || zdroj ? ""
         : " Nepřenesené soubory zůstaly v pracovním adresáři, dokud " +
           "import nezahodíte.")),
+    zdroj ? h("p", {}, r.zdroj_smazan
+      ? `Složka ${UNSORTED}/${zdroj} se vyprázdnila a byla smazána.`
+      : `Ve složce ${UNSORTED}/${zdroj} ` + (left ? `zůstal${left === 1
+        ? "" : left < 5 ? "y" : "o"} ${plural(left, "soubor", "soubory",
+        "souborů")} (${countsText(r.zdroj_zbyva)}); složka zůstala.`
+        : "nezůstaly žádné soubory; složka zůstala.")) : null,
+    r.po_planu?.length ? h("div", { class: "notice readonly" },
+      `Po sestavení plánu přibyly do zdroje soubory (${r.po_planu.length}); ` +
+      "nepřesunuly se a zůstaly ve zdroji (pro přesun sestavte nový " +
+      "plán): ",
+      r.po_planu.flatMap((c, i) => [i ? ", " : "", h("code", {}, c)]))
+      : null,
     r.nepodporovane.length ? h("p", { class: "meta" },
       `Nepodporované (nepřeneseno): ${r.nepodporovane.join(", ")}`) : null,
     r.smazano?.length ? h("p", { class: "meta" }, "Smazány zbytky " +
@@ -3333,7 +3537,7 @@ function renderImportResult() {
       r.skupiny.skupiny[gid]?.nazev || gid)));
   app.replaceChildren(...importFrame(body, [
     r.zahozeno ? h("span") : h("button", { onclick: discardImport },
-      "Zahodit nepřenesené"),
+      zdroj ? "Zahodit import" : "Zahodit nepřenesené"),
     h("button", { class: "primary", onclick: () => {
       location.hash = `#/akce/${encodeURIComponent(r.cil)}`;
     } }, "Otevřít akci"),

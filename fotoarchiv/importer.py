@@ -7,6 +7,10 @@ archivu se před potvrzením nic nezapíše. Plán má tvar plánu úklidu
 `.import-*.tmp` v cílové složce, kontrola cíle těsně před přejmenováním.
 Plán i provedení jsou generátory událostí průběhu (pro stream NDJSON);
 zavření generátoru uprostřed kopie smaže rozkopírovaný soubor.
+
+Import se zdrojem (`zdroj` = složka první úrovně `přetřídit`) nic
+nenahrává: záznamy souborů se sestaví z aktuálního obsahu zdroje
+a provedení soubory přesune přejmenováním (stejný svazek).
 """
 
 import hashlib
@@ -25,8 +29,10 @@ from datetime import date
 from pathlib import Path
 
 from . import names, scan
-from .archive import EVENT_RE, IMPORT_TMP_PREFIX, is_metadata, is_skipped
-from .cleanup import BLOCKED, DONE, FAILED, RAW_DIR, Blocked, _key, is_raw
+from .archive import (EVENT_RE, IMPORT_TMP_PREFIX, UNSORTED, is_metadata,
+                      is_skipped)
+from .cleanup import (BLOCKED, DONE, FAILED, IGNORED, RAW_DIR, Blocked, _key,
+                      is_raw)
 
 log = logging.getLogger(__name__)
 
@@ -155,64 +161,205 @@ def _listing(path):
         return set()
 
 
-def iter_root_hashes(event_dir, sizes, cache_path):
-    """{sha256: název} souborů v kořeni akce, jejichž velikost je v `sizes`.
+def _root_stats(event_dir):
+    """[(název, cesta, stat)] souborů v kořeni akce (bez metadat)."""
+    with os.scandir(event_dir) as it:
+        return [(e.name, e.path, e.stat()) for e in it if e.is_file()
+                and not is_skipped(e.name) and not is_metadata(e.name)]
 
-    Na SMB se čte jen málo dat: jen soubory shodné velikosti, hashe se
-    cachují podle (název, velikost, mtime). Generátor průběhu: `hash`
-    (kolik souborů a bajtů se porovná) a `hash_prubeh` (kolik je hotovo;
-    po každém souboru, u velkých i po `STEP`). Hashe z cache se počítají
-    hned jako hotové.
+
+def _iter_hashes(todo, cache_path):
+    """{klíč: sha256} souborů `todo` = [(klíč, cesta, stat)].
+
+    Hashe se cachují podle (klíč, velikost, mtime). Generátor průběhu:
+    `hash` (kolik souborů a bajtů se porovná) a `hash_prubeh` (kolik je
+    hotovo; po každém souboru, u velkých i po `STEP`). Hashe z cache se
+    počítají hned jako hotové.
     """
+    if not todo:
+        return {}
     try:
         cache = json.loads(Path(cache_path).read_text(encoding="utf-8"))
     except (FileNotFoundError, ValueError):
         cache = {}
-    with os.scandir(event_dir) as it:
-        todo = [(e, e.stat()) for e in it if e.is_file()
-                and not is_skipped(e.name) and not is_metadata(e.name)]
-    todo = sorted(((e, st) for e, st in todo if st.st_size in sizes),
-                  key=lambda t: t[0].name)
-    if not todo:
-        return {}
     yield {"typ": "hash", "souboru": len(todo),
-           "bajtu": sum(st.st_size for _, st in todo)}
+           "bajtu": sum(st.st_size for _, _, st in todo)}
     shas, fresh, files, done = {}, [], 0, 0
-    for e, st in todo:
-        hit = cache.get(e.name)
+    for key, path, st in todo:
+        hit = cache.get(key)
         if hit and hit["size"] == st.st_size and \
                 hit["mtime_ns"] == st.st_mtime_ns:
-            shas[e.name] = hit["sha256"]
+            shas[key] = hit["sha256"]
             files, done = files + 1, done + st.st_size
         else:
-            fresh.append((e, st))
+            fresh.append((key, path, st))
 
     def progress(n=0):
         return {"typ": "hash_prubeh", "hotovo_souboru": files,
                 "hotovo_bajtu": done + n}
     if files:
         yield progress()
-    for e, st in fresh:
-        sha = yield from _relay(_sha256_steps(e.path), progress)
-        shas[e.name] = sha
-        cache[e.name] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
-                         "sha256": sha}
+    for key, path, st in fresh:
+        sha = yield from _relay(_sha256_steps(path), progress)
+        shas[key] = sha
+        cache[key] = {"size": st.st_size, "mtime_ns": st.st_mtime_ns,
+                      "sha256": sha}
         files, done = files + 1, done + st.st_size
         yield progress()
-    result = {}
-    for name in sorted(shas):
-        result.setdefault(shas[name], name)
     if fresh:
         cache_path = Path(cache_path)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = cache_path.with_suffix(".tmp")
         tmp.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
         os.replace(tmp, cache_path)
+    return shas
+
+
+def iter_root_hashes(event_dir, sizes, cache_path):
+    """{sha256: název} souborů v kořeni akce, jejichž velikost je v `sizes`.
+
+    Na SMB se čte jen málo dat: jen soubory shodné velikosti, hashe se
+    cachují (`_iter_hashes`, klíčem je název).
+    """
+    todo = sorted((t for t in _root_stats(event_dir) if t[2].st_size in sizes),
+                  key=lambda t: t[0])
+    shas = yield from _iter_hashes(todo, cache_path)
+    result = {}
+    for name in sorted(shas):
+        result.setdefault(shas[name], name)
     return result
 
 
 def root_hashes(event_dir, sizes, cache_path):
     return _drain(iter_root_hashes(event_dir, sizes, cache_path))
+
+
+# --- zdroj v `přetřídit` -------------------------------------------------------
+
+def check_source(root, zdroj):
+    """Složka zdroje `zdroj` v `root` (`přetřídit`); jen první úroveň bez
+    `.ignored`, jinak Refused `neplatny_zdroj`."""
+    if (not isinstance(zdroj, str) or not zdroj or "/" in zdroj or "\\" in zdroj or "\0" in zdroj
+            or zdroj.startswith(".") or zdroj.endswith(IGNORED)
+            or root is None or not (Path(root) / zdroj).is_dir()):
+        raise Refused("neplatny_zdroj")
+    return Path(root) / zdroj
+
+
+def source_dirs(folder):
+    """Relativní cesty složek zdroje (kořen = ""), bez podsložek
+    `.ignored` a jejich obsahu."""
+    result = []
+    for dirpath, dirnames, _ in os.walk(folder):
+        dirnames[:] = sorted(d for d in dirnames if not d.endswith(IGNORED))
+        rel = os.path.relpath(dirpath, folder)
+        result.append("" if rel == "." else rel.replace(os.sep, "/"))
+    return result
+
+
+def source_entries(folder):
+    """Záznamy souborů zdroje jako u nahrané složky: `cesta` =
+    `<složka>/<relativní cesta>`, `zdroj` = absolutní cesta, `sha256`
+    None (doplní `iter_source_hashes`). `Thumbs.db` a podsložky
+    `.ignored` se přeskočí."""
+    folder = Path(folder)
+    entries = []
+    for rel in source_dirs(folder):
+        path = folder / rel if rel else folder
+        try:
+            with os.scandir(path) as it:
+                files = [(e.name, e.path, e.stat()) for e in it
+                         if e.is_file() and not is_skipped(e.name)]
+        except FileNotFoundError:
+            continue
+        prefix = f"{folder.name}/{rel}/" if rel else f"{folder.name}/"
+        for name, full, st in sorted(files):
+            entries.append({"nazev": name, "cesta": prefix + name,
+                            "zdroj": full, "velikost": st.st_size,
+                            "mtime_ns": st.st_mtime_ns, "sha256": None})
+    return entries
+
+
+def source_cache_name(rel):
+    """Název cache skenu složky `rel` (cesta pod `přetřídit`, s `/`
+    a diakritikou)."""
+    return "pretridit-" + hashlib.sha1(rel.encode("utf-8")).hexdigest()
+
+
+def scan_source(folder, cache_dir, exiftool=None):
+    """{cesta: údaje skenu} médií zdroje; sken po složkách s vlastní
+    cache (`source_cache_name`)."""
+    folder = Path(folder)
+    result = {}
+    for rel in source_dirs(folder):
+        path = folder / rel if rel else folder
+        full = f"{folder.name}/{rel}" if rel else folder.name
+        try:
+            files, _ = scan.scan(path, cache_dir,
+                                 exiftool or scan.run_exiftool,
+                                 cache_name=source_cache_name(full))
+        except FileNotFoundError:
+            continue
+        for f in files:
+            result[f"{full}/{f['nazev']}"] = f
+    return result
+
+
+def iter_source_hashes(entries, event_dir, cache_path):
+    """Doplní `sha256` záznamům zdroje; generátor průběhu (`_iter_hashes`).
+
+    Čte se jen soubor, jehož velikost má soubor v kořeni cílové akce nebo
+    jiný podporovaný soubor výběru; ostatní dostanou zástupnou hodnotu
+    jedinečnou pro záznam (duplicitou být nemohou).
+    """
+    supported = [e for e in entries if not is_skipped(e["nazev"])
+                 and kind(e["nazev"]) != "nepodporovany"]
+    counts = Counter(e["velikost"] for e in supported)
+    root = {st.st_size for _, _, st in _root_stats(event_dir)} \
+        if event_dir is not None else set()
+    todo = [e for e in supported
+            if counts[e["velikost"]] > 1 or e["velikost"] in root]
+    stats = []
+    for e in todo:
+        try:
+            stats.append((e["cesta"], e["zdroj"], os.stat(e["zdroj"])))
+        except FileNotFoundError:
+            pass
+    shas = yield from _iter_hashes(stats, cache_path)
+    for e in entries:
+        e["sha256"] = shas.get(e["cesta"]) or f"zdroj:{e['cesta']}"
+    return entries
+
+
+def prune_source(path):
+    """Smaže odspodu složky zdroje, které jsou prázdné nebo mají jen
+    `Thumbs.db`; podsložky `.ignored` se neprocházejí ani nemažou.
+    Vrátí True, když zanikla i `path`."""
+    try:
+        with os.scandir(path) as it:
+            items = [(e.name, e.path, e.is_dir(follow_symlinks=False))
+                     for e in it]
+    except FileNotFoundError:
+        return True
+    keep = False
+    for name, full, is_dir in items:
+        if is_dir:
+            if name.endswith(IGNORED) or not prune_source(full):
+                keep = True
+        elif not is_skipped(name):
+            keep = True
+    if keep:
+        return False
+    try:
+        for name, full, is_dir in items:
+            if not is_dir:
+                os.unlink(full)
+        os.rmdir(path)
+    except OSError as err:
+        log.warning("import: %s nejde smazat: %s", path, err)
+        return False
+    log.info("import: smazána vyprázdněná složka %s", path)
+    return True
 
 
 def plan(event_dir, entries, sha_cache=None):
@@ -523,15 +670,53 @@ def _copy(src, event_dir, dst, sha, mtime_ns):
         raise
 
 
-def execute(event_dir, entries, staging, sha_cache=None):
-    """Sestaví plán znovu a zkopíruje jeho neblokované soubory.
+def _move(src, event_dir, dst):
+    """Přesun ze zdroje do akce přejmenováním, které nikdy nepřepíše
+    existující cíl; obsah i mtime zůstanou. Generátor bez průběhu."""
+    if False:
+        yield
+    try:
+        os.lstat(src)
+    except FileNotFoundError:
+        raise OSError("soubor ve zdroji už není") from None
+    dst_path = os.path.join(event_dir, dst)
+    target_dir = os.path.dirname(dst_path)
+    if os.path.basename(target_dir) == RAW_DIR and \
+            not os.path.isdir(target_dir):
+        os.mkdir(target_dir)
+    # os.rename na Linuxu cíl přepíše: kontrola těsně před ním jako
+    # v cleanup._move, souběh v akci vylučuje zámek akce. Jiný svazek
+    # (EXDEV) je chyba souboru, kopie se nedělá.
+    if _key(os.path.basename(dst_path)) in _listing(target_dir):
+        raise Blocked("cíl už existuje")
+    os.rename(src, dst_path)
 
-    Generátor událostí: průběh porovnání (`iter_plan`), `start` (kolik
-    souborů a bajtů se přenese), `prubeh` (bajty souboru `z`, po `STEP`),
-    `soubor` (operace s výsledným stavem, po každém souboru) a nakonec
-    `vysledek` (plán s `stav` hotovo / blokovano / duplicita / chyba
-    a `chyba`, `smazano` = staré dočasné soubory). Selhání jednoho
-    souboru ostatní nezastaví.
+
+def copy_from(staging):
+    """Přenos kopií ze stagingu (`_copy`)."""
+    def transfer(entry, event_dir, dst):
+        return _copy(Path(staging) / entry["ulozeno"], event_dir, dst,
+                     entry["sha256"], entry["mtime_ns"])
+    return transfer
+
+
+def move_from_source(entry, event_dir, dst):
+    """Přenos přesunem ze zdroje (`_move`)."""
+    return _move(entry["zdroj"], event_dir, dst)
+
+
+def execute(event_dir, entries, transfer, sha_cache=None):
+    """Sestaví plán znovu a přenese jeho neblokované soubory.
+
+    `transfer(záznam, akce, cíl)` = generátor přenosu (`copy_from`,
+    `move_from_source`). Generátor událostí: průběh porovnání
+    (`iter_plan`), `start` (kolik souborů a bajtů se přenese), `prubeh`
+    (bajty souboru `z`, po `STEP`; jen u kopie), `soubor` (operace
+    s výsledným stavem, po každém souboru) a nakonec `vysledek` (plán se
+    `stav` hotovo / blokovano / duplicita / chyba a `chyba`, `smazano` =
+    staré dočasné soubory). Selhání jednoho souboru ostatní nezastaví.
+    Záznam s `po_planu` (zdroj: `zmizel` / `zmenil` od plánu) skončí
+    jako chyba / blokovaný bez přenosu.
     """
     removed = purge_tmp(event_dir)
     result = yield from iter_plan(event_dir, entries, sha_cache)
@@ -544,11 +729,14 @@ def execute(event_dir, entries, staging, sha_cache=None):
         if o["stav"] != DUPLICATE:
             entry = by_path[o["z"]]
             try:
+                if entry.get("po_planu") == "zmizel":
+                    raise OSError("ve zdroji už není")
+                if entry.get("po_planu") == "zmenil":
+                    raise Blocked("změnil se po plánu")
                 if o["blocked"]:
                     raise Blocked(o["duvod"])
                 yield from _relay(
-                    _copy(Path(staging) / entry["ulozeno"], event_dir,
-                          o["do"], entry["sha256"], entry["mtime_ns"]),
+                    transfer(entry, event_dir, o["do"]),
                     lambda n: {"typ": "prubeh", "z": o["z"], "bajtu": n})
                 o["stav"] = DONE
             except Blocked as e:
@@ -573,11 +761,17 @@ class Imports:
     nahrání. Import patří jménu (porovnání jako u návrhů jmen), ne
     záložce; cizí se chová jako neexistující. Probíhající provedení
     drží příznak v paměti (server je jeden proces).
+
+    Import se zdrojem má v `import.json` místo souborů `zdroj` (složka
+    v `source_root`, tj. `přetřídit`); záznamy souborů se sestaví při
+    každém přehledu, plánu i provedení znovu (`source_entries`).
     """
 
-    def __init__(self, work, clock=time.time, disk_usage=shutil.disk_usage):
+    def __init__(self, work, clock=time.time, disk_usage=shutil.disk_usage,
+                 source_root=None):
         self.work = Path(work)
         self.root = self.work / "import"
+        self.source_root = Path(source_root) if source_root else None
         self.clock = clock
         self.disk_usage = disk_usage
         self._mutex = threading.Lock()
@@ -619,6 +813,70 @@ class Imports:
         if id in self._running:
             raise Refused("probiha")
 
+    def source(self, record):
+        """Složka zdroje importu, nebo None (nahrané soubory)."""
+        if not record.get("zdroj") or self.source_root is None:
+            return None
+        return self.source_root / record["zdroj"]
+
+    def entries(self, record):
+        """Záznamy souborů importu: nahrané, nebo aktuální obsah zdroje
+        (bez `sha256`, viz `iter_entries`)."""
+        if record.get("zdroj"):
+            folder = self.source(record)
+            return source_entries(folder) if folder else []
+        return record["soubory"]
+
+    @staticmethod
+    def _snapshot(entries):
+        return [{"cesta": e["cesta"], "velikost": e["velikost"],
+                 "mtime_ns": e["mtime_ns"]} for e in entries]
+
+    def _against_plan(self, record, entries):
+        """Záznamy zdroje proti snímku posledního plánu: (záznamy k plánu,
+        cesty přibylé po plánu). Zmizelé se vrátí se `po_planu` =
+        `zmizel`, změněné (velikost, mtime) se `zmenil`."""
+        snap = {s["cesta"]: s for s in record["plan_zdroj"]}
+        current = {e["cesta"]: e for e in entries}
+        result, added = [], []
+        for e in entries:
+            old = snap.get(e["cesta"])
+            if old is None:
+                added.append(e["cesta"])
+                continue
+            if (old["velikost"], old["mtime_ns"]) != \
+                    (e["velikost"], e["mtime_ns"]):
+                e["po_planu"] = "zmenil"
+            result.append(e)
+        for cesta, old in snap.items():
+            if cesta not in current:
+                result.append(dict(old, nazev=cesta.rsplit("/", 1)[-1],
+                                   zdroj=str(self.source_root / cesta),
+                                   sha256=None, po_planu="zmizel"))
+        return result, sorted(added)
+
+    def _set_snapshot(self, id, jmeno, snapshot):
+        with self._mutex:
+            record = self.get(id, jmeno)
+            record["plan_zdroj"] = snapshot
+            self._write(self.dir(id), record)
+
+    def check_plan(self, record):
+        """Import se zdrojem jde provést jen se snímkem plánu."""
+        if record.get("zdroj") and self.source(record) is None:
+            raise Refused("neplatny_zdroj")
+        if record.get("zdroj") and record.get("plan_zdroj") is None:
+            raise Refused("bez_planu")
+
+    def iter_entries(self, record, event_dir):
+        """`entries` s `sha256`; u zdroje generátor průběhu hashování."""
+        entries = self.entries(record)
+        if record.get("zdroj"):
+            cache = self.work / "cache" / "sha256" / \
+                f"{source_cache_name(UNSORTED + '/' + record['zdroj'])}.json"
+            yield from iter_source_hashes(entries, event_dir, cache)
+        return entries
+
     def owned(self, jmeno):
         """Rozpracované importy uživatele, nejnovější aktivita první."""
         result = []
@@ -629,12 +887,13 @@ class Imports:
                 record = self.get(path.name, jmeno)
             except KeyError:
                 continue
-            files = record["soubory"]
+            files = self.entries(record)
             result.append({
                 "id": path.name, "zalozeno": record["zalozeno"],
                 "aktivita": record["aktivita"], "souboru": len(files),
                 "velikost": sum(s["velikost"] for s in files),
                 "cil": record.get("cil"), "nova": record.get("nova", False),
+                "zdroj": record.get("zdroj"),
                 "probiha": path.name in self._running,
                 "nahrava": bool(self._uploads.get(path.name))})
         return sorted(result, key=lambda i: -i["aktivita"])
@@ -644,16 +903,36 @@ class Imports:
         if size + RESERVE > free:
             raise Refused("malo_mista", volno=free)
 
-    def create(self, jmeno, celkem=0):
-        """Založí import; `celkem` = součet velikostí ohlášený klientem."""
+    def create(self, jmeno, celkem=0, zdroj=None, cil=None, nova=False):
+        """Založí import; `celkem` = součet velikostí ohlášený klientem.
+
+        Se `zdrojem` (složka v `přetřídit`) se nic nenahrává; rozpracovaný
+        import téže složky uživatele se vrátí místo nového. `cil` a `nova`
+        = zamýšlený cíl (jako `set_target`)."""
         self.root.mkdir(parents=True, exist_ok=True)
+        if zdroj is not None:
+            check_source(self.source_root, zdroj)
+            with self._mutex:
+                for item in self.owned(jmeno):
+                    if item["zdroj"] == zdroj:
+                        return item["id"]
+                return self._new(jmeno, zdroj=zdroj, cil=cil, nova=nova)
         self.check_space(celkem)
+        return self._new(jmeno)
+
+    def _new(self, jmeno, zdroj=None, cil=None, nova=False):
         id = secrets.token_urlsafe(16)
         path = self.root / id
-        (path / FILES_DIR).mkdir(parents=True)
+        if zdroj is None:
+            (path / FILES_DIR).mkdir(parents=True)
+        else:
+            path.mkdir()
         now = self.clock()
-        self._write(path, {"jmeno": jmeno, "zalozeno": now, "aktivita": now,
-                           "cil": None, "nova": False, "soubory": []})
+        record = {"jmeno": jmeno, "zalozeno": now, "aktivita": now,
+                  "cil": cil, "nova": bool(nova), "soubory": []}
+        if zdroj is not None:
+            record["zdroj"] = zdroj
+        self._write(path, record)
         return id
 
     def activity(self, id, relace):
@@ -674,7 +953,8 @@ class Imports:
         Stejná `cesta` nahraná znovu nahradí předchozí. `Thumbs.db` se
         zahodí (None). Během provedení importu odmítne (`probiha`).
         """
-        self.get(id, jmeno)
+        if self.get(id, jmeno).get("zdroj"):
+            raise Refused("ma_zdroj")
         self.check_idle(id)
         name = flat_name(cesta)
         if length is None:
@@ -772,26 +1052,36 @@ class Imports:
                 removed.append(path.name)
         return removed
 
-    def _scanned(self, id, exiftool=None):
-        """{název: údaje skenu} souborů ve `soubory/` (cache exiftoolu)."""
+    def _scanned(self, id, record, exiftool=None):
+        """{cesta: údaje skenu} souborů importu (cache exiftoolu); nahrané
+        jen ze `soubory/` (ne z `kolize/`)."""
+        if record.get("zdroj"):
+            folder = self.source(record)
+            return scan_source(folder, self.work / "cache", exiftool) \
+                if folder else {}
         files, _ = scan.scan(self.dir(id) / FILES_DIR, self.work / "cache",
                              exiftool or scan.run_exiftool,
                              cache_name=f"import-{id}")
-        return {f["nazev"]: f for f in files}
+        data = {f["nazev"]: f for f in files}
+        return {s["cesta"]: data[s["nazev"]] for s in record["soubory"]
+                if s["ulozeno"] == f"{FILES_DIR}/{s['nazev']}"
+                and s["nazev"] in data}
 
-    def devices(self, id, exiftool=None):
-        return {n: f["pristroj"] for n, f in self._scanned(id, exiftool)
-                .items() if f.get("pristroj")}
+    def devices(self, id, record, exiftool=None):
+        """{název: přístroj} pro skupiny (klíčem je zploštělé jméno)."""
+        by_path = {s["cesta"]: s["nazev"] for s in self.entries(record)}
+        return {by_path[c]: f["pristroj"] for c, f
+                in self._scanned(id, record, exiftool).items()
+                if f.get("pristroj") and c in by_path}
 
     def overview(self, id, jmeno, exiftool=None, relace=None):
-        """Přehled nahraných souborů: typy, data a přístroje z EXIF;
+        """Přehled souborů importu: typy, data a přístroje z EXIF;
         `jinde` = co s importem dělají jiné záložky než `relace`."""
         record = self.get(id, jmeno)
-        data = self._scanned(id, exiftool)
+        data = self._scanned(id, record, exiftool)
         items = []
-        for s in sorted(record["soubory"], key=lambda s: s["cesta"]):
-            d = data.get(s["nazev"]) \
-                if s["ulozeno"] == f"{FILES_DIR}/{s['nazev']}" else None
+        for s in sorted(self.entries(record), key=lambda s: s["cesta"]):
+            d = data.get(s["cesta"])
             items.append({"nazev": s["nazev"], "cesta": s["cesta"],
                           "typ": kind(s["nazev"]), "velikost": s["velikost"],
                           "datum": d and d["datum"],
@@ -810,6 +1100,7 @@ class Imports:
             "cil": record.get("cil"),
             "nova": record.get("nova", False),
             "skupiny": record.get("skupiny"),
+            "zdroj": record.get("zdroj"),
             "jinde": self.activity(id, relace),
         }
 
@@ -831,11 +1122,14 @@ class Imports:
         """Generátor průběhu porovnání, nakonec událost `plan` se
         `skupina` u operací a `skupiny` (`nove` s `shody`, `existujici`)."""
         record = self.get(id, jmeno)
-        devices = self.devices(id) if volba else {}
-        result = yield from iter_plan(event_dir, record["soubory"],
+        devices = self.devices(id, record) if volba else {}
+        entries = yield from self.iter_entries(record, event_dir)
+        if record.get("zdroj"):
+            # Měřítko provedení: co plán ukázal (`_against_plan`).
+            self._set_snapshot(id, jmeno, self._snapshot(entries))
+        result = yield from iter_plan(event_dir, entries,
                                       self.sha_cache(event_dir))
-        groups = plan_groups(result, record["soubory"], devices, existing,
-                             volba)
+        groups = plan_groups(result, entries, devices, existing, volba)
         yield dict(result, typ="plan", skupiny={
             "nove": {gid: dict(groups["skupiny"][gid],
                                shody=groups["shody"][gid])
@@ -849,33 +1143,71 @@ class Imports:
         smaže. `vysledek` nese `skupina` u operací a `skupiny` (výsledek
         `group_plan` pro přenesená média). Odmítnutí (`probiha`, cizí
         import) vyhodí už první `next()`; zavření generátoru příznak
-        provádění uvolní."""
+        provádění uvolní.
+
+        Import se zdrojem soubory přesune (`move_from_source`); po
+        provedení se zdroj uklidí (`prune_source`) a `vysledek` nese
+        `zdroj_zbyva` (počty zbylých souborů podle typu) a `zdroj_smazan`.
+        Import bez zbylých podporovaných souborů ve zdroji se zruší.
+
+        Měřítkem je snímek posledního plánu (`_against_plan`): přibylé
+        soubory se nepřesunou a `vysledek` je nese v `po_planu`; bez
+        snímku Refused `bez_planu`. Provedení snímek spotřebuje."""
         record = self.get(id, jmeno)
         path = self.dir(id)
+        folder = self.source(record)
+        self.check_plan(record)
         with self._mutex:
             self.check_idle(id)
             self._running[id] = relace
         try:
             # Přístroje před přenosem: přenesené soubory ze stagingu zmizí.
-            devices = self.devices(id) if volba else {}
-            by_path = {e["cesta"]: e for e in record["soubory"]}
-            for event in execute(event_dir, record["soubory"], path,
+            devices = self.devices(id, record) if volba else {}
+            entries = yield from self.iter_entries(record, event_dir)
+            added = []
+            if folder:
+                entries, added = self._against_plan(record, entries)
+            by_path = {e["cesta"]: e for e in entries}
+            transfer = move_from_source if folder else copy_from(path)
+            for event in execute(event_dir, entries, transfer,
                                  self.sha_cache(event_dir)):
                 if event["typ"] == "soubor" and \
-                        event["operace"]["stav"] == DONE:
+                        event["operace"]["stav"] == DONE and not folder:
                     self._moved(id, jmeno, by_path[event["operace"]["z"]])
                 elif event["typ"] == "vysledek":
                     event["skupiny"] = plan_groups(
-                        event, record["soubory"], devices, existing, volba,
+                        event, entries, devices, existing, volba,
                         DONE, pripojit)
-                    with self._mutex:
-                        left = self.get(id, jmeno)["soubory"]
-                        event["zahozeno"] = not left
-                        if not left:
-                            self._remove(id)
+                    if folder:
+                        event["po_planu"] = added
+                        self._source_result(id, jmeno, folder, event)
+                    else:
+                        with self._mutex:
+                            left = self.get(id, jmeno)["soubory"]
+                            event["zahozeno"] = not left
+                            if not left:
+                                self._remove(id)
                 yield event
         finally:
             self._running.pop(id, None)
+
+    def _source_result(self, id, jmeno, folder, event):
+        """Úklid zdroje po provedení; doplní `zdroj_zbyva`,
+        `zdroj_smazan` a `zahozeno` do výsledku."""
+        gone = prune_source(folder)
+        left = [] if gone else source_entries(folder)
+        event["zdroj_smazan"] = gone
+        event["zdroj_zbyva"] = dict(Counter(kind(e["nazev"]) for e in left))
+        keep = any(kind(e["nazev"]) != "nepodporovany" for e in left)
+        with self._mutex:
+            event["zahozeno"] = not keep
+            if keep:
+                record = self.get(id, jmeno)
+                record["aktivita"] = self.clock()
+                record.pop("plan_zdroj", None)  # další provedení = nový plán
+                self._write(self.dir(id), record)
+            else:
+                self._remove(id)
 
     # --- návrh skupin akce bez `_metadata.json` ---
 
