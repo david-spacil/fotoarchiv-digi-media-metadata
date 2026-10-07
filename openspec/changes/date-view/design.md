@@ -53,6 +53,30 @@ soubory oddílu. Datum pořízení je řetězec `RRRR-MM-DD` nebo
   data zruší a formulář přejde na akci. Hlavička skupiny tam totiž
   není vidět.
 
+- **Značka jako pseudoelement s proměnnou `--stops`.** Rámeček
+  (`border`) má jen jednu barvu na hranu, pruh autorů jich potřebuje
+  víc. Dlaždice se značkou dostane třídu `mark` a inline proměnnou
+  `--stops` (zarážky `linear-gradient`). V mřížce je pruh `::before`
+  v levém 6px okraji (svisle dělený), v pásu `::after` 4px pod
+  dlaždicí (vodorovně). Značka skupiny přejde na týž mechanismus
+  s jednou barvou a vypadá stejně jako dosud. Soubor bez autorů má
+  třídu `noauth` se šrafováním (`repeating-linear-gradient`).
+  Alternativa: `border-image` s gradientem. Ten se ale vztahuje na
+  všechny hrany a kolidoval by s rámečkem výběru.
+- **Paleta v CSS (`--p0`…`--p7`), barvu osoby určí pořadí.** Osoby
+  jsou všichni výslední autoři souborů akce, sjednocení podle
+  `nameKey()` (stejné porovnání jmen jako na serveru) a seřazení podle
+  klíče. Index určuje barvu modulo 8. Barvy jsou tak v rámci akce
+  stabilní, ale přidání nové osoby může barvy ostatních posunout. To
+  u prohlížení nevadí. Alternativa: hash jména, ten dává častější
+  kolize u akcí se 2–4 autory.
+- **Čisté funkce v `sections.js`:** `personIndex(names, keyOf)` (klíč →
+  index) a `stripeStops(colors, max = 3)` (zarážky pro rovnoměrné
+  úseky; nad `max` jeden šedý úsek). Testují se v Node.
+- **Překreslení po změně autorů.** Úprava pole `autori` na kterékoli
+  úrovni překreslí mřížku i pás jako dosud úprava data, protože se
+  dědí na všechny soubory pod ní.
+
 ## Risks / Trade-offs
 
 - [Víc než 8 skupin → opakované barvy] → Název skupiny v popisku
@@ -60,6 +84,11 @@ soubory oddílu. Datum pořízení je řetězec `RRRR-MM-DD` nebo
   s názvem souboru a skupiny.
 - [Akce bez dat, např. ještě nezpracovaná] → Celá mřížka je jeden oddíl
   „Bez data“. Je to správné chování a zároveň připomínka, co chybí.
+- [Hodně autorů v 6px pruhu → nečitelné proužky] → Nejvýš tři barevné
+  úseky, zbytek šedý; popisek uvede `+N` a titulek dlaždice všechna
+  jména.
+- [8 barev a víc osob v akci] → Barvy se opakují. Rozliší je popisek
+  s příjmením.
 - [Přepnutí uprostřed výběru skupiny] → Výběr skupiny se změní na
   „nic“ (formulář akce). Uživatel to vidí hned v panelu, data se
   nemění.

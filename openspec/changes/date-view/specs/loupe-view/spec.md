@@ -20,6 +20,11 @@ aktuální soubor.
 - **THEN** pás ukáže soubory obou dnů za sebou s předělem a datem
   každého dne a dlaždice nesou proužek barvy své skupiny
 
+#### Scenario: Autoři v pásu
+- **WHEN** je zvoleno zobrazení po skupinách a soubor má dva autory
+- **THEN** dlaždice v pásu má pod sebou pruh ze dvou úseků v barvách
+  autorů
+
 #### Scenario: Šipka přes dny
 - **WHEN** v zobrazení podle data je aktuální poslední soubor 27. 4.
   a uživatel stiskne šipku vpravo

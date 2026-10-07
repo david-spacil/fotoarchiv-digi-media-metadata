@@ -33,3 +33,19 @@
 - [x] 3.2 Projít v prohlížeči všechny scénáře změny na testovacím
   archivu včetně průvodce u nové akce; `node --test tests/js`
   a `pytest -q` zelené
+
+## 4. Značka autorů v zobrazení po skupinách
+
+- [x] 4.1 `personIndex` a `stripeStops` v `sections.js`; ověřit testy
+  v `tests/js/sections.test.mjs` (sjednocení zápisů jména, pořadí,
+  1–3 úseky, víc než 3 → šedý úsek) přes
+  `node --test tests/js/*.test.mjs`
+- [x] 4.2 Jednotný mechanismus značky (`mark`, `--stops`, paleta
+  `--p0…7`, `noauth`) v `style.css`; značka skupiny na něj převedená
+  beze změny vzhledu; ověřit snímkem mřížky a pásu podle data
+- [x] 4.3 Značka autorů v mřížce i pásu po skupinách (ne u vyřazených,
+  ne v průvodci), popisek s příjmeními a `+N`, titulek se všemi jmény,
+  překreslení po změně `autori`; ověřit scénáře Značka autorů
+  v prohlížeči
+- [x] 4.4 Testovací archiv: soubor se dvěma autory, s pěti autory
+  a bez autorů; aktualizovat `README.md` o značku autorů

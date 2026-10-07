@@ -3,6 +3,8 @@
 Skupiny pomáhají při editaci, ale při prohlížení akce rozhazují fotky:
 snímky z různých přístrojů téže chvíle leží daleko od sebe (issue #3).
 Chybí pohled, kde jsou všechny soubory akce za sebou podle data.
+V zobrazení po skupinách zase není vidět, kdo které fotky mohl
+pořídit a kde autoři chybí.
 
 ## What Changes
 
@@ -19,7 +21,13 @@ Chybí pohled, kde jsou všechny soubory akce za sebou podle data.
   v popisku. Soubor bez skupiny proužek nemá.
 - Šipky, Shift-výběr a výběr tažením se řídí aktuálním zobrazeným
   pořadím. Výběr i aktuální soubor zůstanou při přepnutí zachované.
-- Průvodce prvním otevřením zůstává po skupinách.
+- V zobrazení po skupinách nese dlaždice v mřížce i v pásu pruh podle
+  výsledných (zděděných) autorů. Každá osoba akce má vlastní barvu
+  a pruh se dělí na úseky v barvách autorů, nejvýš tři barevné, další
+  autoři jako jeden šedý úsek. Soubor bez autorů má šrafovaný pruh,
+  soubor k vyřazení žádný. Popisek dlaždice v mřížce uvede příjmení
+  autorů s barvou.
+- Průvodce prvním otevřením zůstává po skupinách a bez značek.
 
 ## Capabilities
 
@@ -27,14 +35,15 @@ Chybí pohled, kde jsou všechny soubory akce za sebou podle data.
 
 ### Modified Capabilities
 - `metadata-workspace`: mřížka umí kromě skupin zobrazit soubory podle
-  data s předěly po dnech a se značkou skupiny na dlaždici.
+  data s předěly po dnech a se značkou skupiny na dlaždici; po
+  skupinách nese dlaždice značku autorů.
 - `loupe-view`: filmový pás se řídí zvoleným zobrazením (předěly
-  skupin, nebo dnů).
+  skupin, nebo dnů, a značky autorů, nebo skupin).
 
 ## Impact
 
 - `fotoarchiv/static/app.js` (sestavení oddílů mřížky a pásu, přepínač,
-  dlaždice), `fotoarchiv/static/style.css`, nový čistý modul pro
-  rozdělení po dnech s testem v `tests/js`.
+  dlaždice a jejich značky), `fotoarchiv/static/style.css`, nový čistý
+  modul pro rozdělení po dnech a barvy značek s testem v `tests/js`.
 - `README.md` (Aplikace, pracovní plocha a lupa).
 - Server, `_metadata.json` ani sidecary se nemění.

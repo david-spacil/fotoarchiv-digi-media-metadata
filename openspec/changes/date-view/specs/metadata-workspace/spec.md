@@ -87,3 +87,44 @@ nezobrazuje.
 #### Scenario: Soubor bez skupiny
 - **WHEN** soubor nepatří do žádné skupiny
 - **THEN** jeho dlaždice nemá proužek ani název skupiny
+
+### Requirement: Značka autorů v zobrazení po skupinách
+V zobrazení po skupinách SHALL dlaždice v mřížce i v pásu nést pruh
+podle výsledných autorů souboru. Každá osoba akce MUST mít jednu barvu;
+pruh se dělí na stejné úseky v barvách autorů, nejvýš tři, další autoři
+SHALL tvořit jeden šedý úsek. Soubor bez autorů SHALL mít šrafovaný
+pruh. Popisek dlaždice v mřížce SHALL uvést příjmení autorů. Soubor
+k vyřazení a průvodce značku nemají.
+
+#### Scenario: Autor ze skupiny
+- **WHEN** skupina `Panasonic DC-G9` má autora `Testová, Jana`
+  a soubory skupiny autory nepřepisují
+- **THEN** všechny dlaždice skupiny mají jednobarevný pruh téže barvy
+  a v popisku `Testová`
+
+#### Scenario: Dva autoři
+- **WHEN** soubor má autory `Testová, Jana` a `Zkušební, Petr`
+- **THEN** pruh má dva stejně dlouhé úseky v barvách obou osob, tytéž
+  barvy mají jejich ostatní soubory
+
+#### Scenario: Víc než tři autoři
+- **WHEN** soubor má pět autorů
+- **THEN** pruh má tři barevné úseky a jeden šedý, popisek uvede tři
+  příjmení a `+2` a titulek dlaždice všech pět jmen
+
+#### Scenario: Soubor bez autorů
+- **WHEN** soubor nemá autory ani zděděné od skupiny či akce
+- **THEN** jeho pruh je šrafovaný a v popisku je `bez autorů`
+
+#### Scenario: Jiný zápis téže osoby
+- **WHEN** jeden soubor má autora `Spáčil, David` a jiný `spacil, david`
+- **THEN** oba pruhy mají tutéž barvu
+
+#### Scenario: Změna autorů skupiny
+- **WHEN** uživatel u skupiny přidá autora
+- **THEN** pruhy souborů skupiny, které autory nepřepisují, se hned
+  překreslí
+
+#### Scenario: Soubor k vyřazení
+- **WHEN** soubor je označený k vyřazení
+- **THEN** jeho dlaždice nemá pruh autorů
