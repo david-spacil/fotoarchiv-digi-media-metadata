@@ -15,7 +15,8 @@ a import se provádějí; cache a nahrané soubory importu
 `README.md` je specifikace (archiv, datový model, jména osob, výstupy,
 aplikace). Při změně návrhu ho aktualizovat; tady ho neopakovat.
 
-Změny se vedou přes OpenSpec (`openspec/`, příkazy `/opsx:*`).
+Změny se vedou přes OpenSpec (`openspec/`, příkazy `/opsx:*`). Úpravy v
+`openspec/` se řeší samostatnými commity, ne zároveň s kódem.
 
 ## Příkazy
 
