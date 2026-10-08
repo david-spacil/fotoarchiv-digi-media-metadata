@@ -55,3 +55,18 @@
 - [x] 5.3 Ověření v prohlížeči (dev i prod režim): odznak po
       vyprázdnění cache náhledů, přepínač, vyřazení poškozeného
       včetně sidecaru a mizení z odznaku
+
+## 6. Úklid v hlavičce (varianta 1, feedback po testu)
+
+- [x] 6.1 `integrity.summary` vrací i `overeno`/`vyradit` značky a filtr
+      `present` (soubory mimo kořen už nepočítat); odznak počítá
+      `integrity.counted`, `archive.list_events` i detail stejným zdrojem
+- [x] 6.2 Dialog „Uklidit…“: sekce Poškozené soubory (předzapnuté,
+      šedě bez přepínače při `overeno`/`vyradit`), spuštění zapíše
+      `vyradit` a provede plán; `cleanupNeeded()` zahrnuje poškozené
+- [x] 6.3 `damagedMap`/`damagedCount` berou značky i ze souhrnu
+      (server), test na kombinaci značek
+- [x] 6.4 README: sekce Poškozené soubory v dialogu úklidu
+- [x] 6.5 Prod režim v prohlížeči: Uklidit… jen kvůli poškozeným,
+      předzapnutí, odškrtnutí snižuje počet, přesun se sidecarem,
+      potvrzený šedě s poznámkou, `Provést` mizí bez výběru

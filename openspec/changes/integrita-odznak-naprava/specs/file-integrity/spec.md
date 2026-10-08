@@ -29,8 +29,11 @@ soubor musí zůstat beze změny.
 ### Requirement: Souhrn poškozených pro akci
 Aplikace SHALL z cache kontroly akce umět spočítat počet souborů
 s výsledkem *podezřelý* nebo *nečitelný*, bez čtení souborů archivu.
-Soubory označené k vyřazení (`vyradit`) a soubory s ručním potvrzením
-v pořádku (`overeno`, viz `metadata-model`) MUST NOT do počtu patřit.
+Do počtu (odznak) MUST nepatřit soubory označené k vyřazení
+(`vyradit`) a soubory s ručním potvrzením v pořádku (`overeno`, viz
+`metadata-model`) ani soubory, které už v kořeni akce nejsou. Detail
+akce SHALL kromě počtu poskytnout i seznam poškozených souborů včetně
+těch s příznaky (pro zobrazení v dialogu úklidu).
 Pro akci bez cache kontrol SHALL být počet nulový.
 
 #### Scenario: Akce po průchodu kontrolou
@@ -40,7 +43,7 @@ Pro akci bez cache kontrol SHALL být počet nulový.
 
 #### Scenario: Potvrzený soubor se nepočítá
 - **WHEN** u jednoho z nich uživatel potvrdí „v pořádku“
-- **THEN** souhrn je 2
+- **THEN** souhrn je 2 a seznam ho stále uvádí se značkou `overeno`
 
 #### Scenario: Bez cache
 - **WHEN** akce nemá žádnou cache kontroly
