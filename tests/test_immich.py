@@ -242,6 +242,25 @@ def test_event_without_metadata_untouched(setup):
         "nezpracovano"
 
 
+def test_collision_skipped(tmp_path, monkeypatch):
+    """Akce se složkou s příponou `.ignored` i bez ní sync nezastaví."""
+    archiv = tmp_path / "archiv"
+    archiv.mkdir()
+    make_tree(archiv, {f"{EVENT}/": {"b.jpg": "x"},
+                       f"{EVENT}.ignored/": {"b.jpg": "x"},
+                       f"{OTHER}/": {"c.jpg": "x"}})
+    fake = FakeImmich()
+    app = create_app(archiv, tmp_path / "work", True, immich_fetch=fake,
+                     prihlaseni=False)
+    ws = app.config["WORKSPACE"]
+    ws.save(OTHER, {"schema": SCHEMA, "akce": {}, "skupiny": {},
+                    "soubory": {"c.jpg": {}}}, None)
+    immich.Settings(ws.work).save(URL, KEY)
+    fake.add("a1", f"{ROOT}/{OTHER}/c.jpg", face("Hlava, Miloš"))
+    status = app.config["IMMICH"].run()
+    assert status["posledni"]["zmenene"] == [OTHER]
+
+
 def test_locked_event_skipped(setup):
     app, fake = setup
     app.config["LOCKS"].acquire(EVENT, "r1", "Spáčil, David")

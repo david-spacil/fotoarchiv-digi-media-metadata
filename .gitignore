@@ -4,3 +4,5 @@ work/
 .env
 __pycache__/
 .pytest_cache/
+# verze zapsaná při buildu Docker image
+fotoarchiv/VERZE

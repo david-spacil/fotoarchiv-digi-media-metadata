@@ -306,7 +306,10 @@ class Sync:
         known = self.known_names()
         changed, skipped = [], []
         for akce in self.ws.event_names():
-            doc, _ = self.ws.load(akce)
+            try:
+                doc, _ = self.ws.load(akce)
+            except KeyError:  # kolize přípony `.ignored`
+                continue
             if doc is None:
                 continue
             records = list((doc.get("soubory") or {}))

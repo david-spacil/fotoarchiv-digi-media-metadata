@@ -158,9 +158,11 @@ GPS. Kliknutí SHALL vybrat dotčené soubory a otevřít volbu souřadnic.
 Pracovní plocha SHALL nabídnout tlačítko Dokončit akci. Dokončení SHALL
 uložit neuložené změny a zkontrolovat úplnost podle lišty chybějících
 údajů; chybí-li něco, MUST ukázat co a dokončit jen po dalším
-potvrzení. Pak SHALL akci exportovat a nastavit `dokonceno` na datum
-dokončení. Selže-li zápis některého sidecaru, akce MUST NOT být
-označena jako dokončená. Dokončení vyžaduje zámek akce.
+potvrzení. Pak SHALL akci exportovat, v produkčním režimu odebrat ze
+složky akce příponu `.ignored` (viz `event-visibility`) a nastavit
+`dokonceno` na datum dokončení. Selže-li zápis některého sidecaru nebo
+přejmenování složky, akce MUST NOT být označena jako dokončená.
+Dokončení vyžaduje zámek akce.
 
 U dokončené akce SHALL být tlačítko neaktivní, dokud není co dokončovat:
 žádné neuložené ani neexportované změny, žádné neaktuální sidecary
@@ -176,6 +178,11 @@ být znovu aktivní. Text tlačítka se nemění.
 - **WHEN** 14 souborů nemá datum a uživatel klikne na Dokončit akci
 - **THEN** plocha ukáže „14 souborů bez data“ a dokončí až po
   potvrzení
+
+#### Scenario: Selhání přejmenování
+- **WHEN** sidecary se zapíšou, ale složku akce nejde přejmenovat
+- **THEN** akce nemá `dokonceno` a plocha ukáže, že akci nešlo
+  zveřejnit
 
 #### Scenario: Dokončená akce beze změn
 - **WHEN** uživatel otevře dokončenou akci se všemi sidecary aktuálními
@@ -496,3 +503,32 @@ k vyřazení a průvodce značku nemají.
   skupin s různými autory
 - **THEN** jejich dlaždice mají pruhy v barvách svých autorů a popisek
   neuvádí název skupiny
+
+### Requirement: Verze aplikace v hlavičce
+Hlavička stránky SHALL ukazovat verzi běžící aplikace vedle názvu
+aplikace. Verze SHALL být ta, se kterou byl server spuštěn: v pracovní
+kopii gitu popis podle posledního tagu (tag, počet commitů po něm,
+hash a příznak neuložených změn), v Docker image popis zapsaný při
+buildu. Když verzi nejde zjistit, hlavička SHALL ukázat „verze
+neznámá“. Zobrazení verze MUST NOT měnit výšku hlavičky.
+
+#### Scenario: Pracovní kopie po vydání
+- **WHEN** server běží z pracovní kopie jeden commit za tagem `v0.2.0`
+- **THEN** hlavička ukazuje verzi `v0.2.0-1-g5609826`
+
+#### Scenario: Neuložené změny
+- **WHEN** pracovní kopie má neuložené změny
+- **THEN** verze končí `-dirty`
+
+#### Scenario: Docker image
+- **WHEN** server běží v image postaveném z commitu s tagem `v0.3.0`
+- **THEN** hlavička ukazuje verzi `v0.3.0`, přestože image neobsahuje
+  `.git`
+
+#### Scenario: Verze se po startu nemění
+- **WHEN** se po startu serveru v pracovní kopii udělá `git pull`
+- **THEN** hlavička dál ukazuje verzi, se kterou server startoval
+
+#### Scenario: Neznámá verze
+- **WHEN** server neběží z gitu ani nemá verzi z buildu
+- **THEN** hlavička ukazuje „verze neznámá“

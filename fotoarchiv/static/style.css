@@ -25,6 +25,8 @@ header a { color: #fff; text-decoration: none; font-weight: 600; }
 header .paths { font-size: 12px; color: #cbd5e0; flex: 1; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 header .paths strong { color: #fbd38d; font-weight: 500; }
+header .version { font-size: 11px; color: #a0aec0; white-space: nowrap;
+  margin-left: -10px; }
 .status { font-size: 12px; color: #9ae6b4; }
 #save-status { white-space: nowrap; min-width: 10em; }
 .status.pending { color: #fbd38d; }
@@ -45,6 +47,7 @@ main.list, main.loading, main.wizard { padding: 12px 16px; overflow: auto; }
   background: #e2e8f0; }
 .stav-rozpracovano .badge { background: #fefcbf; }
 .stav-hotovo .badge { background: #c6f6d5; }
+.stav-kolize .badge { background: #fed7d7; }
 .badge.nekompletni { background: #fed7aa; margin-left: 4px; }
 
 .bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 12px;

@@ -1,5 +1,5 @@
 # Repozitář netřeba v image: jen kód aplikace a requirements.
-.git
+# .git potřebuje jen build stage verze, do image se nekopíruje.
 .gitignore
 .venv
 .work
