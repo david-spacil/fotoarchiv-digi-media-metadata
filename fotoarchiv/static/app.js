@@ -2272,7 +2272,7 @@ function normalize(name) {
     .toLowerCase().match(/[\p{L}\p{N}_]+/gu)?.sort().join(" ") || "";
 }
 
-// --- export a dokončení -----------------------------------------------------
+// --- dokončení (export) ------------------------------------------------------
 
 function exportTarget() {
   return state.info?.zapis ? "Sidecary se zapíšou vedle souborů v archivu."
@@ -2346,36 +2346,34 @@ async function flushSave() {
   return !state.dirty && !state.conflict && !state.readonly;
 }
 
-async function runExport(finish) {
+// Dokončení je jediný export z plochy (#20); u dokončené akce zapíše
+// změny do sidecarů a datum dokončení nechá.
+async function finishEvent() {
   if (state.exporting || state.readonly) return;
   if (!(await flushSave())) return;
-  if (finish) {
-    const lines = missingItems().map((i) => i.text);
-    if (lines.length && !(await confirmDialog("Akci něco chybí nebo je " +
-      "k vyřešení", lines, "Přesto dokončit"))) return;
-  }
+  const lines = missingItems().map((i) => i.text);
+  if (lines.length && !(await confirmDialog("Akci něco chybí nebo je " +
+    "k vyřešení", lines, "Přesto dokončit"))) return;
   const name = state.name;
   state.exporting = true;
   state.exportErrors = [];
   renderExportStatus();
   try {
-    const r = await api(eventUrl(name, finish ? "/dokoncit" : "/export"), {
+    const r = await api(eventUrl(name, "/dokoncit"), {
       method: "POST", body: { relace: session(), version: state.version },
     });
     if (name !== state.name) return;
     state.exportErrors = r.chyby;
     state.exportStale = r.chyby.length > 0;
-    if (finish) {
-      state.version = r.version;
-      state.doc.dokonceno = r.dokonceno;
-    }
+    state.version = r.version;
+    state.doc.dokonceno = r.dokonceno;
     state.exportVersion = r.export_version;
+    const failed = r.dokonceno ? "" : ", není dokončená";
     state.exportNote = r.zverejneni
-      ? "Akci nešlo zveřejnit pro Immich (přejmenovat složku), není " +
-        `dokončená: ${r.zverejneni === "kolize_pripony" ? KOLIZE
+      ? "Akci nešlo zveřejnit pro Immich (přejmenovat složku)" +
+        `${failed}: ${r.zverejneni === "kolize_pripony" ? KOLIZE
           : r.zverejneni}`
-      : (finish && !r.dokonceno
-        ? "Export selhal, akce není dokončená: " : "Exportováno: ") +
+      : (r.chyby.length ? `Export selhal${failed}: ` : "Exportováno: ") +
         exportResult(r);
     if (r.index?.length) state.exportNote += ` · Index: ${r.index.join("; ")}`;
   } catch (err) {
@@ -2429,11 +2427,9 @@ function renderWorkspace() {
         } }, "Importovat…"),
       h("span", { class: "export" },
         h("span", { id: "export-status" }),
-        h("button", { disabled: !!state.readonly, title: exportTarget(),
-          onclick: () => runExport(false) }, "Exportovat"),
         h("button", { id: "finish", class: "primary",
-          disabled: !!state.readonly,
-          onclick: () => runExport(true) }, "Dokončit akci"))),
+          disabled: !!state.readonly, title: exportTarget(),
+          onclick: () => finishEvent() }, "Dokončit akci"))),
     lockNotice(),
     h("div", { id: "bar", class: "bar" }),
     h("div", { class: "workspace" },

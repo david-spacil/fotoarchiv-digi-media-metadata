@@ -323,24 +323,12 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             return {"skupiny": proposal["skupiny"], "zdroj": "navrh"}
         return {"skupiny": None, "zdroj": None}
 
-    @app.post("/api/akce/<nazev>/export")
-    def akce_export(nazev):
-        event_dir(nazev)
-        body = request.get_json(force=True)
-        denied = require_lock(nazev, body)
-        if denied:
-            return denied
-        result = xmp.export(ws, nazev)
-        if result is None:
-            return {"chyba": "bez_metadat"}, 409
-        return dict(result, export_version=ws.export_version(nazev),
-                    index=archive_index.write(ws))
-
     @app.post("/api/akce/<nazev>/dokoncit")
     def akce_finish(nazev):
         """Uloží `dokonceno`, exportuje a zveřejní složku akce pro Immich
-        (odebere `.ignored`); při chybě exportu nebo přejmenování
-        `dokonceno` vrátí."""
+        (odebere `.ignored`). `dokonceno` je datum prvního dokončení:
+        opakované dokončení ho nemění a při chybě exportu nebo
+        přejmenování se vrací jen u akce, která ho dosud neměla (#20)."""
         event_dir(nazev)
         body = request.get_json(force=True)
         denied = require_lock(nazev, body)
@@ -351,7 +339,9 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             return {"chyba": "bez_metadat"}, 409
         if body.get("version") != version:
             return {"chyba": "konflikt", "version": version}, 409
-        doc["dokonceno"] = date.today().isoformat()
+        first = not doc.get("dokonceno")
+        if first:
+            doc["dokonceno"] = date.today().isoformat()
         try:
             version = ws.save(nazev, doc, version)
             result = xmp.export(ws, nazev)
@@ -362,7 +352,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                     result["zverejneni"] = str(e)
                 except Collision:
                     result["zverejneni"] = "kolize_pripony"
-            if result["chyby"] or result.get("zverejneni"):
+            if first and (result["chyby"] or result.get("zverejneni")):
                 doc["dokonceno"] = None
                 version = ws.save(nazev, doc, version)
         except Conflict as e:
