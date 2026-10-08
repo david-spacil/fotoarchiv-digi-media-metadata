@@ -44,28 +44,44 @@ stejnou akcí.
 - **THEN** odznak akce fotku nadále nepočítá a po opětovném kliknutí
   ji počítá znovu
 
-### Requirement: Vyřazení poškozených v dialogu úklidu
-Dialog „Uklidit…“ SHALL zobrazit sekci „Poškozené soubory“ se
-seznamem poškozených souborů kořene (název, stav, důvod), i když
-akce nemá žádné jiné nálezy; tlačítko „Uklidit…“ se SHALL objevit
-i v tom případě. Zaškrtnutí souboru SHALL označit `vyradit` a uložit
-(jako při označení z dlaždice) a plán se SHALL přepočítat tak, aby
-přesun souboru obsahoval. Soubory s `overeno` nebo už označené
-SHALL být v seznamu šedě, bez přepínače, s poznámkou. Potvrzení
-„v pořádku“ dialog nabízet MUST NOT (zůstává na dlaždici).
+### Requirement: Rozhodnutí o poškozených v dialogu úklidu
+Dialog „Uklidit…“ SHALL zobrazit sekci „Poškozené soubory“ jako
+tabulku poškozených souborů kořene (malý náhled nebo zástupná ikona,
+název, stav, důvod) se dvěma výlučnými sloupci „Vyřadit“ a „V pořádku“,
+i když akce nemá žádné jiné nálezy; tlačítko „Uklidit…“ se SHALL
+objevit i tehdy, má-li akce poškozený soubor bez rozhodnutí. Každý
+sloupec SHALL mít v hlavičce hromadné zaškrtnutí všech řádků. Výchozí
+stav řádku SHALL odpovídat uloženým metadatům (potvrzený = V pořádku,
+jinak nic); soubor bez volby MUST zůstat beze změny. Volby se SHALL
+zapsat až potvrzením dialogu, zrušení dialogu MUST nic nezměnit:
+Vyřadit nastaví `vyradit` (zruší `overeno`) a soubor se přesune spolu
+s ostatními operacemi plánu, V pořádku nastaví `overeno`, odškrtnutí
+potvrzeného `overeno` zruší. Bez přesunů SHALL tlačítko jen uložit.
+Soubor už označený k vyřazení SHALL být v tabulce šedě bez přepínačů,
+s poznámkou, že označení se ruší na dlaždici. Ve vývojovém režimu
+SHALL být sloupec Vyřadit vypnutý.
 
 #### Scenario: Jedno okno pro konzistenci i poškozené
 - **WHEN** akce má osiřelý sidecar i poškozenou fotku a uživatel
   otevře „Uklidit…“
-- **THEN** dialog obsahuje plán přesunů pro oba nálezy a fotku
-  předzapnutou v sekci Poškozené soubory
+- **THEN** dialog obsahuje plán přesunů i tabulku Poškozené soubory
+  a fotka nemá žádnou volbu
 
-#### Scenario: Bez ostatních nálezů
-- **WHEN** akce má jen poškozené soubory
-- **THEN** „Uklidit…“ se zobrazí, sekce Poškozené soubory je jediná
-  a po zaškrtnutí a spuštění se soubory přesunou do
-  `k_odstraneni.ignored` a zmizí z odznaku
+#### Scenario: Výlučné volby
+- **WHEN** uživatel u souboru zaškrtne Vyřadit a pak V pořádku
+- **THEN** zůstane zaškrtnuté jen V pořádku
 
-#### Scenario: Potvrzený soubor v seznamu
-- **WHEN** je jeden poškozený soubor potvrzený „v pořádku“
-- **THEN** dialog ho zobrazí šedě s poznámkou bez přepínače
+#### Scenario: Hromadné potvrzení
+- **WHEN** uživatel zaškrtne V pořádku v hlavičce a potvrdí „Uložit“
+- **THEN** všechny poškozené soubory bez označení k vyřazení mají
+  `overeno`, nic se nepřesune a odznak akce je 0
+
+#### Scenario: Vyřazení a zrušení potvrzení najednou
+- **WHEN** soubor A je bez volby, soubor B potvrzený; uživatel u A
+  zaškrtne Vyřadit, u B odškrtne V pořádku a spustí úklid
+- **THEN** A se přesune do `k_odstraneni.ignored` i se sidecarem a B
+  zůstane v kořeni bez `overeno`
+
+#### Scenario: Zrušení dialogu
+- **WHEN** uživatel zaškrtne volby a dialog zruší
+- **THEN** metadata se nezmění

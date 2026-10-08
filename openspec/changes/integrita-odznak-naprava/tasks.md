@@ -70,3 +70,15 @@
 - [x] 6.5 Prod režim v prohlížeči: Uklidit… jen kvůli poškozeným,
       předzapnutí, odškrtnutí snižuje počet, přesun se sidecarem,
       potvrzený šedě s poznámkou, `Provést` mizí bez výběru
+
+## 7. Volba „v pořádku“ v dialogu (feedback po testu)
+
+- [x] 7.1 `integrity.js`: `cleanupDecisions`, `decisionChanges`,
+      `applyDecisionChanges` (s vrácením) + testy
+- [x] 7.2 Dialog: tabulka s náhledem, výlučné sloupce Vyřadit /
+      V pořádku, „vše“ v hlavičce, výchozí uložený stav, tlačítko
+      Provést úklid / Uložit podle změn, vývojový režim bez Vyřadit
+- [x] 7.3 Spec (archive-browsing) a README podle nového chování
+- [x] 7.4 Prohlížeč (prod i dev): výlučnost, hromadné volby, Zrušit,
+      jen Uložit, přesun + zrušení potvrzení, zamčený řádek, bez 409
+
