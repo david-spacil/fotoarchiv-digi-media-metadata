@@ -18,7 +18,7 @@ from flask import (Flask, Response, abort, g, jsonify, redirect, request,
                    send_file, session)
 
 from . import (auth, cleanup, geocode, immich, importer, lock, model, names,
-               scan, thumbs, unsorted, xmp)
+               scan, thumbs, unsorted, version, xmp)
 from . import index as archive_index
 from .archive import SCHEMA, UNSORTED, Conflict, Workspace
 
@@ -43,6 +43,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     posílá cookie relace jen přes HTTPS.
     """
     ws = Workspace(archiv, work, zapis)
+    # Jednou při startu: po `git pull` musí dál ukazovat běžící kód.
+    verze = version.app_version()
     locks = locks or lock.Locks()
     cache_dir = ws.work / "cache"
     contact = geocode.Contact(ws.work)
@@ -182,7 +184,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 "zapis": ws.zapis,
                 "geokodovani": geocoder.enabled,
                 "immich": immich_settings.load() is not None,
-                "import_limit": importer.MAX_FILE}
+                "import_limit": importer.MAX_FILE,
+                "verze": verze}
 
     @app.get("/api/akce")
     def akce_list():

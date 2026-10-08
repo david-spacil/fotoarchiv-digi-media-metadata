@@ -1,3 +1,11 @@
+# Verze pro hlavičku aplikace: image `.git` nemá, zjistí se tady.
+# Bez --dirty, stage nemá pracovní soubory (.dockerignore). Selhání
+# gitu (např. .git jako soubor u `git worktree`) build nezastaví.
+FROM alpine/git AS verze
+WORKDIR /src
+COPY .git .git
+RUN (git describe --tags --always 2>/dev/null || true) > /VERZE
+
 FROM python:3.12-slim
 
 # exiftool (čtení EXIF ve scan.py) a ffmpeg (náhledy videí);
@@ -12,6 +20,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY fotoarchiv/ fotoarchiv/
+COPY --from=verze /VERZE fotoarchiv/VERZE
 # Zdroje v repu mohou mít mód 600 vlastníka; v image musí být čitelné
 # pro libovolné UID, pod kterým kontejner běží.
 RUN chmod -R a+rX /app
