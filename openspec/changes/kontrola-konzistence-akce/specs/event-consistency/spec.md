@@ -81,3 +81,31 @@ se jen hlásí; aplikace ho MUST NOT smazat.
 #### Scenario: Jen záznam bez souboru
 - **WHEN** jediným nálezem akce je záznam bez souboru
 - **THEN** lišta ho ukáže a tlačítko Uklidit… kvůli němu nenabízí
+
+### Requirement: Příkaz zkontrolovat s nálezy konzistence
+Příkaz `python -m fotoarchiv zkontrolovat` SHALL u každé kontrolované
+akce vypsat a do reportu uložit i nálezy kontroly akce. S přepínačem
+`--rychle` SHALL číst jen výpis kořenů a `_metadata.json` (nálezy
+konzistence) a MUST NOT číst obsah souborů. S `--zapis-do-archivu`
+SHALL příkaz u akcí s nálezy, které úklid napraví, navrhnout nápravu
+přesuny (ostatní soubory do `ostatni.ignored`, RAWy z kořene do
+`RAW.ignored`; podsložky bez volby se nemění) a provést ji jen po
+potvrzení; bez potvrzení se archiv nezmění. Záznam bez souboru se jen
+vypíše.
+
+#### Scenario: Rychlý průchod archivem
+- **WHEN** uživatel spustí `zkontrolovat --rychle` nad archivem,
+  kde akce má v kořeni `zprava.pdf`
+- **THEN** výstup u akce vypíše nepodporovaný soubor `zprava.pdf`,
+  žádný soubor se nečte a report nálezy obsahuje
+
+#### Scenario: Náprava s potvrzením
+- **WHEN** uživatel spustí `zkontrolovat --zapis-do-archivu`,
+  akce má v kořeni `zprava.pdf` a `P1503712.RW2` a uživatel
+  potvrzení odmítne
+- **THEN** archiv se nezmění
+
+#### Scenario: Náprava po potvrzení
+- **WHEN** uživatel u téhož běhu potvrzení přijme
+- **THEN** `zprava.pdf` je v `ostatni.ignored` a `P1503712.RW2`
+  v `RAW.ignored` u akce

@@ -23,9 +23,10 @@ sidecarů (issue #11).
 - Dokončení akce nálezy kontroly ukáže spolu s chybějícími údaji
   a dokončí po potvrzení (jen varuje, neblokuje).
 - Záznam bez souboru se jen hlásí; aplikace ho nemaže (ruční údaje).
-- **Navazující krok (mimo tuto změnu):** CLI. Dohodnuto rozšířit příkaz
-  `zkontrolovat` z issue #10 o nálezy kontroly akce a nápravu přesunem
-  s `--zapis-do-archivu`; doplní se do této změny po sloučení #10.
+- Příkaz `python -m fotoarchiv zkontrolovat` (z issue #10, už
+  sloučené) vypisuje a reportuje i nálezy konzistence; `--rychle`
+  čte jen výpisy složek a `--zapis-do-archivu` po potvrzení provede
+  nápravu přesuny.
 
 ## Capabilities
 

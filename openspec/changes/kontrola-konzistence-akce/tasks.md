@@ -63,3 +63,20 @@
   souboru; čistá akce): štítek v seznamu, lišta a dialog s názvy, úklid
   z plochy v produkčním režimu, varování při dokončení; snímky
   obrazovky
+
+## 6. Příkaz zkontrolovat (po sloučení #10)
+
+- [x] 6.1 `__main__.py` `zkontrolovat`: přepínač `--rychle` (jen
+  konzistence, bez čtení obsahu souborů); nálezy konzistence
+  (`consistency.check`) se vypíšou před souhrnem a přidají do reportu
+  (`nalezy` u akce); ověří 6.3
+- [x] 6.2 `__main__.py`: `--zapis-do-archivu` u `zkontrolovat` navrhne
+  nápravu přesuny úklidu (ostatní, RAWy, podsložky bez volby se
+  nemění) a po dvojí potvrzovací otázce ji provede; ověří 6.3
+- [x] 6.3 Testy v `tests/test_integrity.py`: `--rychle` vypíše nálezy
+  a nečte soubory (podvržený `integrity.iter_check_files`), report je
+  úplný; s `--zapis-do-archivu` se archiv nezmění bez potvrzení,
+  po potvrzení (podvržený `input`) proběhnou přesuny; bez přepínače
+  zůstává současné chování
+- [x] 6.4 README (Lokální spuštění, Kontrola akce, Poškozené soubory)
+  a AGENTS.md (příkazy) aktualizovat
