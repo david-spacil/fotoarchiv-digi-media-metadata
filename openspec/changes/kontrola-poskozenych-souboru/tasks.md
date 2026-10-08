@@ -87,10 +87,28 @@
 - [x] 5.4 Aktualizovat README (Import ze složky `přetřídit`) a ověřit
   soulad s 5.2
 
-## 6. Integrace
+## 6. Integrace (první verze)
 
 - [x] 6.1 Spustit `pytest -q` a `node --test tests/js/*.test.mjs`,
   ověřit počty testů v souhrnu (ne jen konec výpisu)
 - [x] 6.2 Projít celý import v prohlížeči nad dočasným archivem: upload
   se vzorky z issue i import ze složky `přetřídit`, oba režimy; ověřit
   stavy přehledu, plánu a výsledku a obsah archivu po provedení
+
+## 7. Nuly ve videu jen v obrazových datech
+
+- [x] 7.1 Vytvořit `fotoarchiv/mp4.py` (rozsahy obrazových dat z tabulek
+  vzorků, None u fragmentovaného MP4, poškozené hlavičky a rozsahů mimo
+  `mdat`); ověřit `tests/test_mp4.py` na ručně sestavených atomech
+  (co64, pevná stsz, víc řádků stsc, poškozené tabulky) a srovnáním
+  s pozicemi paketů z `ffprobe`
+- [x] 7.2 V `integrity.py` u videa počítat nuly jen v obrazových datech
+  (součet částí), v reportu `nuly_rozsah` a `nuly_soubor`, `VERSION` 2;
+  ověřit testy scénářů „Nuly ve videu“ na MOV s tichým PCM z ffmpeg
+  (ticho projde, nuly v obraze se hlásí, úsek přes hranici se počítá
+  jen v obraze) a testem, že bez použití tabulek tytéž testy spadnou
+- [x] 7.3 Aktualizovat README (Poškozené soubory) a ověřit, že popis
+  odpovídá chování z 7.2
+- [ ] 7.4 Spustit `pytest -q` a `node --test tests/js/*.test.mjs`,
+  ověřit počty testů; po nasazení zopakovat `zkontrolovat` nad archivem
+  (očekávání: jen dva JPEGy z `2015-11-06 DOD 2015`)

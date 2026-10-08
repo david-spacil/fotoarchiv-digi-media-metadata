@@ -14,8 +14,8 @@ a dekodér obrázků nuly uprostřed souboru často přijme jako platná data.
 ## What Changes
 
 - Nová kontrola souboru: jedno čtení souboru, test souvislého úseku
-  nul (zarovnaného na 4 KiB, od 64 KiB), dekódování fotky a `ffprobe`
-  u videa. Výsledek *v pořádku*, *podezřelý*
+  nul (zarovnaného na 4 KiB, od 64 KiB; u videa jen v obrazových
+  datech), dekódování fotky a `ffprobe` u videa. Výsledek *v pořádku*, *podezřelý*
   (otevře se, ale je poškozený) nebo *nečitelný*, vždy s důvodem.
   Výsledek se cachuje v pracovním adresáři podle jména, velikosti
   a času změny.

@@ -116,6 +116,33 @@ o poškozených souborech rozhodnout před volbou cíle.
   z cache, změněný soubor zkontroluje znovu. Poškozený nepovolený soubor
   dostane v plánu `poskozeny: duvod` a nepřenáší se.
 
+### U videa nuly jen v obrazových datech (modul `fotoarchiv/mp4.py`)
+První průchod archivem (8. 10. 2026, 1320 souborů) nahlásil 5 videí,
+nezávislé ověření (rozbor atomů) ukázalo, že všech 5 je zdravých:
+nuly ležely v atomu `free` (Telč, rezerva pro `moov`) a v pevně velkých
+`udta`/`meta` (Panasonic). Panasonic navíc ukládá zvuk jako PCM
+(`pcm_s16be`): ticho je doslova řada nul, 1 s stereo 48 kHz je
+~188 KiB, takže delší ticho by práh přesáhlo i v `mdat` (v archivu
+52–55 KiB, rezerva ~10 KiB). Ověřeno na MOV z ffmpeg s tichým PCM po
+1 s: dnešní kontrola ho hlásila čtyřmi úseky ~184 KiB.
+
+Kontrola proto z tabulek vzorků (`moov` → stopy s `hdlr` = `vide` →
+`stco`/`co64`, `stsc`, `stsz`) sestaví rozsahy obrazových dat a úseky
+nul počítá jen v nich, součtem částí (úsek přes střídající se obraz
+a zvuk). Snímky H.264/HEVC obsahují zabraňovací bajty, blok 4 KiB nul
+v nich platně nevznikne. Parser čte jen hlavičky (seek na atomy, `moov`
+do 256 MiB), ne data; rozsahy musí ležet v `mdat`, jinak (vynulované
+nebo cizí tabulky), u fragmentovaného MP4 (`moof`) a při jakékoli chybě
+vrací None a test nul běží přísně přes celý soubor. Ověřeno proti
+pozicím paketů z `ffprobe` (MOV s `moov` na konci i na začátku, HEVC
+v MP4): shoda bajt po bajtu. `VERSION` cache 2 zneplatní výsledky
+první verze.
+*Alternativy:* (B) u videa test nul vypnout a spoléhat na `ffprobe` –
+odmítnuto, `ffprobe` čte jen hlavičky a vynulované bloky uprostřed
+videa by nenašel; (C) vynechat jen výplňové atomy a u videa zvýšit
+práh – odmítnuto, ticho delší než ~11 s by práh přesáhlo vždy a menší
+skutečné poškození by se nehlásilo.
+
 ### Ověření po přenosu jen velikostí
 Po `os.rename` v `_copy` i `_move` server zjistí `os.stat` cíle
 a porovná velikost s originálem; nesoulad = chyba souboru ve výsledku,
@@ -149,6 +176,14 @@ Přerušitelné Ctrl+C bez ztráty cache (cache se zapisuje po akcích).
   poškozené soubory, potvrzovací dialog se jménem a důvodem, kontrola
   snímku a zámku, produkční režim, log.
 - [`ffprobe` chybí] → video jen testem nul, s poznámkou ve výsledku.
+- [Vynulovaný blok přes malé snímky střídané velkým zvukem PCM: část
+  v obrazových datech může zůstat pod prahem] → známé omezení, cena za
+  ticho bez falešných poplachů; velké vynulované bloky se do obrazu
+  trefí i tak.
+- [Video bez obrazové stopy (jen zvuk v MOV) nebo jiný kodek bez
+  zabraňovacích bajtů (MJPEG)] → bez obrazové stopy přísný test přes
+  celý soubor; u MJPEG nejsou dlouhé nuly v datech snímku obvyklé, nic
+  se zvlášť neřeší.
 - [Useknutý JPEG zakončený značkou `FFD9` dekodér přijme (ověřeno na
   vzorku)] → známé omezení; zachytil by ho jen `ffmpeg` za cenu
   dalšího dekódování. Vada z issue (vynulované bloky) ho nemá.

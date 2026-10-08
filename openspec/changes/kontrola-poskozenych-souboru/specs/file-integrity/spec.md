@@ -12,8 +12,8 @@ už v archivu jsou, bez zásahu do originálů.
 Aplikace SHALL umět zkontrolovat soubor média a zařadit ho jako
 *v pořádku*, *podezřelý* nebo *nečitelný*, vždy s důvodem. Kontrola MUST
 soubor jen číst. Souvislý úsek nul aspoň 64 KiB začínající na násobku
-4 KiB MUST soubor zařadit nejméně jako podezřelý, u fotek, videí
-i RAWů.
+4 KiB MUST soubor zařadit nejméně jako podezřelý, u fotek, RAWů
+a u videí podle požadavku Nuly ve videu.
 
 #### Scenario: Nuly na začátku
 - **WHEN** se kontroluje `20151107_140851.jpg`, jehož prvních 768 KiB
@@ -58,6 +58,36 @@ být *nečitelné*. RAW SHALL kontrola posoudit jen testem nul. Prázdný soubor
 - **THEN** výsledek je *v pořádku* s poznámkou, že video se ověřilo
   jen testem nul
 
+### Requirement: Nuly ve videu
+U videa MP4/MOV SHALL kontrola počítat úseky nul jen v datech obrazové
+stopy podle tabulek vzorků souboru; úsek přes obrazová i jiná data
+SHALL počítat součtem částí v obrazových datech. Nuly mimo ně
+(výplňové a metadatové atomy, zvuk) MUST NOT soubor zařadit jako
+podezřelý. Když tabulky vzorků nejdou přečíst nebo neleží v datech
+souboru, MUST kontrola počítat úseky nul v celém souboru.
+
+#### Scenario: Ticho v nekomprimovaném zvuku
+- **WHEN** video `P1503720.MP4` (Panasonic, zvuk PCM) obsahuje v tichu
+  souvislý úsek 184 KiB nul ve zvukových datech a obrazová data jsou
+  bez nul
+- **THEN** výsledek je *v pořádku*
+
+#### Scenario: Výplň formátu
+- **WHEN** video `VID_20260525_021039_381.mp4` má 384 KiB nul v atomu
+  `free` před obrazovými daty
+- **THEN** výsledek je *v pořádku*
+
+#### Scenario: Nuly v obrazových datech
+- **WHEN** v obrazových datech videa je vynulovaných 64 KiB na hranici
+  4 KiB
+- **THEN** výsledek je *podezřelý* s důvodem „64 KiB nul v obrazových
+  datech“ a polohou
+
+#### Scenario: Hlavička nejde přečíst
+- **WHEN** video nemá čitelné tabulky vzorků (fragmentované MP4,
+  poškozená hlavička)
+- **THEN** úseky nul se počítají v celém souboru
+
 ### Requirement: Cache kontroly
 Výsledek kontroly SHALL aplikace cachovat v pracovním adresáři podle
 cesty, velikosti a času změny souboru. Nezměněný soubor MUST NOT být
@@ -70,6 +100,11 @@ při opakované kontrole znovu čten. Do archivu MUST NOT cache zapisovat.
 #### Scenario: Změněný soubor
 - **WHEN** se soubor po kontrole změní (velikost nebo čas změny)
 - **THEN** další kontrola ho přečte znovu
+
+#### Scenario: Změna pravidel kontroly
+- **WHEN** nová verze aplikace změní pravidla kontroly
+- **THEN** výsledky v cache z dřívější verze neplatí a soubory se
+  zkontrolují znovu
 
 ### Requirement: Kontrola akcí z příkazové řádky
 Příkaz `python -m fotoarchiv zkontrolovat` SHALL zkontrolovat zadanou
@@ -95,8 +130,15 @@ souhrn po akcích a uložit report do pracovního adresáře.
 ### Requirement: Podklad pro ověření prahu
 Report příkazu SHALL u každého souboru, který má aspoň jeden úplný
 nulový blok 4 KiB, uvést délku a polohu nejdelšího úseku nul, i když
-nedosahuje prahu.
+nedosahuje prahu. U videa s přečtenými tabulkami SHALL uvést
+nejdelší započítaný úsek v obrazových datech i nejdelší úsek v celém
+souboru.
 
 #### Scenario: Soubor pod prahem
 - **WHEN** zdravá fotka obsahuje úsek 8 KiB nul na hranici 4 KiB
 - **THEN** report ji uvede jako *v pořádku* s nejdelším úsekem 8 KiB
+
+#### Scenario: Video s tichem
+- **WHEN** video má 184 KiB nul ve zvuku a obrazová data jsou bez nul
+- **THEN** report ho uvede jako *v pořádku*, bez úseku v obrazových
+  datech a s úsekem 184 KiB v celém souboru
