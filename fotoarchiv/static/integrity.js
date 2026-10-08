@@ -46,15 +46,17 @@ export function toggleAllowed(povolene, cesta, on) {
   return [...set].sort();
 }
 
-// Souhrn `poskozene` z detailu akce omezený na aktuální dokument:
-// soubory s `overeno` nebo `vyradit` se vyřadí (stejná pravidla jako
-// `integrity.summary` na serveru), aby přepnutí přepínačů svítilo
-// hned po uložení, než server odpověď spočítá znovu.
+// Souhrn `poskozene` z detailu omezený na soubory bez ručního potvrzení
+// a bez označení k vyřazení — ať už příznak přišel ze serveru, nebo ho
+// klient teprve chystá v rozepsaném dokumentu (`soubory`). Stejná
+// pravidla jako `integrity.counted` na serveru.
 export function damagedMap(poskozene, soubory = {}) {
   const out = {};
   for (const [name, info] of Object.entries(poskozene || {})) {
     const record = soubory[name] || {};
-    if (record.overeno || record.vyradit) continue;
+    if (info.overeno || info.vyradit || record.overeno || record.vyradit) {
+      continue;
+    }
     out[name] = info;
   }
   return out;

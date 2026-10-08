@@ -333,27 +333,41 @@ def ensure_event_file(path, cache_path, key=None):
     return result
 
 
-def summary(cache_path, doc):
-    """{název: {"stav", "duvody"}} poškozených souborů kořene z cache.
+def summary(cache_path, doc, present=None):
+    """{název: {"stav", "duvody", "overeno"?, "vyradit"?}} poškozených.
 
-    `doc` je `_metadata.json` akce (může být None): soubory s `overeno`
-    nebo `vyradit` se vynechávají. Záznamy starší verze pravidel
-    a klíče z podsložek (RAW.ignored) do souhrnu nepatří; kromě cache
-    JSONu se nic nečte."""
+    `doc` je `_metadata.json` akce (může být None); u souborů s ručním
+    potvrzením nebo označením k vyřazení přídá příznak — počty je nechají
+    vyniknout, dialog úklidu je ukáže šedě. `present` jsou názvy souborů
+    v kořeni: bez něj se počítají i výsledky souborů, které už byly
+    vytroupeny (zastaralá cache). Záznamy starší verze pravidel a klíče
+    z podsložek (RAW.ignored) do souhrnu nepatří; kromě cache JSONu
+    se nic nečte."""
     files = (doc or {}).get("soubory") or {}
+    present = None if present is None else set(present)
     out = {}
     for key, entry in sorted(_load(cache_path).items()):
         if "/" in key or entry.get("verze") != VERSION:
+            continue
+        if present is not None and key not in present:
             continue
         result = entry.get("vysledek") or {}
         if result.get("stav") not in (SUSPECT, UNREADABLE):
             continue
         record = files.get(key) or {}
-        if record.get("overeno") or record.get("vyradit"):
-            continue
-        out[key] = {"stav": result["stav"],
-                    "duvody": result.get("duvody") or []}
+        item = {"stav": result["stav"], "duvody": result.get("duvody") or []}
+        if record.get("overeno"):
+            item["overeno"] = True
+        if record.get("vyradit"):
+            item["vyradit"] = True
+        out[key] = item
     return out
+
+
+def counted(summary_map):
+    """Počet do odznaku: bez ručně potvrzených a označených k vyřazení."""
+    return sum(1 for item in summary_map.values()
+               if not (item.get("overeno") or item.get("vyradit")))
 
 
 def iter_check_files(todo, cache_path, sha_cache=None):

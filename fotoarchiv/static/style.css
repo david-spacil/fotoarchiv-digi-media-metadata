@@ -91,6 +91,9 @@ main.list, main.loading, main.wizard { padding: 12px 16px; overflow: auto; }
 .ftile.damaged { background: #742a2a; }
 .bar .info.damaged { color: #c53030; }
 .warn.damaged { color: #c53030; }
+.damaged-row { display: block; padding: 2px 0; }
+.damaged-row.locked { opacity: 0.55; }
+.damaged-row .meta { color: #666; }
 .tile .cap { font-size: 11px; padding: 1px 3px; display: flex;
   flex-direction: column; }
 .tile .fn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

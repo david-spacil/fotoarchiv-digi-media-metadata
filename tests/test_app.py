@@ -952,7 +952,10 @@ def test_overeno_roundtrip_a_odznak(client):
           json={"metadata": doc, "version": version, "relace": "r1"})
     d = c.get(f"/api/akce/{EVENT}").json
     assert d["metadata"]["soubory"]["shora.jpg"]["overeno"] is True
-    assert d["poskozene"] == {}
+    # Souhrn detailu obsahuje i potvrzený (se značkou), odznak ne.
+    assert d["poskozene"]["shora.jpg"] == {
+        "stav": "necitelny", "duvody": d["poskozene"]["shora.jpg"]["duvody"],
+        "overeno": True}
     assert c.get("/api/akce").json[0]["poskozene"] == 0
     # Zruseni potvrzeni: pole se pri ulozeni odstrani spolu s hodnotou.
     doc, version = d["metadata"], d["version"]

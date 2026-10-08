@@ -219,9 +219,11 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             "soubory": files,
             "kontrola": nalezy,
             # Poškozené soubory kořene z cache kontroly (issue #10):
-            # {název: {stav, duvody}} bez vyřazených a potvrzených.
+            # {název: {stav, duvody, overeno?, vyradit?}} jen soubory,
+            # které v kořeni jsou; odznak počítá `integrity.counted`.
             "poskozene": integrity.summary(
-                integrity.event_cache_path(ws.work, nazev), doc),
+                integrity.event_cache_path(ws.work, nazev), doc,
+                {f["nazev"] for f in files}),
             "nove": nove,
             "chybejici": chybejici,
             "pracovni_soubor": str(ws.metadata_path(nazev).resolve()),

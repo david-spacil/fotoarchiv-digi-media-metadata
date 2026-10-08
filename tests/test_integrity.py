@@ -576,13 +576,23 @@ def test_summary(tmp_path):
                                                       "duvody": ["d"]}}
     data = {"a.jpg": entry(SUSPECT), "b.jpg": entry(UNREADABLE),
             "c.jpg": entry(OK), "RAW.ignored/d.nef": entry(UNREADABLE),
+            "mizny.jpg": entry(UNREADABLE),
             "stary.nef": {"verze": 1, "size": 1, "mtime_ns": 1,
                           "vysledek": {"stav": SUSPECT, "duvody": []}}}
     cache.write_text(json.dumps(data))
-    doc = {"soubory": {"b.jpg": {"overeno": True}}}
-    assert set(integrity.summary(cache, doc)) == {"a.jpg"}
+    doc = {"soubory": {"b.jpg": {"overeno": True},
+                       "c.jpg": {}, "mizny.jpg": {}}}
+    present = {"a.jpg", "b.jpg", "c.jpg"}
+    s = integrity.summary(cache, doc, present)
+    assert set(s) == {"a.jpg", "b.jpg"}
+    assert s["b.jpg"]["overeno"] is True and "vyradit" not in s["b.jpg"]
+    assert integrity.counted(s) == 1
     doc["soubory"]["a.jpg"] = {"vyradit": True}
-    assert integrity.summary(cache, doc) == {}
+    s = integrity.summary(cache, doc, present)
+    assert s["a.jpg"]["vyradit"] is True
+    assert integrity.counted(s) == 0
+    # Bez `present` zastaralá cache počítá i zmizelý soubor.
+    assert "mizny.jpg" in integrity.summary(cache, doc)
     assert integrity.summary(tmp_path / "neni.json", None) == {}
 
 

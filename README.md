@@ -588,10 +588,15 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    vybrané soubory k vyřazení (jsou-li už všechny označené, označení
    zruší). Označené dlaždice zůstávají na místě, zašedlé a přeškrtnuté.
    Lišta ukazuje počet souborů k vyřazení a nálezy kontroly akce.
-   Tlačítko **Uklidit…** (je-li co vyřadit nebo napravit) uloží změny
+   Tlačítko **Uklidit…** (je-li co vyřadit nebo napravit, včetně
+   poškozených souborů) uloží změny
    a ukáže plán: označené do `k_odstraneni.ignored`, ostatní soubory do
    `ostatni.ignored`, RAWy do `RAW.ignored` a u podsložek volbu
    přesunout/ponechat jako v průvodci — podsložka bez volby zůstane.
+   Sekce **Poškozené soubory** vyjmenuje poškozené soubory kořene
+   (stav a důvod, předzapnuté); označené se při spuštění označí
+   k vyřazení a přesunou stejně. Potvrzené „v pořádku“ a už označené
+   se zde zobrazí šedě bez přepínače — potvrzení je v panelu dlaždice.
    V produkčním režimu plán po potvrzení provede (viz Podsložky a RAW),
    ve vývojovém ho jen ukáže.
 4. **Dokončení akce** uloží změny, zkontroluje úplnost a nálezy

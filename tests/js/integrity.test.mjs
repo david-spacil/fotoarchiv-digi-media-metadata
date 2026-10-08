@@ -5,8 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  checkCounts, damagedFiles, damagedMap, damagedText, toggleAllowed,
-  unchecked,
+  checkCounts, damagedFiles, damagedMap, damagedText,
+  toggleAllowed, unchecked,
 } from "../../fotoarchiv/static/integrity.js";
 
 const ok = { stav: "ok", duvody: [], nuly: null };
@@ -79,4 +79,16 @@ test("damagedText: stav a důvody", () => {
     "nečitelný: nejde otevřít; 768 KiB");
   assert.equal(damagedText({ stav: "podezrely", duvody: [] }),
     "podezřelý");
+});
+
+test("damagedMap respektuje znacky ze serveroveho souhrnu", () => {
+  const poskozene = {
+    "a.jpg": { stav: "podezrely", duvody: ["d"] },
+    "b.jpg": { stav: "necitelny", duvody: ["d"], overeno: true },
+    "c.jpg": { stav: "necitelny", duvody: ["d"], vyradit: true },
+  };
+  assert.deepEqual(Object.keys(damagedMap(poskozene)), ["a.jpg"]);
+  assert.equal(Object.keys(damagedMap(poskozene)).length, 1);
+  // Nezapsana znacka v rozepsanem dokumentu hosti take.
+  assert.deepEqual(damagedMap(poskozene, { "a.jpg": { overeno: true } }), {});
 });
