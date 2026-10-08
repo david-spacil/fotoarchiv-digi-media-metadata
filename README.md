@@ -320,9 +320,10 @@ dekodér druhý případ nepoznají, proto hlavní kontrolou je test nul.
   „N poškozených“ je v seznamu akcí i v liště plochy, dlaždice
   poškozeného souboru je červeně orámovaná s důvodem v tooltipu.
   U poškozeného souboru lze potvrdit „Považovat za v pořádku“
+  v panelu dlaždice nebo hromadně v dialogu Uklidit…
   (falešná pozitivita dekodéru) — uloží se jako `overeno` a odznak ho
   nadále nepočítá; zrušení je stejné tlačítko. Náprava v archivu jde
-  po cestě vyřazení: označit k vyřazení a uklidit
+  po cestě vyřazení: označit k vyřazení (dlaždice nebo dialog) a uklidit
   (do `k_odstraneni.ignored`, viz `vyradit` v
   [Datovém modelu](#datový-model)); žádná zvlášť složka poškozených
   není.
@@ -593,10 +594,14 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    a ukáže plán: označené do `k_odstraneni.ignored`, ostatní soubory do
    `ostatni.ignored`, RAWy do `RAW.ignored` a u podsložek volbu
    přesunout/ponechat jako v průvodci — podsložka bez volby zůstane.
-   Sekce **Poškozené soubory** vyjmenuje poškozené soubory kořene
-   (stav a důvod, předzapnuté); označené se při spuštění označí
-   k vyřazení a přesunou stejně. Potvrzené „v pořádku“ a už označené
-   se zde zobrazí šedě bez přepínače — potvrzení je v panelu dlaždice.
+   Sekce **Poškozené soubory** je tabulka poškozených souborů kořene
+   (náhled, stav a důvod) se dvěma výlučnými sloupci: **Vyřadit**
+   (přesune se spolu s ostatními do `k_odstraneni.ignored`) a **V
+   pořádku** (`overeno`, kontrola se mýlí); hlavička sloupce označí
+   všechny. Výchozí je uložený stav, soubor bez volby zůstane, jak je.
+   Volby se zapíší až tlačítkem; bez přesunů jen „Uložit“. Soubor už
+   označený k vyřazení je šedý (zrušit jde na dlaždici); ve vývojovém
+   režimu je sloupec Vyřadit vypnutý.
    V produkčním režimu plán po potvrzení provede (viz Podsložky a RAW),
    ve vývojovém ho jen ukáže.
 4. **Dokončení akce** uloží změny, zkontroluje úplnost a nálezy

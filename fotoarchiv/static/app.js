@@ -4,8 +4,9 @@
 import { parts, withDay, withTime } from "./datetime.js";
 import { missing, resolve, resolveGroup } from "./inherit.js";
 import {
-  STAV_KONTROLY, checkCounts, damagedFiles, damagedMap, damagedText,
-  toggleAllowed, unchecked,
+  STAV_KONTROLY, applyDecisionChanges, checkCounts, cleanupDecisions,
+  damagedFiles, damagedMap, damagedText, decisionChanges, toggleAllowed,
+  unchecked,
 } from "./integrity.js";
 import { byDay, dayLabel, personIndex, stripeStops } from "./sections.js";
 
@@ -1258,8 +1259,8 @@ function damagedOf(f) {
                     state.doc?.soubory || {})[f] || null;
 }
 
-// Soubor, který dialog úklidu nabízí vyřadit: poškozený a ani jednou
-// neznačený (potvrzený má slovo uživateli, vyřazený už v plánu je).
+// Poškozený soubor bez rozhodnutí (ani potvrzený, ani označený
+// k vyřazení) — kvůli takovým se v liště nabízí Uklidit….
 function damagedRepairable(f) {
   const info = (state.detail?.poskozene || {})[f];
   if (!info || !state.present.has(f)) return null;
@@ -1314,9 +1315,16 @@ async function workspaceCleanup() {
   if (state.readonly || !(await flushSave())) return;
   const name = state.name;
   const volby = {};
-  // Předzapnuté jsou poškozené bez značek; označení `vyradit` se
-  // zapíše až při spuštění (rozhodnuto ve variantě 1).
-  const damagedSel = new Set(damagedToRepair());
+  // Rozhodnutí u poškozených souborů (výlučné sloupce Vyřadit /
+  // V pořádku). Žije jen v dialogu, zapíše se až při spuštění — Zrušit
+  // nic nezmění. Výchozí je uložený stav; nerozhodnuté zůstanou, jak jsou.
+  const damaged = Object.keys(state.detail?.poskozene || {})
+    .filter((f) => state.present.has(f)).sort();
+  const decisions = cleanupDecisions(damaged, state.detail?.poskozene,
+    state.doc.soubory);
+  // Označený k vyřazení už je v plánu serveru; zrušit jde jen z dlaždice.
+  const lockedRows = new Set(damaged.filter(
+    (f) => decisions[f] === "vyradit"));
   const body = () => ({ z_plochy: true, volby, relace: session() });
   const zapis = state.info.zapis;
   const main = h("div");
@@ -1343,14 +1351,102 @@ async function workspaceCleanup() {
     : h("p", {}, "Není co přesouvat.");
   const cancel = h("button", { onclick: close }, "Zavřít");
   const run = h("button", { class: "primary" });
-  // Součet plánovaných přesunů + zaškrtnutých poškozených (při
-  // zaškrtnutí se počet na tlačítku okamžitě přepíše).
-  const updateRun = (todo) => {
-    const work = todo + damagedSel.size;
-    run.textContent = `Provést úklid (${plural(work, "operace",
-      "operace", "operací")})`;
-    cancel.textContent = zapis && work ? "Zrušit" : "Zavřít";
-    buttons.replaceChildren(...(zapis && work ? [run] : []), cancel);
+  let todo = 0;
+  // Tlačítko podle toho, co se stane: přesuny (jen produkční režim)
+  // a změny potvrzení „v pořádku“; bez přesunů jen „Uložit“.
+  const updateRun = () => {
+    const ch = decisionChanges(decisions, state.doc.soubory);
+    const moves = zapis ? todo + ch.vyradit.length : 0;
+    const parts = [];
+    if (moves) parts.push(plural(moves, "přesun", "přesuny", "přesunů"));
+    if (ch.overeno.length) parts.push(`${ch.overeno.length}× v pořádku`);
+    if (ch.zrusit.length) {
+      parts.push(`${ch.zrusit.length}× zrušit potvrzení`);
+    }
+    run.textContent = `${moves ? "Provést úklid" : "Uložit"} ` +
+      `(${parts.join(", ")})`;
+    const work = parts.length > 0;
+    cancel.textContent = work ? "Zrušit" : "Zavřít";
+    buttons.replaceChildren(...(work ? [run] : []), cancel);
+  };
+
+  // Tabulka poškozených: náhled, soubor s důvodem, dva výlučné sloupce.
+  // Vstupy se při změně jen přenastaví (náhledy se nenačítají znovu).
+  const damagedTable = () => {
+    if (!damaged.length) return null;
+    const editable = (col) => damaged.filter((f) => !lockedRows.has(f)
+      && !(col === "vyradit" && !zapis));
+    const inputs = {};
+    const head = {};
+    const sync = () => {
+      for (const f of damaged) {
+        inputs[f].vyradit.checked = decisions[f] === "vyradit";
+        inputs[f].overeno.checked = decisions[f] === "overeno";
+      }
+      for (const col of ["vyradit", "overeno"]) {
+        const rows = editable(col);
+        head[col].checked = rows.length > 0
+          && rows.every((f) => decisions[f] === col);
+        head[col].disabled = !rows.length;
+      }
+      updateRun();
+    };
+    const choose = (f, col, on) => {
+      decisions[f] = on ? col : null;
+      sync();
+    };
+    const box = (f, col) => h("input", {
+      type: "checkbox",
+      disabled: lockedRows.has(f) || (col === "vyradit" && !zapis),
+      onchange: (e) => choose(f, col, e.target.checked),
+    });
+    const headBox = (col, label, title) => {
+      head[col] = h("input", {
+        type: "checkbox",
+        onchange: (e) => {
+          for (const f of editable(col)) {
+            if (e.target.checked) decisions[f] = col;
+            else if (decisions[f] === col) decisions[f] = null;
+          }
+          sync();
+        },
+      });
+      return h("th", { class: "choice", title },
+        h("label", {}, head[col], " ", label));
+    };
+    const rows = damaged.map((f) => {
+      const info = state.detail.poskozene[f];
+      inputs[f] = { vyradit: box(f, "vyradit"), overeno: box(f, "overeno") };
+      const ph = () => h("span", { class: "ph" },
+        state.scan[f]?.video ? "▶ video" : "bez náhledu");
+      return h("tr", { class: lockedRows.has(f) ? "locked" : "" },
+        h("td", { class: "thumb" }, h("img", {
+          src: thumbUrl(f), loading: "lazy", alt: "",
+          onerror: (e) => e.target.replaceWith(ph()),
+        })),
+        h("td", {}, h("div", { class: "fn" }, f),
+          h("div", { class: "meta" }, damagedText(info)),
+          lockedRows.has(f) ? h("div", { class: "meta" },
+            "už označeno k vyřazení — zrušit jde v panelu dlaždice") : ""),
+        h("td", { class: "choice" }, inputs[f].vyradit),
+        h("td", { class: "choice" }, inputs[f].overeno));
+    });
+    const table = h("table", { class: "damaged" },
+      h("thead", {}, h("tr", {}, h("th", {}), h("th", {}, "Soubor"),
+        headBox("vyradit", "Vyřadit", zapis
+          ? "Přesunout do k_odstraneni.ignored"
+          : "Jen v produkčním režimu"),
+        headBox("overeno", "V pořádku",
+          "Soubor je v pořádku, kontrola se mýlí"))),
+      h("tbody", {}, rows));
+    sync();
+    return [h("h3", {}, "Poškozené soubory"),
+      h("p", { class: "notice" }, "U každého souboru vyberte nejvýš " +
+        "jedno: Vyřadit (přesune se do k_odstraneni.ignored spolu " +
+        "s ostatními, údaje zůstanou v sidecaru), nebo V pořádku " +
+        "(kontrola se mýlí, soubor přestane být hlášený). Soubor bez " +
+        "volby zůstane, jak je. Zapíše se až tlačítkem dole."),
+      table];
   };
 
   const showPlan = async () => {
@@ -1365,44 +1461,8 @@ async function workspaceCleanup() {
       return;
     }
     if (name !== state.name) return;
-    const todo = plan.operace.filter((o) => !o.blocked).length;
-    // Poškozené soubory: checkboxy jsou předzapnuté, ale označení
-    // `vyradit` se zapisuje až při „Provést úklid“ — Zrušit nic
-    // nezmění (stejný vztah plan/provést jako u ostatních nálezu).
-    const damaged = Object.keys(state.detail?.poskozene || {})
-      .filter((f) => state.present.has(f)).sort();
-    const damagedBlock = damaged.length
-      ? [h("h3", {}, "Poškozené soubory"),
-        h("p", { class: "notice" }, "Označené se při spuštění označí " +
-          "k vyřazení a přesunou do k_odstraneni.ignored spolu " +
-          "s ostatními (údaje zůstanou v sidecaru). Potvrzené " +
-          "„v pořádku“ a už označené se zde nepřepínají — potvrzení " +
-          "je v panelu dlaždice souboru."),
-        ...damaged.map((f) => {
-          const info = state.detail.poskozene[f];
-          // Značky ze souhrnu serveru i z dokumentu (dlaždice po načtení).
-          const record = state.doc.soubory[f] || {};
-          const overeno = info.overeno || record.overeno;
-          const vyradit = info.vyradit || record.vyradit;
-          const locked = overeno || vyradit;
-          return h("label", {
-            class: `damaged-row${locked ? " locked" : ""}`,
-          }, h("input", {
-            type: "checkbox",
-            // Potvrzený se nevyřadí → nezaškrtnutý; označený už ano.
-            checked: overeno ? false : vyradit || damagedSel.has(f),
-            disabled: locked || state.readonly,
-            onchange: (e) => {
-              if (e.target.checked) damagedSel.add(f);
-              else damagedSel.delete(f);
-              updateRun(todo);
-            },
-          }), " ", f, h("span", { class: "meta" },
-            ` — ${damagedText(info)}` +
-            (overeno ? " · potvrzeno uživatelem"
-              : vyradit ? " · už označeno k vyřazení" : "")));
-        })]
-      : null;
+    todo = plan.operace.filter((o) => !o.blocked).length;
+    const damagedBlock = damagedTable();
     main.replaceChildren(
       h("p", { class: "notice" }, zapis
         ? "Označené soubory se přesunou do k_odstraneni.ignored a jejich " +
@@ -1419,37 +1479,44 @@ async function workspaceCleanup() {
       })),
       plan.podslozky.length ? h("h3", {}, "Plán") : "",
       // Prázdný plán: „Není co přesouvat“ jen bez poškozených (ty se
-      // přesunou až po označení při spuštění).
-      plan.operace.length || !damagedBlock ? opsTable(plan.operace) : "",
+      // přesunou až po označení při spuštění); pod nadpisem Plán
+      // (akce s podsložkou) aspoň věta, ať nadpis nevisí.
+      plan.operace.length || !damagedBlock ? opsTable(plan.operace)
+        : plan.podslozky.length ? h("p", {}, "Zatím žádné přesuny; " +
+          "poškozené soubory označené níže k vyřazení se přidají při " +
+          "spuštění.") : "",
       ...(damagedBlock || []));
-    // Akce bez ostatních nálezů: plán je prázdný a přesto je co dělat —
-    // stačí zaškrtnuté poškozené (označí se a přesunou při spuštění).
-    updateRun(todo);
+    updateRun();
   };
 
   run.onclick = async () => {
     dialog.dataset.busy = "1";
     run.disabled = cancel.disabled = true;
     main.querySelectorAll("input").forEach((i) => { i.disabled = true; });
-    if (damagedSel.size) {
-      // Příznak `vyradit` do dokumentu a hned uložit — provedení ho čte
-      // z metadat. Ne přes changed(): jeho odložené uložení by přišlo
-      // až po úklidu se starou verzí (409, konflikt na ploše).
-      run.textContent = "Ukládám označení…";
-      const marked = [...damagedSel].filter(
-        (f) => !state.doc.soubory[f]?.vyradit);
-      for (const f of marked) (state.doc.soubory[f] ??= {}).vyradit = true;
+    // Rozhodnutí u poškozených zapsat a hned uložit — provedení čte
+    // `vyradit` z metadat. Ne přes changed(): jeho odložené uložení by
+    // přišlo až po úklidu se starou verzí (409, konflikt na ploše).
+    const ch = decisionChanges(decisions, state.doc.soubory);
+    if (ch.vyradit.length || ch.overeno.length || ch.zrusit.length) {
+      run.textContent = "Ukládám…";
+      const revert = applyDecisionChanges(state.doc.soubory, ch);
       state.dirty = true;
       if (!(await flushSave()) || name !== state.name) {
-        // Neuloženo: označení vrátit, ať Zrušit opravdu nic nezmění.
-        for (const f of marked) delete state.doc.soubory[f].vyradit;
+        // Neuloženo: vrátit, ať dokument odpovídá serveru.
+        revert();
         delete dialog.dataset.busy;
         cancel.disabled = false;
         run.remove();
         main.append(h("p", { class: "notice error" },
-          "Označení poškozených se nepodařilo uložit, úklid neproběhl."));
+          "Volby u poškozených se nepodařilo uložit, nic se neprovedlo."));
         return;
       }
+    }
+    if (!(zapis && todo + ch.vyradit.length)) {
+      // Jen potvrzení „v pořádku“ (nebo vývojový režim): hotovo.
+      delete dialog.dataset.busy;
+      done = true;
+      return close();
     }
     run.textContent = "Přesouvám…";
     let result;
@@ -2464,7 +2531,7 @@ function cleanupNeeded() {
     || damagedToRepair().length > 0;
 }
 
-// Poškozené nabízené k vyřazení v dialogu úklidu (stav podle dokumentu).
+// Poškozené bez rozhodnutí (stav podle dokumentu).
 function damagedToRepair() {
   return Object.keys(state.detail?.poskozene || {})
     .filter((f) => damagedRepairable(f)).sort();

@@ -91,9 +91,20 @@ main.list, main.loading, main.wizard { padding: 12px 16px; overflow: auto; }
 .ftile.damaged { background: #742a2a; }
 .bar .info.damaged { color: #c53030; }
 .warn.damaged { color: #c53030; }
-.damaged-row { display: block; padding: 2px 0; }
-.damaged-row.locked { opacity: 0.55; }
-.damaged-row .meta { color: #666; }
+table.damaged { border-collapse: collapse; width: 100%; }
+table.damaged th, table.damaged td { padding: 4px 6px; text-align: left;
+  vertical-align: middle; border-bottom: 1px solid #edf2f7; }
+table.damaged th { font-weight: 600; white-space: nowrap; }
+table.damaged .choice { text-align: center; width: 1%;
+  white-space: nowrap; }
+table.damaged .thumb { width: 84px; }
+table.damaged .thumb img, table.damaged .thumb .ph { width: 80px;
+  height: 60px; object-fit: contain; background: #f7fafc;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; color: #718096; }
+table.damaged .fn { word-break: break-all; }
+table.damaged .meta { color: #666; font-size: 12px; }
+table.damaged tr.locked { opacity: 0.55; }
 .tile .cap { font-size: 11px; padding: 1px 3px; display: flex;
   flex-direction: column; }
 .tile .fn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -62,6 +62,58 @@ export function damagedMap(poskozene, soubory = {}) {
   return out;
 }
 
+// Rozhodnutí řádků dialogu úklidu: {název: "vyradit" | "overeno" | null}.
+// Výchozí je uložený stav — potvrzený „v pořádku“, označený k vyřazení,
+// jinak bez rozhodnutí (soubor zůstane, jak je). Značky bere ze souhrnu
+// serveru (`poskozene`) i z rozepsaného dokumentu (`soubory`).
+export function cleanupDecisions(files, poskozene, soubory = {}) {
+  const out = {};
+  for (const f of files) {
+    const info = poskozene?.[f] || {};
+    const record = soubory[f] || {};
+    out[f] = info.vyradit || record.vyradit ? "vyradit"
+      : info.overeno || record.overeno ? "overeno" : null;
+  }
+  return out;
+}
+
+// Rozdíl rozhodnutí proti dokumentu: co při spuštění zapsat.
+// `vyradit` = nově k vyřazení (přesune je úklid), `overeno` = nově
+// potvrzené, `zrusit` = potvrzení zrušené (řádek odškrtnutý nebo
+// přepnutý na vyřazení).
+export function decisionChanges(decisions, soubory = {}) {
+  const out = { vyradit: [], overeno: [], zrusit: [] };
+  for (const [f, d] of Object.entries(decisions)) {
+    const record = soubory[f] || {};
+    if (d === "vyradit" && !record.vyradit) out.vyradit.push(f);
+    if (d === "overeno" && !record.overeno) out.overeno.push(f);
+    if (d !== "overeno" && record.overeno) out.zrusit.push(f);
+  }
+  for (const list of Object.values(out)) list.sort();
+  return out;
+}
+
+// Zapíše změny z `decisionChanges` do `soubory` (vyřazení ruší
+// potvrzení). Vrátí funkci, která vrátí záznamy do původního stavu —
+// pro případ, že se uložení nepovede.
+export function applyDecisionChanges(soubory, changes) {
+  const touched = [...new Set([...changes.vyradit, ...changes.overeno,
+    ...changes.zrusit])];
+  const before = Object.fromEntries(touched.map((f) => [f,
+    soubory[f] === undefined ? undefined : { ...soubory[f] }]));
+  for (const f of changes.zrusit) {
+    if (soubory[f]) delete soubory[f].overeno;
+  }
+  for (const f of changes.vyradit) (soubory[f] ??= {}).vyradit = true;
+  for (const f of changes.overeno) (soubory[f] ??= {}).overeno = true;
+  return () => {
+    for (const f of touched) {
+      if (before[f] === undefined) delete soubory[f];
+      else soubory[f] = before[f];
+    }
+  };
+}
+
 // Text dlaždice/tooltipu: stav + důvody kontroly.
 export function damagedText(info) {
   const duvody = (info.duvody || []).join("; ");

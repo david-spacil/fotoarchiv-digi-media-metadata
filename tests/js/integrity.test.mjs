@@ -5,7 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  checkCounts, damagedFiles, damagedMap, damagedText,
+  applyDecisionChanges, checkCounts, cleanupDecisions, damagedFiles,
+  damagedMap, damagedText, decisionChanges,
   toggleAllowed, unchecked,
 } from "../../fotoarchiv/static/integrity.js";
 
@@ -91,4 +92,54 @@ test("damagedMap respektuje znacky ze serveroveho souhrnu", () => {
   assert.equal(Object.keys(damagedMap(poskozene)).length, 1);
   // Nezapsana znacka v rozepsanem dokumentu hosti take.
   assert.deepEqual(damagedMap(poskozene, { "a.jpg": { overeno: true } }), {});
+});
+
+test("cleanupDecisions: výchozí stav řádků dialogu úklidu", () => {
+  const poskozene = {
+    "a.jpg": { stav: "podezrely" },
+    "b.jpg": { stav: "necitelny", overeno: true },
+    "c.jpg": { stav: "necitelny", vyradit: true },
+    "d.jpg": { stav: "podezrely" },
+  };
+  // d.jpg: potvrzení zatím jen v rozepsaném dokumentu.
+  const soubory = { "d.jpg": { overeno: true } };
+  assert.deepEqual(
+    cleanupDecisions(["a.jpg", "b.jpg", "c.jpg", "d.jpg"], poskozene,
+      soubory),
+    { "a.jpg": null, "b.jpg": "overeno", "c.jpg": "vyradit",
+      "d.jpg": "overeno" });
+});
+
+test("decisionChanges: jen rozdíly proti dokumentu", () => {
+  const soubory = {
+    "a.jpg": {}, "b.jpg": { overeno: true }, "c.jpg": { overeno: true },
+    "d.jpg": { vyradit: true }, "e.jpg": { overeno: true },
+  };
+  const changes = decisionChanges({
+    "a.jpg": "overeno",   // nově potvrzený
+    "b.jpg": null,        // potvrzení zrušené
+    "c.jpg": "vyradit",   // z potvrzeného rovnou k vyřazení
+    "d.jpg": "vyradit",   // už označený: beze změny
+    "e.jpg": "overeno",   // potvrzený: beze změny
+  }, soubory);
+  assert.deepEqual(changes, {
+    vyradit: ["c.jpg"], overeno: ["a.jpg"], zrusit: ["b.jpg", "c.jpg"],
+  });
+  assert.deepEqual(decisionChanges({ "a.jpg": null }, soubory),
+    { vyradit: [], overeno: [], zrusit: [] });
+});
+
+test("applyDecisionChanges zapíše změny a umí je vrátit", () => {
+  const soubory = { "a.jpg": { popis: "x" }, "b.jpg": { overeno: true },
+    "c.jpg": { overeno: true } };
+  const original = structuredClone(soubory);
+  const changes = { vyradit: ["c.jpg", "n.jpg"], overeno: ["a.jpg"],
+    zrusit: ["b.jpg", "c.jpg"] };
+  const revert = applyDecisionChanges(soubory, changes);
+  assert.deepEqual(soubory, {
+    "a.jpg": { popis: "x", overeno: true }, "b.jpg": {},
+    "c.jpg": { vyradit: true }, "n.jpg": { vyradit: true },
+  });
+  revert();
+  assert.deepEqual(soubory, original);
 });
