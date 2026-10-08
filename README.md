@@ -330,8 +330,9 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
 
   Datum s časem dostane zónu Europe/Prague platnou v daný okamžik
   (`+01:00` / `+02:00`; při podzimní dvojí hodině letní čas), samotné
-  datum (WhatsApp) zůstane bez času a zóny. GPS ve formátu XMP
-  `DDD,MM.mmmmmmK` (např. `49,24.378000N`). Prázdná pole se
+  datum (WhatsApp) dostane poledne se zónou — Immich datum bez času
+  nepřijme a vezme čas z EXIFu; poledne neposune den ani v UTC. GPS ve
+  formátu XMP `DDD,MM.mmmmmmK` (např. `49,24.378000N`). Prázdná pole se
   nezapisují; místo, přístroj, účastníci, osoby ani skupina do
   sidecaru nejdou (osoby má Immich z vlastního rozpoznávání obličejů;
   obličeje jen při obnově, viz níže). Sidecar skládá aplikace sama (ne exiftool), takže obsah

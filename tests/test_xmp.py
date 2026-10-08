@@ -91,7 +91,9 @@ def test_deterministic():
     # Podzimní posun: 2:30 je dvakrát, bere se letní čas.
     ("2026-10-25T02:30:00", "2026-10-25T02:30:00+02:00"),
     ("2026-10-25T03:30:00", "2026-10-25T03:30:00+01:00"),
-    ("2026-04-28", "2026-04-28"),
+    # Samotné datum: Immich ho bez času nepřijme, dosadí se poledne.
+    ("2026-04-28", "2026-04-28T12:00:00+02:00"),
+    ("2026-01-10", "2026-01-10T12:00:00+01:00"),
 ])
 def test_format_date(value, expected):
     assert xmp.format_date(value) == expected

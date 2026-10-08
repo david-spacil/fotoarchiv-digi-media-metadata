@@ -50,10 +50,12 @@ def format_date(value):
     """`datum` pro `xmp:CreateDate`: čas bez zóny dostane Europe/Prague.
 
     Při podzimním posunu (hodina 2:00–3:00 dvakrát) platí `fold=0`, tedy
-    letní čas. Samotné datum zůstane bez času a zóny.
+    letní čas. Samotné datum dostane poledne — Immich datum bez času
+    nepřijme a poledne neposune den ani při převodu na UTC.
     """
     if "T" not in value:
-        return datetime.strptime(value, "%Y-%m-%d").date().isoformat()
+        value = datetime.strptime(value, "%Y-%m-%d").date().isoformat() \
+            + "T12:00:00"
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=ZONE)
