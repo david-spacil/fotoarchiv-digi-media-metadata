@@ -415,6 +415,8 @@ function header(...right) {
   paths.title = paths.textContent;
   return h("header", {},
     h("a", { href: "#/", class: "brand" }, "Fotoarchiv – metadata"),
+    state.info ? h("span", { class: "version", title: "verze aplikace" },
+      info.verze || "verze neznámá") : null,
     paths,
     ...right,
     state.me?.admin

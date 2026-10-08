@@ -27,6 +27,9 @@ Aplikace běží na <http://127.0.0.1:5000>. Bez dalších přepínačů je to
 vývojový režim: archiv se jen čte, metadata a cache jdou do `.work/`.
 Server spouštět jen jednou (zámky akcí jsou v paměti procesu).
 Přístup vyžaduje přihlášení (viz Přihlášení níže).
+Hlavička ukazuje verzi běžícího kódu podle `git describe --tags
+--always --dirty` (např. `v0.2.0-1-g5609826`), zjištěnou při startu
+serveru; po `git pull` ji ukáže až restart.
 
 Volitelné přepínače:
 
@@ -146,6 +149,11 @@ docker compose start fotoarchiv
 ```
 
 Aktualizace: `git pull && docker compose up -d --build`.
+
+Verzi v hlavičce zapíše build image z `.git` (`git describe --tags
+--always`, bez příznaku neuložených změn); `.git` se do image
+nekopíruje. Image postavený mimo pracovní kopii gitu ukáže „verze
+neznámá“.
 
 Poznámky:
 

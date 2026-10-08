@@ -242,6 +242,21 @@ def test_cleanup_execute_prod(prod):
     assert (archiv / EVENT / "a.rw2").read_text() == "raw"
 
 
+def test_info_version_fixed_at_start(tmp_path, monkeypatch):
+    versions = iter(["v0.2.0-1-g5609826", "v0.3.0"])
+    monkeypatch.setattr("fotoarchiv.version.app_version",
+                        lambda: next(versions))
+    c, _ = make_client(tmp_path, monkeypatch)
+    assert c.get("/api/info").json["verze"] == "v0.2.0-1-g5609826"
+    assert c.get("/api/info").json["verze"] == "v0.2.0-1-g5609826"
+
+
+def test_info_version_unknown(tmp_path, monkeypatch):
+    monkeypatch.setattr("fotoarchiv.version.app_version", lambda: None)
+    c, _ = make_client(tmp_path, monkeypatch)
+    assert c.get("/api/info").json["verze"] is None
+
+
 def test_geocoding_disabled_without_contact(client):
     c, _ = client
     assert c.get("/api/info").json["geokodovani"] is False
