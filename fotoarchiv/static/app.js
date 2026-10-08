@@ -1417,8 +1417,10 @@ async function workspaceCleanup() {
         volby[f.nazev] = value;
         showPlan();
       })),
-      plan.podslozky.length ? h("h3", {}, "Plán") : null,
-      opsTable(plan.operace),
+      plan.podslozky.length ? h("h3", {}, "Plán") : "",
+      // Prázdný plán: „Není co přesouvat“ jen bez poškozených (ty se
+      // přesunou až po označení při spuštění).
+      plan.operace.length || !damagedBlock ? opsTable(plan.operace) : "",
       ...(damagedBlock || []));
     // Akce bez ostatních nálezů: plán je prázdný a přesto je co dělat —
     // stačí zaškrtnuté poškozené (označí se a přesunou při spuštění).
