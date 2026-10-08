@@ -109,6 +109,6 @@
   jen v obraze) a testem, že bez použití tabulek tytéž testy spadnou
 - [x] 7.3 Aktualizovat README (Poškozené soubory) a ověřit, že popis
   odpovídá chování z 7.2
-- [ ] 7.4 Spustit `pytest -q` a `node --test tests/js/*.test.mjs`,
+- [x] 7.4 Spustit `pytest -q` a `node --test tests/js/*.test.mjs`,
   ověřit počty testů; po nasazení zopakovat `zkontrolovat` nad archivem
   (očekávání: jen dva JPEGy z `2015-11-06 DOD 2015`)
