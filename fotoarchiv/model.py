@@ -14,9 +14,11 @@ from .archive import EVENT_RE, SCHEMA
 LOCAL_KEYS = {
     # Účastníci a místa akce jsou výčty pro celou akci, ne údaje každé
     # fotky. Jediné místo akce se ale jako `misto` dědí (viz resolve).
+    # `overeno` je ruční potvrzení integrity u konkrétního souboru
+    # (issue #10) — nikdy se nedění ani nedostane do výstupů.
     "akce": {"ucastnici", "mista", "obliceje", "osoby"},
     "skupina": {"nazev", "obliceje", "osoby"},
-    "soubor": {"skupina", "sha256", "obliceje", "osoby"},
+    "soubor": {"skupina", "sha256", "obliceje", "osoby", "overeno"},
 }
 
 TECHNICAL_KEYS = ("datum", "pristroj", "gps")

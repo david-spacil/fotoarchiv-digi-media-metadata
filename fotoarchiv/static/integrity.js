@@ -45,3 +45,24 @@ export function toggleAllowed(povolene, cesta, on) {
   else set.delete(cesta);
   return [...set].sort();
 }
+
+// Souhrn `poskozene` z detailu akce omezený na aktuální dokument:
+// soubory s `overeno` nebo `vyradit` se vyřadí (stejná pravidla jako
+// `integrity.summary` na serveru), aby přepnutí přepínačů svítilo
+// hned po uložení, než server odpověď spočítá znovu.
+export function damagedMap(poskozene, soubory = {}) {
+  const out = {};
+  for (const [name, info] of Object.entries(poskozene || {})) {
+    const record = soubory[name] || {};
+    if (record.overeno || record.vyradit) continue;
+    out[name] = info;
+  }
+  return out;
+}
+
+// Text dlaždice/tooltipu: stav + důvody kontroly.
+export function damagedText(info) {
+  const duvody = (info.duvody || []).join("; ");
+  const stav = STAV_KONTROLY[info.stav] || info.stav;
+  return duvody ? `${stav}: ${duvody}` : stav;
+}

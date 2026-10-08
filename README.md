@@ -314,6 +314,18 @@ dekodér druhý případ nepoznají, proto hlavní kontrolou je test nul.
 - **Cache** výsledků je v `.work/cache/kontrola/` podle cesty,
   velikosti a času změny souboru; nezměněný soubor se znovu nečte.
   Změna pravidel kontroly cache zneplatní.
+- **Aplikace:** při vytváření nového náhledu souboru z kořene akce se
+  kontrola spustí a výsledek doplní do cache akce (prohlížením se
+  zásobník plní sám; při hitu cache se soubor nečte). Odznak
+  „N poškozených“ je v seznamu akcí i v liště plochy, dlaždice
+  poškozeného souboru je červeně orámovaná s důvodem v tooltipu.
+  U poškozeného souboru lze potvrdit „Považovat za v pořádku“
+  (falešná pozitivita dekodéru) — uloží se jako `overeno` a odznak ho
+  nadále nepočítá; zrušení je stejné tlačítko. Náprava v archivu jde
+  po cestě vyřazení: označit k vyřazení a uklidit
+  (do `k_odstraneni.ignored`, viz `vyradit` v
+  [Datovém modelu](#datový-model)); žádná zvlášť složka poškozených
+  není.
 - **Import** kontroluje soubory v kroku Přehled (viz
   [Import](#import)); poškozené soubory nepřenese bez souhlasu.
 - **Archiv:** příkaz `zkontrolovat` (viz [Lokální
@@ -418,6 +430,9 @@ přístroje a vzoru názvu, uživatel je může upravit.
 - **`vyradit: true`** označuje soubor k vyřazení (jen u souboru, nedědí
   se). Do XMP exportu takový soubor nejde, do lišty chybějících údajů se
   nepočítá; úklid ho přesune do `k_odstraneni.ignored` a záznam smaže.
+- **`overeno: true`** je ruční potvrzení, že soubor je i přes výsledek
+  kontroly integrity v pořádku (jen u souboru, nedědí se, do sidecaru
+  ani indexu nejde). Takový soubor se nepočítá do odznaku poškozených.
 - Originály se nemění.
 
 ## Jména osob

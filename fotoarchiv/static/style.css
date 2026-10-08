@@ -52,6 +52,8 @@ main.list, main.loading, main.wizard { padding: 12px 16px; overflow: auto; }
 .badge.vyresit { background: #e9d8fd; margin-left: 4px;
   white-space: nowrap; }
 .vyresit-detail { color: #553c9a; font-size: 12px; }
+.badge.poskozene { background: #feb2b2; margin-left: 4px;
+  white-space: nowrap; }
 
 .bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 12px;
   border-bottom: 1px solid #ddd; background: #fffaf0; }
@@ -84,6 +86,11 @@ main.list, main.loading, main.wizard { padding: 12px 16px; overflow: auto; }
 .tile.discard .fn { text-decoration: line-through; color: #c53030; }
 .tile.discard { background: #fff5f5; }
 .ftile.discard { background: #742a2a; }
+.tile.damaged, .ftile.damaged { outline: 2px solid #e53e3e;
+  outline-offset: -2px; }
+.ftile.damaged { background: #742a2a; }
+.bar .info.damaged { color: #c53030; }
+.warn.damaged { color: #c53030; }
 .tile .cap { font-size: 11px; padding: 1px 3px; display: flex;
   flex-direction: column; }
 .tile .fn { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

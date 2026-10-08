@@ -10,9 +10,11 @@
 export const LOCAL_KEYS = {
   // Účastníci a místa akce jsou výčty pro celou akci, ne údaje každé
   // fotky. Jediné místo akce se ale jako `misto` dědí (viz collect).
+  // `overeno` je ruční potvrzení integrity u konkrétního souboru
+  // (issue #10) — nikdy se nedění ani nedostane do výstupů.
   akce: new Set(["ucastnici", "mista", "obliceje", "osoby"]),
   skupina: new Set(["nazev", "obliceje", "osoby"]),
-  soubor: new Set(["skupina", "sha256", "obliceje", "osoby"]),
+  soubor: new Set(["skupina", "sha256", "obliceje", "osoby", "overeno"]),
 };
 
 // `levels` začíná vždy akcí. `misto` se z akce dědí, jen když má akce

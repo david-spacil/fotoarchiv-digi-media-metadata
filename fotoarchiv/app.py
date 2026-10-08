@@ -17,8 +17,9 @@ from pathlib import Path
 from flask import (Flask, Response, abort, g, jsonify, make_response,
                    redirect, request, send_file, session)
 
-from . import (auth, cleanup, consistency, geocode, immich, importer, lock,
-               model, names, scan, thumbs, unsorted, version, xmp)
+from . import (auth, cleanup, consistency, geocode, immich, importer,
+               integrity, lock, model, names, scan, thumbs, unsorted,
+               version, xmp)
 from . import index as archive_index
 from .archive import SCHEMA, UNSORTED, Collision, Conflict, Workspace
 
@@ -217,6 +218,10 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             "version": version,
             "soubory": files,
             "kontrola": nalezy,
+            # Poškozené soubory kořene z cache kontroly (issue #10):
+            # {název: {stav, duvody}} bez vyřazených a potvrzených.
+            "poskozene": integrity.summary(
+                integrity.event_cache_path(ws.work, nazev), doc),
             "nove": nove,
             "chybejici": chybejici,
             "pracovni_soubor": str(ws.metadata_path(nazev).resolve()),
@@ -433,10 +438,18 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             abort(404)
         return src
 
-    def thumb_response(src):
+    def thumb_response(src, kontrola=None):
         size = request.args.get("velikost", str(thumbs.SIZE))
         if size not in map(str, thumbs.SIZES):
             abort(400)
+        if kontrola is not None:
+            # Miss náhledu = soubor se stejně čte: kontrola integrity
+            # zdarma doplní cache akce (issue #10, varianta C). Chyba
+            # kontroly náhled nezastaví.
+            try:
+                integrity.ensure_event_file(src, kontrola)
+            except Exception:
+                pass
         thumb = thumbs.thumbnail(src, cache_dir, int(size))
         if thumb is None:
             abort(404)
@@ -446,7 +459,10 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     @app.get("/api/akce/<nazev>/nahled/<soubor>")
     def akce_thumb(nazev, soubor):
-        return thumb_response(root_file(nazev, soubor))
+        # Kontrola integrity jen pro soubory kořene akce (stejná cache
+        # jako příkaz `zkontrolovat`).
+        return thumb_response(root_file(nazev, soubor),
+                              integrity.event_cache_path(ws.work, nazev))
 
     @app.get("/api/akce/<nazev>/uklid/nahled/<slozka>/<soubor>")
     def akce_cleanup_thumb(nazev, slozka, soubor):

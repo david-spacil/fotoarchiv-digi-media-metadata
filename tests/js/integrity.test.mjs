@@ -5,7 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  checkCounts, damagedFiles, toggleAllowed, unchecked,
+  checkCounts, damagedFiles, damagedMap, damagedText, toggleAllowed,
+  unchecked,
 } from "../../fotoarchiv/static/integrity.js";
 
 const ok = { stav: "ok", duvody: [], nuly: null };
@@ -53,4 +54,29 @@ test("přepnutí povolení", () => {
     ["a.jpg", "b.jpg", "c.jpg"]);
   assert.deepEqual(toggleAllowed(["a.jpg", "b.jpg"], "a.jpg", false),
     ["b.jpg"]);
+});
+
+// --- odznak a přehodnocení na ploše akce (issue #10, varianta C) -----------
+
+test("damagedMap vyřadí potvrzené a vyřazené", () => {
+  const poskozene = {
+    "a.jpg": { stav: "podezrely", duvody: ["119 KiB nul na konci"] },
+    "b.jpg": { stav: "necitelny", duvody: ["soubor nejde otevřít"] },
+    "c.jpg": { stav: "podezrely", duvody: ["8 KiB nul"] },
+  };
+  const soubory = { "b.jpg": { overeno: true } };
+  assert.deepEqual(Object.keys(damagedMap(poskozene, soubory)),
+    ["a.jpg", "c.jpg"]);
+  // Vyřazený se též počítá mimo; bez dokumentu zůstává vše.
+  soubory["a.jpg"] = { vyradit: true };
+  assert.deepEqual(Object.keys(damagedMap(poskozene, soubory)), ["c.jpg"]);
+  assert.deepEqual(damagedMap(null, {}), {});
+});
+
+test("damagedText: stav a důvody", () => {
+  assert.equal(
+    damagedText({ stav: "necitelny", duvody: ["nejde otevřít", "768 KiB"] }),
+    "nečitelný: nejde otevřít; 768 KiB");
+  assert.equal(damagedText({ stav: "podezrely", duvody: [] }),
+    "podezřelý");
 });

@@ -4,7 +4,8 @@
 import { parts, withDay, withTime } from "./datetime.js";
 import { missing, resolve, resolveGroup } from "./inherit.js";
 import {
-  STAV_KONTROLY, checkCounts, damagedFiles, toggleAllowed, unchecked,
+  STAV_KONTROLY, checkCounts, damagedFiles, damagedMap, damagedText,
+  toggleAllowed, unchecked,
 } from "./integrity.js";
 import { byDay, dayLabel, personIndex, stripeStops } from "./sections.js";
 
@@ -493,6 +494,11 @@ async function showList() {
           ? [h("span", { class: "badge vyresit" }, "k vyřešení"),
             h("span", { class: "vyresit-detail" },
               ` ${nalezyText(e.kontrola)}`)] : null,
+        e.poskozene
+          ? h("span", { class: "badge poskozene",
+            title: "Poškozené soubory z kontroly integrity" },
+            plural(e.poskozene, "poškozený", "poškozené", "poškozených"))
+          : null,
         e.zmeneno_po_exportu
           ? h("span", { class: "warn" }, " změněno po exportu") : null)));
   app.replaceChildren(header(), h("main", { class: "list" },
@@ -1085,6 +1091,7 @@ function tile(f, markOf) {
   const datum = resolve(state.doc, f).datum?.hodnota;
   const mark = markOf(f);
   const m = markAttrs(mark, f);
+  const d = damagedAttrs(f);
   const thumb = present
     ? h("img", {
       src: eventUrl(state.name, `/nahled/${encodeURIComponent(f)}`),
@@ -1096,8 +1103,8 @@ function tile(f, markOf) {
   return h("div", {
     class: `tile${present ? "" : " missing"}${info.video ? " video" : ""}` +
       `${state.sel.has(f) ? " selected" : ""}${discarded(f) ? " discard" : ""}` +
-      m.cls,
-    dataset: { file: f }, title: m.title, style: m.style,
+      d.cls + m.cls,
+    dataset: { file: f }, title: d.title || m.title, style: m.style,
   }, thumb,
   h("div", { class: "cap" }, h("span", { class: "fn" }, f),
     h("span", { class: "dt" }, datum ? datum.replace("T", " ") : "bez data"),
@@ -1242,6 +1249,35 @@ function setupGrid(grid) {
 
 function discarded(f) {
   return !!state.doc.soubory[f]?.vyradit;
+}
+
+// Poškozené soubory pro zobrazení: souhrn z detailu omezený na
+// aktuální dokument (přepínače `overeno`/`vyradit` svítí hned).
+function damagedOf(f) {
+  return damagedMap(state.detail?.poskozene || {},
+                    state.doc?.soubory || {})[f] || null;
+}
+
+// Dlaždice poškozeného souboru: odlišení + důvod v tooltipu.
+function damagedAttrs(f) {
+  const info = damagedOf(f);
+  return info ? { cls: " damaged", title: damagedText(info) }
+              : { cls: "", title: null };
+}
+
+// „Považovat za v pořádku“ / zrušení potvrzení (falešná pozitivita
+// dekodéru); uloží se běžným autosave jako ostatní ruční údaje.
+function toggleVerified() {
+  const files = [...state.sel].filter((f) => state.doc.soubory[f]
+    && (damagedOf(f) || state.doc.soubory[f].overeno));
+  if (state.readonly || !files.length) return;
+  const unmark = files.every((f) => state.doc.soubory[f].overeno);
+  for (const f of files) {
+    if (unmark) delete state.doc.soubory[f].overeno;
+    else state.doc.soubory[f].overeno = true;
+  }
+  changed({ grid: true });
+  renderPanel();
 }
 
 // Del a tlačítko: označí vybrané soubory k vyřazení; jsou-li už všechny
@@ -1445,12 +1481,13 @@ function filmTile(f, markOf) {
   const info = state.scan[f] || {};
   const present = state.present.has(f);
   const m = markAttrs(markOf(f), f);
+  const d = damagedAttrs(f);
   return h("div", {
     class: `ftile${present ? "" : " missing"}` +
       `${state.sel.has(f) ? " selected" : ""}` +
       `${discarded(f) ? " discard" : ""}` +
-      `${f === state.current ? " current" : ""}` + m.cls,
-    dataset: { file: f }, title: m.title, style: m.style,
+      `${f === state.current ? " current" : ""}` + d.cls + m.cls,
+    dataset: { file: f }, title: d.title || m.title, style: m.style,
   }, present
     ? h("img", { src: thumbUrl(f), loading: "lazy", alt: "", draggable: false,
       onerror: (e) => e.target.replaceWith(
@@ -2354,6 +2391,16 @@ function renderBar() {
     items.push(h("span", { class: "info discard" },
       `${plural(vyradit, "soubor", "soubory", "souborů")} k vyřazení`));
   }
+  const poskozene = Object.keys(damagedMap(
+    state.detail?.poskozene || {}, state.doc.soubory)).length;
+  if (poskozene) {
+    items.push(h("span", {
+      class: "info damaged",
+      title: "Poškozené soubory z kontroly integrity;" +
+        " v panelu souboru lze potvrdit „v pořádku“ nebo vyřadit",
+    }, plural(poskozene, "poškozený soubor", "poškozené soubory",
+      "poškozených souborů")));
+  }
   if (cleanupNeeded()) {
     items.push(h("button", { disabled: !!state.readonly,
       onclick: workspaceCleanup }, "Uklidit…"));
@@ -2399,6 +2446,21 @@ function renderPanel() {
       title: "Del", onclick: toggleDiscard,
     }, marked ? "Zrušit vyřazení" : "Vyřadit"),
     marked ? h("span", { class: "warn" }, " Označeno k vyřazení.") : null));
+    const pos = ids.filter((f) => damagedOf(f)
+      || state.doc.soubory[f]?.overeno);
+    if (pos.length) {
+      const confirmed = pos.every((f) => state.doc.soubory[f]?.overeno);
+      const first = pos.map(damagedOf).find(Boolean);
+      extra.push(h("div", { class: "row" }, h("button", {
+        onclick: toggleVerified,
+      }, confirmed ? "Zrušit potvrzení integrity"
+                   : "Považovat za v pořádku"),
+      confirmed ? h("span", { class: "meta" }, " Potvrzeno uživatelem.")
+                : first ? h("span", { class: "warn damaged" }, " "
+                    + damagedText(first)
+                    + (pos.length > 1 ? ` (+${pos.length - 1})` : ""))
+                        : null));
+    }
     extra.push(groupTools(afterGroupChange));
   } else if (state.group && state.doc.skupiny[state.group]) {
     const gid = state.group;

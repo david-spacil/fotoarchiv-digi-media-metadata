@@ -911,3 +911,69 @@ def test_api_source_lock(prod):
     moved = sorted(os.listdir(archiv / "2019-05-01 DOD David.ignored"))
     assert "RAW.ignored" in moved
     assert c.application.config["LOCKS"].holder("přetřídit/DOD 2019") is None
+
+
+# --- integrita v aplikaci (issue #10, varianta C) ---------------------------
+
+def test_thumb_plni_cache_integrity(client, tmp_path):
+    c, archiv = client
+    from PIL import Image
+    import io as _io
+    img = _io.BytesIO()
+    Image.new("RGB", (100, 80)).save(img, "JPEG")
+    data = bytearray(img.getvalue())
+    data[:65536] = b"\x00" * 65536
+    (archiv / EVENT / "shora.jpg").write_bytes(bytes(data))
+    # Náhled takového souboru nevyjde (404 -> zástupná ikona), ale
+    # kontrola musí proběhnout a zapsat se bez ohledu na výsledek.
+    c.get(f"/api/akce/{EVENT}/nahled/shora.jpg")
+    cache = tmp_path / "work" / "cache" / "kontrola" / f"{EVENT}.json"
+    assert json.loads(cache.read_text())["shora.jpg"]["vysledek"]["stav"] \
+        == "necitelny"
+    d = c.get(f"/api/akce/{EVENT}").json
+    assert d["poskozene"]["shora.jpg"]["stav"] == "necitelny"
+    assert c.get("/api/akce").json[0]["poskozene"] == 1
+
+
+def test_overeno_roundtrip_a_odznak(client):
+    c, archiv = client
+    import io as _io
+    from PIL import Image
+    img = _io.BytesIO()
+    Image.new("RGB", (100, 80)).save(img, "JPEG")
+    data = bytearray(img.getvalue())
+    data[:65536] = b"\x00" * 65536
+    (archiv / EVENT / "shora.jpg").write_bytes(bytes(data))
+    c.get(f"/api/akce/{EVENT}/nahled/shora.jpg")  # at je ve vysledcich
+    assert c.get("/api/akce").json[0]["poskozene"] == 1
+    doc, version = saved(c)
+    doc["soubory"]["shora.jpg"] = {"overeno": True}
+    c.put(f"/api/akce/{EVENT}/metadata",
+          json={"metadata": doc, "version": version, "relace": "r1"})
+    d = c.get(f"/api/akce/{EVENT}").json
+    assert d["metadata"]["soubory"]["shora.jpg"]["overeno"] is True
+    assert d["poskozene"] == {}
+    assert c.get("/api/akce").json[0]["poskozene"] == 0
+    # Zruseni potvrzeni: pole se pri ulozeni odstrani spolu s hodnotou.
+    doc, version = d["metadata"], d["version"]
+    del doc["soubory"]["shora.jpg"]["overeno"]
+    c.put(f"/api/akce/{EVENT}/metadata",
+          json={"metadata": doc, "version": version, "relace": "r1"})
+    assert "overeno" not in c.get(
+        f"/api/akce/{EVENT}").json["metadata"]["soubory"]["shora.jpg"]
+    assert c.get("/api/akce").json[0]["poskozene"] == 1
+
+
+def test_overeno_se_nededi_a_neexportuje(prod):
+    c, archiv = prod
+    doc, version = saved(c)
+    doc["soubory"]["foto.jpg"]["overeno"] = True
+    r = c.put(f"/api/akce/{EVENT}/metadata",
+              json={"metadata": doc, "version": version, "relace": "r1"})
+    doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    assert doc["akce"].get("overeno") is None
+    out = c.post(f"/api/akce/{EVENT}/export",
+                 json={"relace": "r1"}).json
+    assert out["chyby"] == [] and out["zapsano"] >= 1
+    sidecar = (archiv / EVENT / "foto.jpg.xmp").read_text()
+    assert "overeno" not in sidecar
