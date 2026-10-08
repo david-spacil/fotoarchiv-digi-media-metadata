@@ -10,7 +10,7 @@ import logging
 import os
 import unicodedata
 
-from .archive import is_skipped
+from .archive import IGNORED, is_skipped
 from .scan import MEDIA_EXT, extension
 
 log = logging.getLogger(__name__)
@@ -18,7 +18,6 @@ log = logging.getLogger(__name__)
 RAW_EXT = {"rw2", "cr2", "cr3", "nef", "arw", "dng", "orf", "raf"}
 RAW_DIR = "RAW.ignored"
 K_ODSTRANENI = "k_odstraneni.ignored"
-IGNORED = ".ignored"
 
 SAMPLES = 8
 

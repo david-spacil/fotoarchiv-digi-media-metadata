@@ -22,6 +22,9 @@ XMP_TMP_PREFIX = ".xmp-"
 IMPORT_TMP_PREFIX = ".import-"
 # Nezatříděné akce v kořeni archivu; mění je jen import (`unsorted`).
 UNSORTED = "přetřídit"
+# Přípona ignorované složky: Immich ji vylučuje (`**/*.ignored/**`).
+# U složky akce znamená nedokončenou akci skrytou před Immichem.
+IGNORED = ".ignored"
 
 
 def is_skipped(name):
@@ -46,6 +49,16 @@ class Conflict(Exception):
         self.current_version = current_version
 
 
+class Collision(KeyError):
+    """Složka akce je v archivu s příponou `.ignored` i bez ní."""
+
+
+def event_name(folder):
+    """Název akce ze jména složky (bez přípony `.ignored`)."""
+    folder = Path(folder).name
+    return folder[:-len(IGNORED)] if folder.endswith(IGNORED) else folder
+
+
 def version_of(data):
     return hashlib.sha256(data).hexdigest()
 
@@ -61,28 +74,80 @@ class Workspace:
     # --- archiv -----------------------------------------------------------
 
     def event_names(self):
-        names = []
+        """Názvy akcí (bez přípony `.ignored`), každý jednou."""
+        names = set()
         with os.scandir(self.archiv) as it:
             for entry in it:
-                if EVENT_RE.match(entry.name) and entry.is_dir():
-                    names.append(entry.name)
+                name = event_name(entry.name)
+                if (EVENT_RE.match(name) and not name.endswith(IGNORED)
+                        and entry.is_dir()):
+                    names.add(name)
         return sorted(names, reverse=True)
 
     def event_dir(self, name):
-        """Cesta ke složce akce; jiný než platný název akce vyhodí KeyError."""
-        if "/" in name or "\\" in name or not EVENT_RE.match(name):
+        """Složka akce `name` na disku, s příponou `.ignored` i bez ní.
+
+        Neplatný název (i s příponou) nebo chybějící složka vyhodí
+        KeyError, obě složky zároveň Collision.
+        """
+        if ("/" in name or "\\" in name or not EVENT_RE.match(name)
+                or name.endswith(IGNORED)):
             raise KeyError(name)
-        path = self.archiv / name
-        if not path.is_dir():
+        plain = self.archiv / name
+        hidden = self.archiv / (name + IGNORED)
+        found = [p for p in (plain, hidden) if p.is_dir()]
+        if len(found) == 2:
+            raise Collision(name)
+        if not found:
             raise KeyError(name)
-        return path
+        return found[0]
+
+    def is_hidden(self, name):
+        return self.event_dir(name).name.endswith(IGNORED)
+
+    def _rename(self, name, src, dst):
+        # os.rename na Linuxu přepíše prázdnou cílovou složku.
+        if os.path.lexists(dst):
+            raise Collision(name)
+        os.rename(src, dst)
+        return dst
+
+    def publish(self, name):
+        """Odebere složce akce příponu `.ignored` (zveřejní ji pro Immich).
+
+        Ve vývojovém režimu a u složky bez přípony nic nedělá. Vrací
+        složku akce; selhání přejmenování vyhodí OSError.
+        """
+        path = self.event_dir(name)
+        if not self.zapis or not path.name.endswith(IGNORED):
+            return path
+        return self._rename(name, path, self.archiv / name)
+
+    def hide(self, name):
+        """Přidá složce akce příponu `.ignored`; jen pro příkaz `skryt`."""
+        path = self.event_dir(name)
+        if path.name.endswith(IGNORED):
+            return path
+        return self._rename(name, path, self.archiv / (name + IGNORED))
 
     def list_events(self):
         from .model import incomplete  # model importuje archive
         events = []
         for name in self.event_names():
+            try:
+                path = self.event_dir(name)
+            except Collision:
+                events.append({
+                    "nazev": name,
+                    "datum": EVENT_RE.match(name).group(1),
+                    "souboru": 0,
+                    "stav": "kolize",
+                    "zmeneno_po_exportu": False,
+                    "chybi": [],
+                })
+                continue
             present = set()
-            with os.scandir(self.archiv / name) as it:
+            with os.scandir(path) as it:
                 for entry in it:
                     if (entry.is_file() and not is_skipped(entry.name)
                             and not is_metadata(entry.name)):
@@ -112,6 +177,8 @@ class Workspace:
     # --- metadata ---------------------------------------------------------
 
     def metadata_path(self, name):
+        if self.zapis:
+            return self.event_dir(name) / METADATA_NAME
         return self.metadata_root / name / METADATA_NAME
 
     def metadata_files(self):
@@ -123,7 +190,10 @@ class Workspace:
         if not self.zapis:
             paths = list(self.metadata_root.glob(f"*/{METADATA_NAME}"))
         for name in self.event_names():
-            path = self.archiv / name / METADATA_NAME
+            try:
+                path = self.event_dir(name) / METADATA_NAME
+            except Collision:
+                continue
             if path.is_file():
                 paths.append(path)
         return paths
@@ -133,7 +203,7 @@ class Workspace:
     def sidecar_path(self, name, soubor):
         """Sidecar vedle souboru, ve vývojovém režimu v `work/xmp/<akce>/`."""
         if self.zapis:
-            return self.archiv / name / f"{soubor}.xmp"
+            return self.event_dir(name) / f"{soubor}.xmp"
         return self.work / "xmp" / name / f"{soubor}.xmp"
 
     def export_record_path(self, name):

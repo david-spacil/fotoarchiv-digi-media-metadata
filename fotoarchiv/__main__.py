@@ -1,7 +1,9 @@
 """Spuštění: python -m fotoarchiv --archiv CESTA [--work .work]
 [--zapis-do-archivu], převzetí: python -m fotoarchiv prevzit --archiv …,
 export XMP: python -m fotoarchiv exportovat [AKCE] --archiv …,
-jednorázové heslo: python -m fotoarchiv heslo LOGIN --work …."""
+jednorázové heslo: python -m fotoarchiv heslo LOGIN --work …,
+skrytí nedokončených akcí před Immichem: python -m fotoarchiv skryt
+--archiv … [--zapis-do-archivu]."""
 
 import argparse
 import logging
@@ -10,7 +12,7 @@ from pathlib import Path
 
 from . import auth, geocode, immich, importer, index, xmp
 from .app import create_app
-from .archive import Workspace, adopt
+from .archive import Collision, Workspace, adopt
 
 
 def paths(args):
@@ -73,7 +75,13 @@ def exportovat(argv):
             sys.exit(f"Akce nenalezena: {args.akce}")
     failed = False
     for name in [args.akce] if args.akce else ws.event_names():
-        result = xmp.export(ws, name, obliceje=args.obliceje)
+        try:
+            result = xmp.export(ws, name, obliceje=args.obliceje)
+        except Collision:
+            print(f"přeskočeno: {name} (složka s příponou .ignored i bez "
+                  "ní)")
+            failed = True
+            continue
         if result is None:
             print(f"přeskočeno: {name} (bez _metadata.json)")
             continue
@@ -87,6 +95,48 @@ def exportovat(argv):
         print(f"varování: {warning}")
     if not warnings:
         print(f"index: {index.target_dir(ws)}")
+    if failed:
+        sys.exit(1)
+
+
+def skryt(argv):
+    parser = argparse.ArgumentParser(
+        prog="python -m fotoarchiv skryt",
+        description="Skryje nedokončené akce před Immichem: přidá jejich "
+                    "složkám příponu .ignored (odebere ji dokončení akce). "
+                    "Bez --zapis-do-archivu jen vypíše, co by přejmenoval. "
+                    "Spouštět, když server neběží.")
+    common(parser)
+    parser.add_argument("--zapis-do-archivu", action="store_true",
+                        help="složky v archivu opravdu přejmenovat")
+    args = parser.parse_args(argv)
+    archiv, work = paths(args)
+    ws = Workspace(archiv, work, zapis=True)
+    hidden, collisions, failed = 0, 0, False
+    for event in ws.list_events():
+        name = event["nazev"]
+        if event["stav"] == "kolize":
+            print(f"přeskočeno: {name} (složka s příponou .ignored i bez ní)")
+            collisions += 1
+            continue
+        if event["stav"] == "hotovo" or ws.is_hidden(name):
+            continue
+        if not args.zapis_do_archivu:
+            print(f"skryje: {name}")
+            hidden += 1
+            continue
+        try:
+            ws.hide(name)
+        except (OSError, Collision) as e:
+            print(f"selhalo: {name}: {e}")
+            failed = True
+            continue
+        print(f"skryto: {name}")
+        hidden += 1
+    verb = "Skryto" if args.zapis_do_archivu else "Ke skrytí"
+    print(f"{verb}: {hidden}, kolizí: {collisions}")
+    if not args.zapis_do_archivu and hidden:
+        print("Archiv beze změny; přejmenuje až --zapis-do-archivu.")
     if failed:
         sys.exit(1)
 
@@ -132,12 +182,16 @@ def main(argv=None):
         return exportovat(argv[1:])
     if argv[:1] == ["heslo"]:
         return heslo(argv[1:])
+    if argv[:1] == ["skryt"]:
+        return skryt(argv[1:])
     parser = argparse.ArgumentParser(
         prog="python -m fotoarchiv",
         description="Průvodce metadaty fotoarchivu. Převzetí metadat "
                     "z pracovního adresáře: python -m fotoarchiv prevzit, "
                     "export XMP: python -m fotoarchiv exportovat, "
-                    "jednorázové heslo: python -m fotoarchiv heslo.")
+                    "jednorázové heslo: python -m fotoarchiv heslo, "
+                    "skrytí nedokončených akcí před Immichem: "
+                    "python -m fotoarchiv skryt.")
     common(parser)
     parser.add_argument("--zapis-do-archivu", action="store_true",
                         help="produkční režim: _metadata.json ve složkách "
