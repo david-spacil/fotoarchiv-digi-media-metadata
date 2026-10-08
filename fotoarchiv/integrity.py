@@ -7,10 +7,16 @@ souvislého úseku nul zarovnaného na blok 4 KiB; doplňuje ho dekódování
 fotky (useknutý soubor) a `ffprobe` u videa.
 
 Soubor se čte jednou: tentýž průchod spočítá i sha256 (pro plán importu).
+U videa MP4/MOV se nuly počítají jen v datech obrazové stopy (`mp4`):
+výplňové atomy a ticho v nekomprimovaném zvuku PCM jsou dlouhé úseky
+nul ve zdravém souboru. Když tabulky vzorků nejdou přečíst, test běží
+přes celý soubor.
+
 Výsledek: `stav` ok / podezrely / necitelny, `duvody` (česky, pro
-uživatele), `nuly` = nejdelší zarovnaný úsek nul (`delka`, `od`) nebo
-None, případně `poznamka`. Archiv se jen čte; cache je v pracovním
-adresáři.
+uživatele), `nuly` = nejdelší započítaný zarovnaný úsek nul (`delka`,
+`od`) nebo None, u videa s přečtenými tabulkami `nuly_rozsah` = "obraz"
+a `nuly_soubor` = nejdelší úsek v celém souboru, případně `poznamka`.
+Archiv se jen čte; cache je v pracovním adresáři.
 """
 
 import hashlib
@@ -23,6 +29,8 @@ from pathlib import Path
 
 from PIL import Image
 
+from . import mp4
+
 OK = "ok"
 SUSPECT = "podezrely"
 UNREADABLE = "necitelny"
@@ -33,8 +41,8 @@ CHUNK = 256 * BLOCK       # čtení po 1 MiB (násobek bloku)
 STEP = 64 * 2**20         # průběh i uvnitř velkých souborů
 PREVIEW = 1600            # měřítko dekódování fotky (`draft`, jako náhled)
 FFPROBE_TIMEOUT = 120
-# Změna pravidel zneplatní cache výsledků.
-VERSION = 1
+# Změna pravidel zneplatní cache výsledků (2: u videa jen obrazová data).
+VERSION = 2
 
 _ZERO = bytes(BLOCK)
 _LEVEL = {OK: 0, SUSPECT: 1, UNREADABLE: 2}
@@ -55,10 +63,11 @@ class _Zeros:
     """Souvislé úseky nul po blocích `BLOCK` zarovnaných od začátku
     souboru; neúplný poslední blok se počítá, je-li celý nulový."""
 
-    def __init__(self):
+    def __init__(self, keep_all=False):
         self.offset = 0
         self.start = None      # začátek běžícího úseku
         self.runs = []         # [(od, délka)] úseků >= THRESHOLD
+        self.all = [] if keep_all else None  # všechny úseky (video)
         self.longest = None    # (délka, od)
 
     def _close(self, end):
@@ -69,6 +78,8 @@ class _Zeros:
             self.longest = (length, self.start)
         if length >= THRESHOLD:
             self.runs.append((self.start, length))
+        if self.all is not None:
+            self.all.append((self.start, length))
         self.start = None
 
     def feed(self, chunk):
@@ -91,6 +102,27 @@ class _Zeros:
         self._close(self.offset)
 
 
+def _at(start):
+    return f"{start / 2**20:.1f}".replace(".", ",") + " MiB" \
+        if start >= 2**20 else fmt_bytes(start)
+
+
+def _video_zeros(zeros, ranges):
+    """Úseky nul započítané jen v obrazových datech `ranges`: [(od,
+    délka)] nad prahem a nejdelší (délka, od) nebo None. Úsek přes
+    střídající se obraz a zvuk se počítá součtem částí v obrazu."""
+    runs, longest = [], None
+    for start, length in zeros.all:
+        total, first = mp4.overlap(ranges, start, start + length)
+        if not total:
+            continue
+        if longest is None or total > longest[0]:
+            longest = (total, first)
+        if total >= THRESHOLD:
+            runs.append((first, total))
+    return runs, longest
+
+
 def _zero_reasons(zeros, size):
     reasons = []
     for start, length in zeros.runs:
@@ -100,9 +132,7 @@ def _zero_reasons(zeros, size):
         elif start + length >= size:
             reasons.append(f"{text} na konci")
         else:
-            at = f"{start / 2**20:.1f}".replace(".", ",") + " MiB" \
-                if start >= 2**20 else fmt_bytes(start)
-            reasons.append(f"{text} uprostřed (od {at})")
+            reasons.append(f"{text} uprostřed (od {_at(start)})")
     return reasons
 
 
@@ -161,7 +191,8 @@ def iter_check(path, typ):
 
     Generátor: po každých `STEP` bajtech vydá počet přečtených. Vrátí
     výsledek (viz modul) se `sha256`."""
-    digest, zeros, done, reported = hashlib.sha256(), _Zeros(), 0, 0
+    digest, done, reported = hashlib.sha256(), 0, 0
+    zeros = _Zeros(keep_all=typ == "video")
     keep = [] if typ == "foto" else None
     with open(path, "rb") as f:
         while chunk := f.read(CHUNK):
@@ -175,6 +206,9 @@ def iter_check(path, typ):
                 yield done
     zeros.finish()
     stav, duvody, poznamka = OK, [], None
+    longest, ranges = zeros.longest, None
+    if typ == "video" and done and zeros.all:
+        ranges = mp4.video_ranges(path)
     if done == 0:
         stav, duvody = UNREADABLE, ["prázdný soubor (0 B)"]
     elif zeros.longest and zeros.longest[0] == done:
@@ -192,14 +226,23 @@ def iter_check(path, typ):
                 poznamka = "ffprobe nedoběhl, video ověřeno jen testem nul"
         if found:
             stav, duvody = found[0], [found[1]]
-        zero = _zero_reasons(zeros, done)
+        if ranges:
+            runs, longest = _video_zeros(zeros, ranges)
+            zero = [f"{fmt_bytes(n)} nul v obrazových datech "
+                    f"(od {_at(start)})" for start, n in runs]
+        else:
+            zero = _zero_reasons(zeros, done)
         if zero:
             stav = _worse(stav, SUSPECT)
             duvody += zero
     result = {"stav": stav, "duvody": duvody,
-              "nuly": {"delka": zeros.longest[0], "od": zeros.longest[1]}
-              if zeros.longest else None,
+              "nuly": {"delka": longest[0], "od": longest[1]}
+              if longest else None,
               "sha256": digest.hexdigest()}
+    if ranges:
+        result["nuly_rozsah"] = "obraz"
+        result["nuly_soubor"] = {"delka": zeros.longest[0],
+                                 "od": zeros.longest[1]}
     if poznamka:
         result["poznamka"] = poznamka
     return result

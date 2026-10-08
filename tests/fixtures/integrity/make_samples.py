@@ -76,6 +76,22 @@ def make_video(path):
     return True
 
 
+def make_silent_pcm_video(path):
+    """MOV jako z Panasonicu: obraz + nekomprimovaný zvuk PCM s tichem
+    po 1 s (184 KiB nul v kuse); False bez `ffmpeg`. Snímky jen
+    vnitrosnímkové a velké, aby šly vynulovat uvnitř obrazu."""
+    if not shutil.which("ffmpeg"):
+        return False
+    subprocess.run(
+        ["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i",
+         "testsrc2=size=1280x720:rate=10:duration=2", "-f", "lavfi", "-i",
+         "anullsrc=r=48000:cl=stereo", "-t", "2",
+         "-af", "asetnsamples=n=48000:p=0", "-c:v", "mpeg4", "-q:v", "1",
+         "-g", "1", "-c:a", "pcm_s16be", str(path)],
+        check=True, capture_output=True)
+    return True
+
+
 def without_moov(data):
     """MP4 bez atomu `moov` (přerušené nahrávání): useknutý před ním."""
     i = data.find(b"moov")
@@ -92,6 +108,13 @@ def write(target):
     if make_video(target / "ok.mp4"):
         (target / "bez_moov.mp4").write_bytes(
             without_moov((target / "ok.mp4").read_bytes()))
+    if make_silent_pcm_video(target / "ticho_pcm.mov"):
+        # Nuly uvnitř obrazových dat (rozsahy z `fotoarchiv.mp4`, tady
+        # pevně: první snímek začíná za `ftyp`/`wide`/`mdat`, je > 79 KiB).
+        data = (target / "ticho_pcm.mov").read_bytes()
+        start = aligned(data.find(b"mdat") + 4) + 2 * BLOCK
+        (target / "nuly_v_obraze.mov").write_bytes(
+            zeroed(data, start, 16 * BLOCK))
     return target
 
 

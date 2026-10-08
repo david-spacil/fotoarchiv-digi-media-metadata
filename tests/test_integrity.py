@@ -122,6 +122,62 @@ def test_video(samples):
     assert r["duvody"][0].startswith("video nejde přečíst")
 
 
+def pcm_samples(samples):
+    if not (samples / "ticho_pcm.mov").exists():
+        pytest.skip("bez ffmpeg")
+
+
+def test_silent_pcm_audio_ok(samples):
+    # Ticho v nekomprimovaném zvuku (jako P1503720.MP4 z Panasonicu) jsou
+    # dlouhé úseky nul; počítají se jen nuly v obrazových datech.
+    pcm_samples(samples)
+    r = check(samples, "ticho_pcm.mov")
+    assert (r["stav"], r["duvody"], r["nuly"]) == (OK, [], None)
+    assert r["nuly_rozsah"] == "obraz"
+    assert r["nuly_soubor"]["delka"] >= 180 * 1024
+
+
+def test_zeros_in_video_data_suspect(samples):
+    pcm_samples(samples)
+    from fotoarchiv import mp4
+    path = samples / "nuly_v_obraze.mov"
+    r = check(samples, "nuly_v_obraze.mov")
+    start = r["nuly"]["od"]
+    # Vzorek opravdu nuluje obraz, ne zvuk (druhá cesta: rozsahy).
+    assert mp4.overlap(mp4.video_ranges(path), start,
+                       start + 64 * 1024)[0] == 64 * 1024
+    assert r["stav"] == SUSPECT
+    assert r["duvody"] == [f"64 KiB nul v obrazových datech (od "
+                           f"{integrity._at(start)})"]
+
+
+def test_zeros_across_video_and_audio(samples, tmp_path):
+    # Úsek přes konec snímku do zvuku: v obraze se počítá jen jeho část.
+    pcm_samples(samples)
+    from fotoarchiv import mp4
+    data = (samples / "ticho_pcm.mov").read_bytes()
+    src = samples / "ticho_pcm.mov"
+    (first, end), *_ = mp4.video_ranges(src)
+    start = end // 4096 * 4096 - 4096
+    path = tmp_path / "a.mov"
+    path.write_bytes(data[:start] + bytes(80 * 1024) +
+                     data[start + 80 * 1024:])
+    r = integrity.check(path, "video")
+    assert r["stav"] == OK
+    assert r["nuly"]["delka"] == end - start < 64 * 1024
+
+
+def test_video_without_tables_strict(tmp_path):
+    # Bez čitelných tabulek (tady prázdný moov) se počítá celý soubor.
+    from .test_mp4 import atom
+    path = tmp_path / "a.mp4"
+    path.write_bytes(atom(b"ftyp", b"isom\0\0\0\0") +
+                     atom(b"mdat", bytes(70 * 1024)) + atom(b"moov"))
+    r = integrity.check(path, "video")
+    assert "nuly_rozsah" not in r
+    assert any("nul" in d for d in r["duvody"])
+
+
 def test_video_without_ffprobe(tmp_path, monkeypatch):
     monkeypatch.setattr(integrity.shutil, "which", lambda name: None)
     path = tmp_path / "a.mp4"
@@ -394,6 +450,17 @@ def test_read_error_not_cached(samples, tmp_path, monkeypatch):
     assert r["stav"] == UNREADABLE and r["chyba_cteni"]
     assert r["duvody"] == ["soubor nejde přečíst (Permission denied)"]
     assert not (tmp_path / "k.json").exists()
+
+
+def test_cli_report_video_with_silence(archive, tmp_path, samples):
+    pcm_samples(samples)
+    (archive / A / "P1503720.MOV").write_bytes(
+        (samples / "ticho_pcm.mov").read_bytes())
+    run(archive, tmp_path, A)
+    (akce,) = report(tmp_path)["akce"]
+    v = {f["soubor"]: f for f in akce["soubory"]}["P1503720.MOV"]
+    assert (v["stav"], v["nuly"], v["nuly_rozsah"]) == (OK, None, "obraz")
+    assert v["nuly_soubor"]["delka"] >= 180 * 1024
 
 
 def test_cli_reports_not_overwritten(archive, tmp_path, monkeypatch):

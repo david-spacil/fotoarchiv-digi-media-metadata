@@ -270,7 +270,7 @@ def zkontrolovat(argv):
                         print(f"{label}/{key}: {STAV_TEXT[r['stav']]}: "
                               + "; ".join(r["duvody"]))
                     if r["stav"] != integrity.OK or r["nuly"] \
-                            or r.get("poznamka"):
+                            or r.get("nuly_soubor") or r.get("poznamka"):
                         files.append(dict(r, soubor=key))
                 report["akce"].append({
                     "akce": label, "souboru": len(results),

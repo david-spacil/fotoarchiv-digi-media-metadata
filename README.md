@@ -273,6 +273,13 @@ dekodér druhý případ nepoznají, proto hlavní kontrolou je test nul.
   - video ověří `ffprobe` (bez čitelného video proudu, např. chybí
     `moov` po přerušeném nahrávání = nečitelné); bez `ffprobe` jen
     test nul s poznámkou; video se celé nedekóduje;
+  - u videa MP4/MOV se nuly počítají **jen v obrazových datech** podle
+    tabulek vzorků v `moov` (úsek přes obraz i zvuk součtem částí
+    v obraze). Nuly mimo ně patří k formátu: výplň `free` (rezerva pro
+    `moov`), pevně velké `udta`/`meta` (Panasonic) a ticho
+    v nekomprimovaném zvuku PCM (Panasonic, ~188 KiB nul za sekundu).
+    Bez čitelných tabulek (fragmentované MP4, poškozená hlavička) se
+    počítá celý soubor;
   - RAW jen testem nul.
 - **Výsledek:** *v pořádku*, *podezřelý* (otevře se, ale je poškozený),
   nebo *nečitelný* (prázdný, samé nuly, nejde otevřít), vždy s důvodem,
@@ -288,7 +295,9 @@ dekodér druhý případ nepoznají, proto hlavní kontrolou je test nul.
   Vypíše podezřelé a nečitelné soubory s důvodem a souhrn po akcích,
   report uloží do `.work/kontrola/report-<datum-čas>.json`. Report
   uvádí i nejdelší úsek nul u souborů pod prahem, aby šel práh po
-  prvním průchodu archivem ověřit. Přerušení (Ctrl+C) nevadí: hotové
+  prvním průchodu archivem ověřit; u videa s přečtenými tabulkami
+  nejdelší úsek v obrazových datech (`nuly`) i v celém souboru
+  (`nuly_soubor`). Přerušení (Ctrl+C) nevadí: hotové
   akce jsou v cache.
 
 ## Datový model
