@@ -25,6 +25,8 @@ SAMPLES = 8
 
 MOVE = "presunout"
 KEEP = "ponechat"
+# Texty typů operací pro výpis (klient má vlastní v app.js).
+OPS_TEXT = {"move": "přesun", "rename": "přejmenování", "delete": "smazání"}
 
 
 def is_raw(name):

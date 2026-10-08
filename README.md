@@ -54,6 +54,10 @@ soubory](#poškozené-soubory)), archiv jen čte:
 
 ```sh
 .venv/bin/python -m fotoarchiv zkontrolovat [AKCE] --archiv … --work .work
+# → kontrola poškození souborů; navíc vypíše nálezy konzistence akcí
+#   (nepodporované soubory, osiřelé sidecary, RAWy, podsložky,
+#   záznamy bez souboru); --rychle jen konzistenci, --zapis-do-archivu
+#   po potvrzení převede nálezy s nápravou do .ignored složek
 ```
 
 Napojení na Immich (obličeje) a kontakt pro Nominatim (geokódování
@@ -314,7 +318,13 @@ dekodér druhý případ nepoznají, proto hlavní kontrolou je test nul.
   [Import](#import)); poškozené soubory nepřenese bez souhlasu.
 - **Archiv:** příkaz `zkontrolovat` (viz [Lokální
   spuštění](#lokální-spuštění)) projde kořen a `RAW.ignored/` jedné nebo
-  všech akcí (ostatní podsložky ne) a archiv jen čte.
+  všech akcí (ostatní podsložky ne) a archiv jen čte. U každé akce
+  vypíše a do reportu uloží i nálezy kontroly konzistence (viz
+  [Kontrola akce](#kontrola-akce)); s `--rychle` se obsah souborů
+  nečte, s `--zapis-do-archivu` příkaz u akcí s nálezy navrhne nápravu
+  přesuny (ostatní soubory do `ostatni.ignored`, RAWy do
+  `RAW.ignored`, podsložky bez volby se nemění) a po potvrzení ji
+  provede; záznamy bez souboru se jen vypíší.
   Vypíše podezřelé a nečitelné soubory s důvodem a souhrn po akcích,
   report uloží do `.work/kontrola/report-<datum-čas>.json`. Report
   uvádí i nejdelší úsek nul u souborů pod prahem, aby šel práh po
