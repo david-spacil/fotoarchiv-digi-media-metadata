@@ -17,8 +17,8 @@ from pathlib import Path
 from flask import (Flask, Response, abort, g, jsonify, make_response,
                    redirect, request, send_file, session)
 
-from . import (auth, cleanup, geocode, immich, importer, lock, model, names,
-               scan, thumbs, unsorted, version, xmp)
+from . import (auth, cleanup, consistency, geocode, immich, importer, lock,
+               model, names, scan, thumbs, unsorted, version, xmp)
 from . import index as archive_index
 from .archive import SCHEMA, UNSORTED, Collision, Conflict, Workspace
 
@@ -196,9 +196,11 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     @app.get("/api/akce/<nazev>")
     def akce_detail(nazev):
         path = event_dir(nazev)
-        files, other = scan.scan(path, cache_dir)
+        files, _ = scan.scan(path, cache_dir)
         doc, version = ws.load(nazev)
         novy = doc is None
+        # Nálezy kontroly kořene (issue #11); záznamy jen z uložené verze.
+        nalezy = consistency.check(path, doc)
         nove, chybejici = [], []
         if novy:
             # Návrh skupin z importu má přednost před automatickým.
@@ -214,7 +216,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             "metadata": doc,
             "version": version,
             "soubory": files,
-            "nezpracovane": other,
+            "kontrola": nalezy,
             "nove": nove,
             "chybejici": chybejici,
             "pracovni_soubor": str(ws.metadata_path(nazev).resolve()),
@@ -363,18 +365,22 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                     index=archive_index.write(ws))
 
     def cleanup_args(path, doc, body):
-        """(volby, RAWy z kořene, k vyřazení) pro plán úklidu.
+        """(volby, RAWy z kořene, k vyřazení, ostatní) pro plán úklidu.
 
         Označení k vyřazení se čte z uloženého `_metadata.json`.
-        `jen_vyradit` (úklid z pracovní plochy) vynechá podsložky a RAWy.
+        `z_plochy` (úklid z pracovní plochy; dřív `jen_vyradit`) nebere
+        návrhy voleb podsložek — podsložka bez volby v `volby` se nemění —
+        a RAWy i ostatní soubory přesune vždy.
         """
         discard = [name for name, record in
                    ((doc or {}).get("soubory") or {}).items()
                    if record.get("vyradit")]
-        if body.get("jen_vyradit"):
-            return ({f["nazev"]: None for f in cleanup.subfolders(path)},
-                    False, discard)
-        return body.get("volby"), body.get("raw_v_koreni", True), discard
+        if body.get("z_plochy") or body.get("jen_vyradit"):
+            volby = {f["nazev"]: None for f in cleanup.subfolders(path)}
+            volby.update(body.get("volby") or {})
+            return volby, True, discard, True
+        return (body.get("volby"), body.get("raw_v_koreni", True), discard,
+                body.get("ostatni", True))
 
     @app.post("/api/akce/<nazev>/uklid")
     def akce_cleanup(nazev):

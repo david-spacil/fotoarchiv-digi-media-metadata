@@ -470,3 +470,71 @@ def test_cli_reports_not_overwritten(archive, tmp_path, monkeypatch):
     run(archive, tmp_path, A)
     assert sorted(p.name for p in (tmp_path / "work" / "kontrola").iterdir()) \
         == ["report-20261008-120000-2.json", "report-20261008-120000.json"]
+
+
+# --- konzistence akcí a náprava (issue #11) ---------------------------------
+
+def add_findings(archive):
+    """Do akce A přidá nálezy všech druhů konzistence."""
+    a = archive / A
+    (a / "zprava.pdf").write_bytes(b"%PDF-1.4")
+    (a / "P999.JPG.xmp").write_text("<x/>")       # osiřelý sidecar
+    (a / "P1.RW2").write_bytes(b"raw")            # RAW v kořeni
+    (a / "_metadata.json").write_text(json.dumps(
+        {"schema": "x", "soubory": {"chybi.jpg": {}}}))
+
+
+def test_cli_fast_mode_lists_findings(archive, tmp_path, monkeypatch,
+                                       capsys):
+    add_findings(archive)
+    # Obsah souborů se nesmí číst.
+    monkeypatch.setattr(integrity, "iter_check_files",
+                        lambda *a, **k: (_ for _ in ()).throw(
+                            AssertionError("čte soubor")))
+    before = snapshot(archive)
+    run(archive, tmp_path, "--rychle")
+    out = capsys.readouterr().out
+    assert f"{A}: konzistence: nepodporovaný soubor zprava.pdf" in out
+    assert "osiřelý sidecar P999.JPG.xmp" in out
+    assert "RAW v kořeni P1.RW2" in out
+    assert "záznam bez souboru chybi.jpg" in out
+    assert "nálezů konzistence 4" in out
+    assert snapshot(archive) == before
+    r = report(tmp_path)
+    assert r["rychle"] and r["dokonceno"] and r["prah_bajtu"] is None
+    entries = {a["akce"]: a for a in r["akce"]}
+    assert len(entries[A]["nalezy"]) == 4
+    assert "souboru" not in entries[A]  # poškození se nekontrolovala
+    assert entries[B + ".ignored"]["nalezy"] == []
+
+
+def test_cli_repair_needs_confirmation(archive, tmp_path, monkeypatch):
+    add_findings(archive)
+    before = snapshot(archive)
+    monkeypatch.setattr("builtins.input", lambda *a: "ne")
+    run(archive, tmp_path, "--zapis-do-archivu")
+    assert snapshot(archive) == before
+
+
+def test_cli_repair_confirmed(archive, tmp_path, monkeypatch, capsys):
+    add_findings(archive)
+    monkeypatch.setattr("builtins.input", lambda *a: "ano")
+    run(archive, tmp_path, "--zapis-do-archivu")
+    a = archive / A
+    assert (a / "ostatni.ignored" / "zprava.pdf").is_file()
+    assert (a / "ostatni.ignored" / "P999.JPG.xmp").is_file()
+    assert (a / "RAW.ignored" / "P1.RW2").is_file()
+    assert not (a / "zprava.pdf").exists()
+    out = capsys.readouterr().out
+    assert "přesun zprava.pdf → ostatni.ignored/zprava.pdf" in out
+    assert "přesun P1.RW2 → RAW.ignored/P1.RW2" in out
+    assert "hotovo 3" in out
+    # Záznam bez souboru zůstává (jen hlásit) a média na místě.
+    assert json.loads((a / "_metadata.json").read_text())["soubory"] == \
+        {"chybi.jpg": {}}
+    assert (a / "ok.jpg").is_file()
+    # Další běh už nemá co napravovat.
+    monkeypatch.setattr("builtins.input",
+                        lambda *a: (_ for _ in ()).throw(
+                            AssertionError("ptá se znovu")))
+    run(archive, tmp_path, "--rychle")

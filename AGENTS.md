@@ -39,6 +39,8 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 # → skryje nedokončené akce před Immichem (přípona .ignored u složky);
 #   bez --zapis-do-archivu jen výpis, spouštět při zastaveném serveru
 .venv/bin/python -m fotoarchiv zkontrolovat [AKCE] --archiv … --work .work
+# → kontrola poškozených souborů + nálezy konzistence akcí;
+#   --rychle jen konzistence, --zapis-do-archivu i náprava přesuny
 # → poškozené soubory (nuly od 64 KiB, dekódování, ffprobe) jedné/všech
 #   akcí; archiv jen čte, report do .work/kontrola/, cache v .work/cache/
 cp .env.example .env && docker compose up -d --build

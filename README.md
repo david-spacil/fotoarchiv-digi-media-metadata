@@ -54,6 +54,10 @@ soubory](#poškozené-soubory)), archiv jen čte:
 
 ```sh
 .venv/bin/python -m fotoarchiv zkontrolovat [AKCE] --archiv … --work .work
+# → kontrola poškození souborů; navíc vypíše nálezy konzistence akcí
+#   (nepodporované soubory, osiřelé sidecary, RAWy, podsložky,
+#   záznamy bez souboru); --rychle jen konzistenci, --zapis-do-archivu
+#   po potvrzení převede nálezy s nápravou do .ignored složek
 ```
 
 Napojení na Immich (obličeje) a kontakt pro Nominatim (geokódování
@@ -247,13 +251,36 @@ prohlížení: jen fotky a videa, která patří do Immiche.
   selže-li zápis sidecaru, soubor zůstane v kořeni i se záznamem.
   Vrácení: soubor ručně přesunout zpět, příští načtení ho přidá jako
   nový soubor bez ručních údajů.
+- **Ostatní soubory** v kořeni — nepodporované (PDF, dokumenty, zipy,
+  TIFF…) a osiřelé sidecary (`<soubor>.xmp` bez souboru) — úklid
+  přesune do `ostatni.ignored` v kořeni akce; v průvodci je přesun
+  předem zapnutý. Sidecar, jehož soubor přijde do kořene z podsložky,
+  osiřelý není.
 - Přesun nikdy nepřepíše existující soubor; operace se shodou názvů se
   přeskočí a nahlásí, ostatní proběhnou a podsložka, ze které něco
-  zbylo, se nesmaže. Pokud `RAW.ignored` nebo `k_odstraneni.ignored` už
-  existuje, soubory se do ní přidají.
+  zbylo, se nesmaže. Pokud `RAW.ignored`, `k_odstraneni.ignored` nebo
+  `ostatni.ignored` už existuje, soubory se do ní přidají.
 - Přesuny a přejmenování mění cesty, které by Immich bral jako nové
   assety. Proto se mají udělat před napojením archivu do Immiche.
 
+### Kontrola akce
+
+Kontrola kořene akce najde, co v něm nepatří nebo si odporuje: soubor,
+který není fotka, video ani RAW (*nepodporovaný*), osiřelý sidecar,
+RAW v kořeni, podsložku bez `.ignored` a záznam v `_metadata.json`, ke
+kterému v kořeni není soubor. Čte jen výpis kořene a `_metadata.json`
+(ne obsah souborů), takže běží i při každém načtení seznamu akcí.
+Nehlásí `Thumbs.db`, `_metadata.json`, sidecary se souborem, dočasné
+soubory aplikace ani obsah podsložek. Názvy porovnává bez ohledu na
+velikost písmen a NFC/NFD (`a.JPG.xmp` patří k `a.jpg`).
+
+Seznam akcí ukáže u akce s nálezy štítek „k vyřešení“ s počty, lišta
+pracovní plochy nálezy po druzích (klik vypíše názvy) a dokončení akce
+je zahrne do potvrzení — dokončit jde i s nimi. Všechno kromě záznamu
+bez souboru napraví **Uklidit…** (viz Tok práce); záznam bez souboru
+zůstává i s ručními údaji, vrácený soubor se k němu znovu připojí.
+
+m
 ## Poškozené soubory
 
 Typická vada archivu (issue #10): bloky souboru jsou na kartě nebo
@@ -291,7 +318,13 @@ dekodér druhý případ nepoznají, proto hlavní kontrolou je test nul.
   [Import](#import)); poškozené soubory nepřenese bez souhlasu.
 - **Archiv:** příkaz `zkontrolovat` (viz [Lokální
   spuštění](#lokální-spuštění)) projde kořen a `RAW.ignored/` jedné nebo
-  všech akcí (ostatní podsložky ne) a archiv jen čte.
+  všech akcí (ostatní podsložky ne) a archiv jen čte. U každé akce
+  vypíše a do reportu uloží i nálezy kontroly konzistence (viz
+  [Kontrola akce](#kontrola-akce)); s `--rychle` se obsah souborů
+  nečte, s `--zapis-do-archivu` příkaz u akcí s nálezy navrhne nápravu
+  přesuny (ostatní soubory do `ostatni.ignored`, RAWy do
+  `RAW.ignored`, podsložky bez volby se nemění) a po potvrzení ji
+  provede; záznamy bez souboru se jen vypíší.
   Vypíše podezřelé a nečitelné soubory s důvodem a souhrn po akcích,
   report uloží do `.work/kontrola/report-<datum-čas>.json`. Report
   uvádí i nejdelší úsek nul u souborů pod prahem, aby šel práh po
@@ -299,6 +332,7 @@ dekodér druhý případ nepoznají, proto hlavní kontrolou je test nul.
   nejdelší úsek v obrazových datech (`nuly`) i v celém souboru
   (`nuly_soubor`). Přerušení (Ctrl+C) nevadí: hotové
   akce jsou v cache.
+
 
 ## Datový model
 
@@ -491,7 +525,9 @@ Lokální webová aplikace spouštěná nad složkou archivu.
 1. **Seznam akcí** se stavem (nezpracováno / rozpracováno / hotovo)
    a chybějícími údaji. Dokončená akce, jejímž souborům v kořeni (kromě
    označených k vyřazení) po zdědění chybí autoři, datum nebo místo,
-   má navíc štítek „nekompletní“. Nové fotky a videa se do archivu dostanou
+   má navíc štítek „nekompletní“. Akce s nálezem kontroly (viz
+   Kontrola akce) má štítek „k vyřešení“ s počty nálezů. Nové fotky
+   a videa se do archivu dostanou
    **importem** (viz Import) do nové nebo stávající akce.
 2. **Při prvním otevření akce průvodce:** úklid (podsložky, RAW) →
    načtení a skupiny → údaje akce → autoři skupin. Průvodce provede
@@ -536,12 +572,16 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    **Vyřazení:** klávesa Del nebo tlačítko „Vyřadit“ v panelu označí
    vybrané soubory k vyřazení (jsou-li už všechny označené, označení
    zruší). Označené dlaždice zůstávají na místě, zašedlé a přeškrtnuté.
-   Lišta ukazuje počet souborů k vyřazení a tlačítko **Uklidit…**: to
-   uloží změny, ukáže plán přesunu do `k_odstraneni.ignored`
-   a v produkčním režimu ho po potvrzení provede (viz Podsložky a RAW);
-   ve vývojovém jen ukáže plán.
-4. **Dokončení akce** uloží změny, zkontroluje úplnost (co chybí,
-   ukáže a dokončí až po potvrzení), zapíše sidecary, v produkčním
+   Lišta ukazuje počet souborů k vyřazení a nálezy kontroly akce.
+   Tlačítko **Uklidit…** (je-li co vyřadit nebo napravit) uloží změny
+   a ukáže plán: označené do `k_odstraneni.ignored`, ostatní soubory do
+   `ostatni.ignored`, RAWy do `RAW.ignored` a u podsložek volbu
+   přesunout/ponechat jako v průvodci — podsložka bez volby zůstane.
+   V produkčním režimu plán po potvrzení provede (viz Podsložky a RAW),
+   ve vývojovém ho jen ukáže.
+4. **Dokončení akce** uloží změny, zkontroluje úplnost a nálezy
+   kontroly akce (co chybí nebo je k vyřešení, ukáže a dokončí až po
+   potvrzení), zapíše sidecary, v produkčním
    režimu odebere složce akce příponu `.ignored` (zveřejní ji pro
    Immich, který ji tak poprvé uvidí rovnou se sidecary) a nastaví
    `dokonceno`. Selže-li zápis některého sidecaru nebo přejmenování

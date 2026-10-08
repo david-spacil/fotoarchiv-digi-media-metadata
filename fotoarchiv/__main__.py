@@ -16,9 +16,11 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from . import auth, geocode, immich, importer, index, integrity, xmp
+from . import (auth, consistency, geocode, immich, importer, index,
+               integrity, xmp)
 from .app import create_app
-from .archive import IGNORED, Collision, Workspace, adopt, event_name
+from .archive import (IGNORED, METADATA_NAME, Collision, Workspace, adopt,
+                     event_name)
 
 
 def paths(args):
@@ -182,6 +184,15 @@ def migrate_contact(work, kontakt):
 
 STAV_TEXT = {integrity.SUSPECT: "PODEZŘELÝ", integrity.UNREADABLE: "NEČITELNÝ"}
 
+# Druhy nálezů konzistence akce (issue #11) s textem pro výpis.
+NALEZ_TEXT = {
+    "nepodporovany": "nepodporovaný soubor",
+    "sirotek_xmp": "osiřelý sidecar",
+    "raw": "RAW v kořeni",
+    "podslozka": "podsložka bez .ignored",
+    "chybejici": "záznam bez souboru",
+}
+
 
 def _event_folders(ws, name):
     """[(složka, název cache)]; při kolizi obě složky (příkaz jen čte)."""
@@ -200,20 +211,63 @@ def _write_report(path, report):
     os.replace(tmp, path)
 
 
+def _opravit_nalezy(ws, name, nalezy):
+    """U akce s nálezy s nápravou navrhne úklid a po potvrzení ho provede.
+
+    Podsložky bez volby se nemění, označené soubory (vyřazení) taky ne —
+    ty patří na pracovní plochu. Nic se nepřepisuje.
+    """
+    from . import cleanup  # lazy: cleanup importuje archive
+    if not any(n["druh"] in (consistency.NEPODPOROVANY,
+                             consistency.SIROTEK_XMP, consistency.RAW)
+               for n in nalezy):
+        return
+    folder = ws.event_dir(name)
+    volby = {f["nazev"]: None for f in cleanup.subfolders(folder)}
+    plan = cleanup.plan(folder, volby, True, (), True)
+    todo = [o for o in plan["operace"] if not o["blocked"]]
+    print("  náprava: " + ("; ".join(
+        f"{cleanup.OPS_TEXT.get(o['typ'], o['typ'])} {o['z']} → {o['do']}"
+        for o in todo) or "všechno je blokované"))
+    odp = input("  Provést? [ne/aNo] ")
+    if odp.strip().lower() not in ("a", "ano", "y", "yes"):
+        print("  přeskočeno")
+        return
+    result = cleanup.execute(folder, volby, True, (), True)
+    counts = Counter(o["stav"] for o in result["operace"])
+    print(f"  hotovo {counts.get(cleanup.DONE, 0)}, "
+          f"blokováno {counts.get(cleanup.BLOCKED, 0)}, "
+          f"chyba {counts.get(cleanup.FAILED, 0)}")
+
+
 def zkontrolovat(argv):
     parser = argparse.ArgumentParser(
         prog="python -m fotoarchiv zkontrolovat",
         description="Zkontroluje, zda soubory akce (média v kořeni, RAWy "
                     "v kořeni a v RAW.ignored) nejsou poškozené: úseky nul "
-                    "od 64 KiB, dekódování fotky, ffprobe u videa. Archiv "
-                    "jen čte; výsledky cachuje v pracovním adresáři a report "
-                    "uloží do <work>/kontrola/.")
+                    "od 64 KiB, dekódování fotky, ffprobe u videa. U každé "
+                    "akce vypíše i nálezy kontroly konzistence "
+                    "(nepodporované soubory, osiřelé sidecary, RAWy, "
+                    "podsložky, záznamy bez souboru). Archiv jen čte; "
+                    "výsledky cachuje v pracovním adresáři a report uloží "
+                    "do <work>/kontrola/. S --zapis-do-archivu po potvrzení "
+                    "převede nálezy s nápravou do .ignored složek.")
     common(parser)
     parser.add_argument("akce", nargs="?",
                         help="název složky akce (bez něj všechny)")
+    parser.add_argument("--rychle", action="store_true",
+                        help="jen konzistence akcí (výpis kořene "
+                             "a _metadata.json), obsah souborů se nečte")
+    parser.add_argument("--zapis-do-archivu", action="store_true",
+                        help="u akcí s nálezy navrhne nápravu přesuny "
+                             "a po potvrzení ji provede")
     args = parser.parse_args(argv)
     archiv, work = paths(args)
-    ws = Workspace(archiv, work)
+    # zapis=True jen pro čtení metadat ze složek akcí (jako `skryt`);
+    # samotný příkaz archiv nemění, ledaže uživatel potvrdí nápravu.
+    ws = Workspace(archiv, work, zapis=True)
+    if args.zapis_do_archivu and args.rychle:
+        sys.exit("--zapis-do-archivu a --rychle nejde kombinovat.")
     if args.akce:
         try:
             _event_folders(ws, args.akce)
@@ -230,15 +284,42 @@ def zkontrolovat(argv):
         n += 1
         path = Path(work) / "kontrola" / f"report-{stamp}-{n}.json"
     report = {"archiv": str(ws.archiv), "zacatek": stamp,
-              "prah_bajtu": integrity.THRESHOLD, "dokonceno": False,
-              "akce": []}
+              "prah_bajtu": None if args.rychle else integrity.THRESHOLD,
+              "rychle": args.rychle, "dokonceno": False, "akce": []}
     totals = Counter()
     tty = sys.stderr.isatty()
     try:
         for i, name in enumerate(names, 1):
             for folder, cache_name in _event_folders(ws, name):
-                todo = integrity.event_files(folder)
                 label = folder.name
+                # Nálezy konzistence: jen výpis kořene a _metadata.json
+                # (issue #11). Při kolizi se nezdaří event_dir — vezme se
+                # metadata ve složce, když je.
+                try:
+                    doc, _ = ws.load(event_name(folder))
+                except Collision:  # obě složky: metadata vezmi z ní
+                    path = folder / METADATA_NAME
+                    try:
+                        doc = json.loads(path.read_text())
+                    except (OSError, ValueError):
+                        doc = None
+                except (OSError, ValueError):
+                    doc = None
+                nalezy = consistency.check(folder, doc)
+                report_nalezy = [dict(n) for n in nalezy]
+                if nalezy:
+                    print(f"{label}: konzistence: " + "; ".join(
+                        f"{NALEZ_TEXT[n['druh']]} {n['nazev']}"
+                        for n in nalezy))
+                if args.rychle:
+                    totals["akci"] += 1
+                    report["akce"].append({"akce": label,
+                                           "nalezy": report_nalezy})
+                    _write_report(path, report)
+                    continue
+                if args.zapis_do_archivu:
+                    _opravit_nalezy(ws, name, nalezy)
+                todo = integrity.event_files(folder)
                 print(f"[{i}/{len(names)}] {label}: "
                       f"{len(todo)} souborů", file=sys.stderr)
                 gen = integrity.iter_check_files(
@@ -277,6 +358,7 @@ def zkontrolovat(argv):
                     "ok": counts[integrity.OK],
                     "podezrele": counts[integrity.SUSPECT],
                     "necitelne": counts[integrity.UNREADABLE],
+                    "nalezy": report_nalezy,
                     "soubory": files})
                 # Report po každé akci: přerušení nechá rozpracovaný.
                 _write_report(path, report)
@@ -287,6 +369,12 @@ def zkontrolovat(argv):
         sys.exit(130)
     report["dokonceno"] = True
     _write_report(path, report)
+    if args.rychle:
+        nalez = sum(len(a["nalezy"]) for a in report["akce"])
+        print(f"Zkontrolováno {totals['akci']} akcí: nálezů konzistence "
+              f"{nalez}.")
+        print(f"report: {path}")
+        return
     souboru = sum(a["souboru"] for a in report["akce"])
     print(f"Zkontrolováno {souboru} souborů v {totals['akci']} akcích: "
           f"podezřelých {totals[integrity.SUSPECT]}, "
