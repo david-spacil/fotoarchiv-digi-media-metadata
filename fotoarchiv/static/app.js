@@ -144,6 +144,30 @@ const KOLIZE = "Akce má v archivu dvě složky, s příponou .ignored i bez " +
 // Pole, která chybí dokončené akci (`chybi` v seznamu akcí).
 const CHYBI = { autori: "autoři", datum: "data", misto: "místa" };
 
+// Nálezy kontroly akce (issue #11): tvary podle počtu a dovětek.
+const NALEZY = {
+  nepodporovany: [["nepodporovaný soubor", "nepodporované soubory",
+    "nepodporovaných souborů"], " v kořeni"],
+  sirotek_xmp: [["osiřelý sidecar", "osiřelé sidecary",
+    "osiřelých sidecarů"], " (.xmp bez souboru)"],
+  raw: [["RAW", "RAWy", "RAWů"], " v kořeni"],
+  podslozka: [["podsložka", "podsložky", "podsložek"], " k rozhodnutí"],
+  chybejici: [["soubor chybí", "soubory chybí", "souborů chybí"],
+    " v kořeni"],
+};
+// Nálezy, které úklid napraví (záznam bez souboru jen hlásí).
+const NALEZY_UKLID = ["nepodporovany", "sirotek_xmp", "raw", "podslozka"];
+
+function nalez(druh, n) {
+  const [forms, tail] = NALEZY[druh];
+  return plural(n, ...forms) + tail;
+}
+
+function nalezyText(counts) {
+  return Object.keys(NALEZY).filter((d) => counts[d])
+    .map((d) => nalez(d, counts[d])).join(", ");
+}
+
 // --- stav ----------------------------------------------------------------
 
 const state = {
@@ -465,6 +489,10 @@ async function showList() {
         e.chybi.length ? h("span", { class: "badge nekompletni",
           title: "Chybí: " + e.chybi.map((k) => CHYBI[k]).join(", ") },
           "nekompletní") : null,
+        Object.keys(e.kontrola || {}).length
+          ? [h("span", { class: "badge vyresit" }, "k vyřešení"),
+            h("span", { class: "vyresit-detail" },
+              ` ${nalezyText(e.kontrola)}`)] : null,
         e.zmeneno_po_exportu
           ? h("span", { class: "warn" }, " změněno po exportu") : null)));
   app.replaceChildren(header(), h("main", { class: "list" },
@@ -688,6 +716,7 @@ async function openEvent(name) {
     wizard.step = 0;
     wizard.volby = {};
     wizard.rawRoot = true;
+    wizard.other = true;
     renderWizard();
   } else {
     await loadDetail();
@@ -1087,12 +1116,6 @@ function renderGrid() {
       dataset: { group: s.gid || "", key: s.key },
     }, s.title, h("span", { class: "count" }, ` ${s.files.length}`)),
     h("div", { class: "tiles" }, s.files.map((f) => tile(f, markOf)))));
-  const other = state.detail?.nezpracovane || [];
-  if (other.length) {
-    nodes.push(h("details", { class: "other" },
-      h("summary", {}, `Nezpracované soubory v kořeni: ${other.length}`),
-      h("p", {}, other.join(", "))));
-  }
   const scroll = grid.scrollTop;
   grid.replaceChildren(...nodes, h("div", { id: "band", hidden: true }));
   grid.scrollTop = scroll;
@@ -1235,21 +1258,20 @@ function toggleDiscard() {
   renderPanel();
 }
 
-// Úklid z pracovní plochy: jen přesun označených souborů do
-// `k_odstraneni.ignored`. Plán i provedení čtou označení z uloženého
-// `_metadata.json`, proto se nejdřív uloží.
-async function discardCleanup() {
+// Úklid z pracovní plochy: označené soubory do `k_odstraneni.ignored`,
+// ostatní soubory do `ostatni.ignored`, RAWy z kořene do `RAW.ignored`
+// a podsložky podle volby v dialogu (bez volby zůstanou). Plán i provedení
+// čtou označení z uloženého `_metadata.json`, proto se nejdřív uloží.
+async function workspaceCleanup() {
   if (state.readonly || !(await flushSave())) return;
   const name = state.name;
-  const body = { jen_vyradit: true, relace: session() };
-  const plan = await api(eventUrl(name, "/uklid"), { method: "POST", body });
-  if (name !== state.name) return;
+  const volby = {};
+  const body = () => ({ z_plochy: true, volby, relace: session() });
   const zapis = state.info.zapis;
-  const todo = plan.operace.filter((o) => !o.blocked).length;
   const main = h("div");
   const buttons = h("div", { class: "buttons" });
   const dialog = h("dialog", { class: "cleanup" },
-    h("h2", {}, "Úklid: vyřazení souborů"), main, buttons);
+    h("h2", {}, "Úklid kořene akce"), main, buttons);
   let done = false;
   const close = async () => {
     dialog.close();
@@ -1267,26 +1289,54 @@ async function discardCleanup() {
   });
   const opsTable = (ops) => ops.length
     ? h("table", { class: "ops" }, ops.map(opRow))
-    : h("p", {}, "Žádný označený soubor není v kořeni akce.");
-  main.replaceChildren(
-    h("p", { class: "notice" }, zapis
-      ? "Označené soubory se přesunou do k_odstraneni.ignored v kořeni " +
-        "akce a jejich záznamy se odstraní z _metadata.json; údaje " +
-        "zůstanou v sidecaru vedle souboru. Nic se nepřepíše, blokované " +
-        "přesuny se přeskočí."
-      : "Nasucho: vývojový režim plán jen ukazuje, v archivu nic " +
-        "nepřesune."),
-    opsTable(plan.operace));
-  const cancel = h("button", { onclick: close },
-    zapis && todo ? "Zrušit" : "Zavřít");
-  const run = h("button", { class: "primary", onclick: async () => {
+    : h("p", {}, "Není co přesouvat.");
+  const cancel = h("button", { onclick: close }, "Zavřít");
+  const run = h("button", { class: "primary" });
+
+  const showPlan = async () => {
+    let plan;
+    try {
+      plan = await api(eventUrl(name, "/uklid"),
+        { method: "POST", body: body() });
+    } catch (err) {
+      main.replaceChildren(h("p", { class: "notice error" },
+        `Plán úklidu nejde sestavit: ${err.message}`));
+      buttons.replaceChildren(cancel);
+      return;
+    }
+    if (name !== state.name) return;
+    const todo = plan.operace.filter((o) => !o.blocked).length;
+    main.replaceChildren(
+      h("p", { class: "notice" }, zapis
+        ? "Označené soubory se přesunou do k_odstraneni.ignored a jejich " +
+          "záznamy se odstraní z _metadata.json (údaje zůstanou " +
+          "v sidecaru vedle souboru). Nepodporované soubory a osiřelé " +
+          "sidecary jdou do ostatni.ignored, RAWy do RAW.ignored. " +
+          "Podsložky jen podle volby níže. Nic se nepřepíše, " +
+          "blokované přesuny se přeskočí."
+        : "Nasucho: vývojový režim plán jen ukazuje, v archivu nic " +
+          "nepřesune."),
+      ...plan.podslozky.map((f) => folderChoice(f, (value) => {
+        volby[f.nazev] = value;
+        showPlan();
+      })),
+      plan.podslozky.length ? h("h3", {}, "Plán") : null,
+      opsTable(plan.operace));
+    run.textContent = `Provést úklid (${plural(todo, "operace", "operace",
+      "operací")})`;
+    cancel.textContent = zapis && todo ? "Zrušit" : "Zavřít";
+    buttons.replaceChildren(...(zapis && todo ? [run] : []), cancel);
+  };
+
+  run.onclick = async () => {
     dialog.dataset.busy = "1";
     run.disabled = cancel.disabled = true;
+    main.querySelectorAll("input").forEach((i) => { i.disabled = true; });
     run.textContent = "Přesouvám…";
     let result;
     try {
       result = await api(eventUrl(name, "/uklid/provest"),
-        { method: "POST", body });
+        { method: "POST", body: body() });
     } catch (err) {
       delete dialog.dataset.busy;
       if (err.status === 423) {
@@ -1309,16 +1359,18 @@ async function discardCleanup() {
     main.replaceChildren(
       h("p", { class: count("chyba") ? "notice error" : "notice" },
         `Hotovo ${count("hotovo")}, blokováno ${count("blokovano")}, ` +
-        `chyba ${count("chyba")}. Neprovedené přesuny zůstaly beze změny ` +
-        "i s označením."),
+        `chyba ${count("chyba")}. Neprovedené operace zůstaly beze změny ` +
+        "(označené soubory i s označením)."),
       opsTable(result.operace));
     cancel.textContent = "Zavřít";
     cancel.disabled = false;
     run.remove();
-  } }, `Přesunout ${plural(todo, "soubor", "soubory", "souborů")}`);
-  buttons.append(...(zapis && todo ? [run] : []), cancel);
+  };
+  main.append("Počítám plán úklidu…");
+  buttons.append(cancel);
   document.body.append(dialog);
   dialog.showModal();
+  await showPlan();
 }
 
 // --- lupa a filmový pás ----------------------------------------------------
@@ -2112,8 +2164,8 @@ async function runExport(finish) {
   if (!(await flushSave())) return;
   if (finish) {
     const lines = missingItems().map((i) => i.text);
-    if (lines.length && !(await confirmDialog(
-      "Akci něco chybí", lines, "Přesto dokončit"))) return;
+    if (lines.length && !(await confirmDialog("Akci něco chybí nebo je " +
+      "k vyřešení", lines, "Přesto dokončit"))) return;
   }
   const name = state.name;
   state.exporting = true;
@@ -2255,7 +2307,40 @@ function missingItems() {
     item(`${plural(places.length, "místo", "místa", "míst")} bez souřadnic`,
       () => openPlace(places[0], m.mistaBezSouradnic[places[0]]));
   }
+  // Nálezy kontroly kořene akce (issue #11): klik ukáže názvy.
+  const nalezy = state.detail?.kontrola || [];
+  for (const druh of Object.keys(NALEZY)) {
+    const names = nalezy.filter((n) => n.druh === druh).map((n) => n.nazev);
+    if (names.length) {
+      const text = nalez(druh, names.length);
+      item(text, () => namesDialog(text, names, druh));
+    }
+  }
   return items;
+}
+
+// Názvy souborů a složek jednoho druhu nálezu kontroly.
+function namesDialog(title, names, druh) {
+  const hint = NALEZY_UKLID.includes(druh)
+    ? "Napraví je Uklidit… v liště."
+    : "Záznamy zůstávají v _metadata.json s ručními údaji; vrácený " +
+      "soubor se k nim znovu připojí.";
+  const dialog = h("dialog", { class: "conflict names",
+    onclose: () => dialog.remove() },
+    h("h2", {}, title),
+    h("ul", {}, names.map((n) => h("li", {}, h("code", {}, n)))),
+    h("p", { class: "meta" }, hint),
+    h("div", { class: "buttons" },
+      h("button", { onclick: () => dialog.close() }, "Zavřít")));
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+function cleanupNeeded() {
+  const vyradit = Object.keys(state.doc.soubory || {})
+    .some((f) => state.present.has(f) && discarded(f));
+  return vyradit || (state.detail?.kontrola || [])
+    .some((n) => NALEZY_UKLID.includes(n.druh));
 }
 
 function renderBar() {
@@ -2267,15 +2352,11 @@ function renderBar() {
     .filter((f) => state.present.has(f) && discarded(f)).length;
   if (vyradit) {
     items.push(h("span", { class: "info discard" },
-      `${plural(vyradit, "soubor", "soubory", "souborů")} k vyřazení`),
-    h("button", { disabled: !!state.readonly, onclick: discardCleanup },
-      "Uklidit…"));
+      `${plural(vyradit, "soubor", "soubory", "souborů")} k vyřazení`));
   }
-  const chyb = state.detail?.chybejici || [];
-  if (chyb.length) {
-    items.push(h("span", { class: "info" },
-      `${plural(chyb.length, "soubor chybí", "soubory chybí",
-        "souborů chybí")} v kořeni`));
+  if (cleanupNeeded()) {
+    items.push(h("button", { disabled: !!state.readonly,
+      onclick: workspaceCleanup }, "Uklidit…"));
   }
   const nove = state.detail?.nove || [];
   if (nove.length) {
@@ -2356,7 +2437,8 @@ function renderPanel() {
 
 // --- průvodce --------------------------------------------------------------
 
-const wizard = { step: 0, plan: null, volby: {}, rawRoot: true };
+const wizard = { step: 0, plan: null, volby: {}, rawRoot: true,
+  other: true };
 const STEPS = ["Úklid", "Načtení a skupiny", "Údaje akce", "Autoři skupin"];
 
 function wizardFrame(body, nav) {
@@ -2432,7 +2514,8 @@ async function executeCleanup() {
   try {
     result = await api(eventUrl(state.name, "/uklid/provest"), {
       method: "POST", body: { volby: wizard.volby,
-        raw_v_koreni: wizard.rawRoot, relace: session() },
+        raw_v_koreni: wizard.rawRoot, ostatni: wizard.other,
+        relace: session() },
     });
   } catch (err) {
     if (err.status === 423) {
@@ -2480,41 +2563,55 @@ function folderSamples(folder, files) {
   }));
 }
 
+// Volba u podsložky (průvodce i úklid z plochy): přesunout, nebo ponechat.
+function folderChoice(f, onPick) {
+  const name = `volba-${f.nazev}`;
+  const radio = (value, label) => h("label", {},
+    h("input", { type: "radio", name, value, checked: f.volba === value,
+      onchange: () => onPick(value) }),
+    " ", label);
+  return h("div", { class: `folder${f.volba ? "" : " undecided"}` },
+    h("p", {}, `Složka `, h("code", {}, f.nazev), ` obsahuje `,
+      plural(f.souboru, "soubor", "soubory", "souborů"),
+      f.rawu ? ` (RAW: ${f.rawu})` : "",
+      f.podslozek ? `, podsložek: ${f.podslozek}` : "", "."),
+    folderSamples(f.nazev, f.ukazky),
+    h("div", { class: "row" },
+      radio("presunout", "přesunout mezi soubory akce"),
+      radio("ponechat", h("span", {}, "ponechat stranou → ",
+        h("code", {}, f.cil)))),
+    f.volba ? null : h("p", { class: "warn" }, "Zatím bez rozhodnutí."));
+}
+
 async function renderCleanup() {
   app.replaceChildren(...wizardFrame(h("main", { class: "wizard" },
     "Počítám plán úklidu…"), []));
   const plan = await api(eventUrl(state.name, "/uklid"), {
-    method: "POST", body: { volby: wizard.volby, raw_v_koreni: wizard.rawRoot },
+    method: "POST", body: { volby: wizard.volby, raw_v_koreni: wizard.rawRoot,
+      ostatni: wizard.other },
   });
   wizard.plan = plan;
   const replan = () => renderCleanup();
-  const folders = plan.podslozky.map((f) => {
-    const name = `volba-${f.nazev}`;
-    const radio = (value, label) => h("label", {},
-      h("input", { type: "radio", name, value, checked: f.volba === value,
-        onchange: () => { wizard.volby[f.nazev] = value; replan(); } }),
-      " ", label);
-    return h("div", { class: `folder${f.volba ? "" : " undecided"}` },
-      h("p", {}, `Složka `, h("code", {}, f.nazev), ` obsahuje `,
-        plural(f.souboru, "soubor", "soubory", "souborů"),
-        f.rawu ? ` (RAW: ${f.rawu})` : "",
-        f.podslozek ? `, podsložek: ${f.podslozek}` : "", "."),
-      folderSamples(f.nazev, f.ukazky),
-      h("div", { class: "row" },
-        radio("presunout", "přesunout mezi soubory akce"),
-        radio("ponechat", h("span", {}, "ponechat stranou → ",
-          h("code", {}, f.cil)))),
-      f.volba ? null : h("p", { class: "warn" }, "Zatím bez rozhodnutí."));
-  });
+  const folders = plan.podslozky.map((f) => folderChoice(f, (value) => {
+    wizard.volby[f.nazev] = value;
+    replan();
+  }));
   const rawRoot = plan.raw_v_koreni ? h("label", { class: "folder" },
     h("input", { type: "checkbox", checked: wizard.rawRoot,
       onchange: (e) => { wizard.rawRoot = e.target.checked; replan(); } }),
     ` Přesunout ${plural(plan.raw_v_koreni, "RAW", "RAWy", "RAWů")} ` +
     "z kořene do ", h("code", {}, "RAW.ignored")) : null;
+  const other = plan.ostatni_v_koreni ? h("label", { class: "folder" },
+    h("input", { type: "checkbox", checked: wizard.other,
+      onchange: (e) => { wizard.other = e.target.checked; replan(); } }),
+    ` Přesunout ${plural(plan.ostatni_v_koreni, "ostatní soubor",
+      "ostatní soubory", "ostatních souborů")} (nepodporované, osiřelé ` +
+    "sidecary) do ", h("code", {}, "ostatni.ignored")) : null;
   const ops = plan.operace.length
     ? h("table", { class: "ops" }, plan.operace.map(opRow))
     : h("p", {}, "Žádné operace.");
-  const empty = !plan.podslozky.length && !plan.raw_v_koreni;
+  const empty = !plan.podslozky.length && !plan.raw_v_koreni &&
+    !plan.ostatni_v_koreni;
   const zapis = state.info.zapis;
   const todo = plan.operace.filter((o) => !o.blocked).length;
   let nav = navButtons({ next: "Potvrdit plán a načíst soubory" });
@@ -2539,9 +2636,9 @@ async function renderCleanup() {
       : h("p", { class: "notice" }, "Nasucho: vývojový režim plán jen " +
         "ukazuje, v archivu nic nepřesune ani nepřejmenuje. Další krok " +
         "pracuje se soubory, které jsou v kořeni teď."),
-    empty ? h("p", {}, "Kořen akce nemá podsložky ani RAWy, " +
-      "není co uklízet.") : null,
-    folders, rawRoot,
+    empty ? h("p", {}, "Kořen akce nemá podsložky, RAWy ani ostatní " +
+      "soubory, není co uklízet.") : null,
+    folders, rawRoot, other,
     plan.operace.length || !empty ? h("h3", {}, "Plán") : null,
     empty ? null : ops),
   nav));

@@ -131,7 +131,9 @@ class Workspace:
         return self._rename(name, path, self.archiv / (name + IGNORED))
 
     def list_events(self):
-        from .model import incomplete  # model importuje archive
+        # model a consistency importují archive
+        from .consistency import classify, counts
+        from .model import incomplete
         events = []
         for name in self.event_names():
             try:
@@ -144,11 +146,17 @@ class Workspace:
                     "stav": "kolize",
                     "zmeneno_po_exportu": False,
                     "chybi": [],
+                    "kontrola": {},
                 })
                 continue
             present = set()
+            files, dirs = [], []
             with os.scandir(path) as it:
                 for entry in it:
+                    if entry.is_dir():
+                        dirs.append(entry.name)
+                        continue
+                    files.append(entry.name)
                     if (entry.is_file() and not is_skipped(entry.name)
                             and not is_metadata(entry.name)):
                         present.add(entry.name)
@@ -171,6 +179,7 @@ class Workspace:
                 "stav": stav,
                 "zmeneno_po_exportu": zmeneno,
                 "chybi": chybi,
+                "kontrola": counts(classify(files, dirs, doc)),
             })
         return events
 

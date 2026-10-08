@@ -1,4 +1,5 @@
-"""Plán úklidu kořene akce: podsložky, RAWy a soubory k vyřazení.
+"""Plán úklidu kořene akce: podsložky, RAWy, soubory k vyřazení
+a ostatní soubory (nepodporované a osiřelé sidecary).
 
 Plán je seznam operací `move`, `rename` a `delete` s příznakem `blocked`.
 Ve vývojovém režimu se jen zobrazí, v produkčním ho `execute` sestaví znovu
@@ -18,6 +19,7 @@ log = logging.getLogger(__name__)
 RAW_EXT = {"rw2", "cr2", "cr3", "nef", "arw", "dng", "orf", "raf"}
 RAW_DIR = "RAW.ignored"
 K_ODSTRANENI = "k_odstraneni.ignored"
+OSTATNI = "ostatni.ignored"
 
 SAMPLES = 8
 
@@ -75,7 +77,8 @@ def subfolders(event_dir):
     return result
 
 
-def plan(event_dir, choices=None, raw_from_root=True, discard=()):
+def plan(event_dir, choices=None, raw_from_root=True, discard=(),
+         other=True):
     """Plán úklidu.
 
     `choices` = {název podsložky: "presunout" | "ponechat" | None}; chybějící
@@ -83,8 +86,12 @@ def plan(event_dir, choices=None, raw_from_root=True, discard=()):
     z kořene do `RAW.ignored`. `discard` = názvy záznamů označených
     k vyřazení; ty, které v kořeni jsou, se přesunou do
     `k_odstraneni.ignored` (operace s `vyradit` a názvem záznamu
-    `soubor`). Cíl blokuje i existující `<soubor>.xmp`.
+    `soubor`). Cíl blokuje i existující `<soubor>.xmp`. `other` =
+    přesunout nepodporované soubory a osiřelé sidecary (viz
+    `consistency`) do `ostatni.ignored`; sidecar není osiřelý, přijde-li
+    jeho soubor do kořene z podsložky.
     """
+    from .consistency import OSTATNI as OTHER_KINDS, classify
     choices = choices or {}
     root_files, root_dirs = _scan_dir(event_dir)
     root = {_key(n) for n in root_files + root_dirs}
@@ -152,6 +159,10 @@ def plan(event_dir, choices=None, raw_from_root=True, discard=()):
                 if target == RAW_DIR:
                     raw_content = {_key(f) for f in files + nested}
 
+    # Názvy, které plán přesune z podsložek do kořene.
+    moved_in = [o["do"] for o in ops if o["typ"] == "move"
+                and "/" not in o["do"] and not o["blocked"]]
+
     discarded = set()
     if discard:
         on_disk = {_key(f): f for f in root_files}
@@ -183,9 +194,25 @@ def plan(event_dir, choices=None, raw_from_root=True, discard=()):
                 raw_content = set()
             move_into(raw_content, f, f"{RAW_DIR}/{f}", f)
 
+    incoming = {_key(n) for n in moved_in}
+    others = [f["nazev"] for f in classify(root_files + moved_in, [], None)
+              if f["druh"] in OTHER_KINDS and _key(f["nazev"]) not in incoming]
+    if other and others:
+        other_is_file = _key(OSTATNI) in {_key(f) for f in root_files}
+        other_content = set()
+        if OSTATNI in root_dirs:
+            files, dirs = _scan_dir(os.path.join(event_dir, OSTATNI))
+            other_content = {_key(n) for n in files + dirs}
+        for f in others:
+            if other_is_file:
+                op("move", f, f"{OSTATNI}/{f}", "cíl už existuje")
+            else:
+                move_into(other_content, f, f"{OSTATNI}/{f}", f)
+
     return {
         "podslozky": folders,
         "raw_v_koreni": sum(1 for f in root_files if is_raw(f)),
+        "ostatni_v_koreni": len(others),
         "operace": ops,
     }
 
@@ -207,7 +234,7 @@ def _move(event_dir, src, dst, sidecar=None):
     """
     dst_path = os.path.join(event_dir, dst)
     target_dir = os.path.dirname(dst_path)
-    if os.path.basename(target_dir) in (RAW_DIR, K_ODSTRANENI) and \
+    if os.path.basename(target_dir) in (RAW_DIR, K_ODSTRANENI, OSTATNI) and \
             not os.path.isdir(target_dir):
         os.mkdir(target_dir)
     # os.rename na Linuxu cíl přepíše: kontrola těsně před ním, souběh
@@ -245,7 +272,7 @@ def _delete(event_dir, name):
 
 
 def execute(event_dir, choices=None, raw_from_root=True, discard=(),
-            sidecar=None):
+            other=True, sidecar=None):
     """Sestaví plán znovu a provede jeho neblokované operace.
 
     Vrátí operace plánu doplněné o `stav` (hotovo / blokovano / chyba)
@@ -254,7 +281,7 @@ def execute(event_dir, choices=None, raw_from_root=True, discard=(),
     `sidecar(název záznamu)` a odstraní `<soubor>.xmp` v kořeni; selže-li
     sidecar, soubor se nepřesune.
     """
-    result = plan(event_dir, choices, raw_from_root, discard)
+    result = plan(event_dir, choices, raw_from_root, discard, other)
     unfinished = set()  # podsložky, ze kterých se nepřesunulo všechno
     for o in result["operace"]:
         o["chyba"] = None

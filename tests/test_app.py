@@ -214,7 +214,26 @@ def test_prod_saves_into_archive(prod):
     assert r.status_code == 200
     assert json.loads((archiv / EVENT / "_metadata.json").read_text()) == doc
     d = c.get(f"/api/akce/{EVENT}").json
-    assert not d["novy"] and "_metadata.json" not in d["nezpracovane"]
+    assert not d["novy"]
+    # Fixture: RAW/, a.rw2 a pozn.txt; _metadata.json se nehlásí.
+    assert d["kontrola"] == [
+        {"druh": "nepodporovany", "nazev": "pozn.txt"},
+        {"druh": "raw", "nazev": "a.rw2"},
+        {"druh": "podslozka", "nazev": "RAW"}]
+
+
+def test_detail_consistency(client):
+    c, archiv = client
+    (archiv / EVENT / "x.jpg.xmp").write_text("")
+    d = c.get(f"/api/akce/{EVENT}").json
+    # Nová akce: záznamy z návrhu se nepočítají jako chybějící.
+    assert d["novy"]
+    assert {"druh": "sirotek_xmp", "nazev": "x.jpg.xmp"} in d["kontrola"]
+    assert not any(n["druh"] == "chybejici" for n in d["kontrola"])
+    doc, _ = saved(c)
+    (archiv / EVENT / "foto.jpg").unlink()
+    d = c.get(f"/api/akce/{EVENT}").json
+    assert {"druh": "chybejici", "nazev": "foto.jpg"} in d["kontrola"]
 
 
 def test_cleanup_execute_dev_refused(client):
@@ -236,10 +255,11 @@ def test_cleanup_execute_prod(prod):
     c.post(f"/api/akce/{EVENT}/zamek", json=R1)
     r = c.post(url, json=dict(body, relace="r1"))
     assert r.status_code == 200
-    assert [(o["typ"], o["stav"]) for o in r.json["operace"]] == [
-        ("rename", "hotovo"), ("move", "blokovano")]
+    assert [(o["z"], o["stav"]) for o in r.json["operace"]] == [
+        ("RAW", "hotovo"), ("a.rw2", "blokovano"), ("pozn.txt", "hotovo")]
     assert (archiv / EVENT / "RAW.ignored" / "a.rw2").exists()
     assert (archiv / EVENT / "a.rw2").read_text() == "raw"
+    assert (archiv / EVENT / "ostatni.ignored" / "pozn.txt").is_file()
 
 
 def test_info_version_fixed_at_start(tmp_path, monkeypatch):
@@ -351,7 +371,7 @@ def test_finish(prod):
     # Sidecary nejsou nezpracované soubory ani se nepočítají.
     assert event["souboru"] == 5
     d = c.get(f"/api/akce/{EVENT}").json
-    assert not any(n.endswith(".xmp") for n in d["nezpracovane"])
+    assert not any(n["nazev"].endswith(".xmp") for n in d["kontrola"])
 
 
 def test_finish_export_error(prod, monkeypatch):
@@ -489,7 +509,7 @@ def marked(c, names, popis=None):
     return r.json["version"]
 
 
-DISCARD = {"jen_vyradit": True, "relace": "r1"}
+DISCARD = {"z_plochy": True, "relace": "r1"}
 
 
 def test_discard_plan_from_saved(client):
@@ -497,8 +517,16 @@ def test_discard_plan_from_saved(client):
     before = snapshot(archiv)
     marked(c, ["foto.jpg"])
     plan = c.post(f"/api/akce/{EVENT}/uklid", json=DISCARD).json
+    # Podsložka RAW bez volby se z plochy nemění, RAW a ostatní z kořene ano.
     assert [(o["z"], o["do"]) for o in plan["operace"]] == [
-        ("foto.jpg", "k_odstraneni.ignored/foto.jpg")]
+        ("foto.jpg", "k_odstraneni.ignored/foto.jpg"),
+        ("a.rw2", "RAW.ignored/a.rw2"),
+        ("pozn.txt", "ostatni.ignored/pozn.txt")]
+    assert plan["podslozky"][0]["volba"] is None
+    # Dřívější název příznaku.
+    old = c.post(f"/api/akce/{EVENT}/uklid",
+                 json={"jen_vyradit": True}).json
+    assert old["operace"] == plan["operace"]
     r = c.post(f"/api/akce/{EVENT}/uklid/provest", json=DISCARD)
     assert r.status_code == 403
     assert snapshot(archiv) == before
@@ -513,20 +541,34 @@ def test_discard_execute(prod):
     r = c.post(f"/api/akce/{EVENT}/uklid/provest", json=DISCARD)
     assert r.status_code == 200
     assert [(o["z"], o["stav"]) for o in r.json["operace"]] == [
-        ("foto.jpg", "hotovo"), ("v.mp4", "blokovano")]
+        ("foto.jpg", "hotovo"), ("v.mp4", "blokovano"), ("a.rw2", "hotovo"),
+        ("pozn.txt", "hotovo")]
     target = archiv / EVENT / "k_odstraneni.ignored"
     assert (target / "foto.jpg").is_file()
     xmp = (target / "foto.jpg.xmp").read_text()
     assert "Nepovedená" in xmp and "vyrad" not in xmp
     assert not (archiv / EVENT / "foto.jpg.xmp").exists()
-    # Podsložka RAW a RAW v kořeni se při úklidu z plochy nehýbou.
+    # Podsložka RAW bez volby zůstane, RAW a ostatní z kořene se přesunou.
     assert (archiv / EVENT / "RAW").is_dir()
-    assert (archiv / EVENT / "a.rw2").exists()
+    assert (archiv / EVENT / "RAW.ignored" / "a.rw2").read_text() == "raw"
+    assert (archiv / EVENT / "ostatni.ignored" / "pozn.txt").is_file()
     d = c.get(f"/api/akce/{EVENT}").json
     assert d["version"] == r.json["version"]
     assert "foto.jpg" not in d["metadata"]["soubory"]
     assert d["metadata"]["soubory"]["v.mp4"]["vyradit"] is True
     assert d["chybejici"] == []
+
+
+def test_workspace_cleanup_subfolder_choice(prod):
+    c, archiv = prod
+    saved(c)
+    r = c.post(f"/api/akce/{EVENT}/uklid/provest",
+               json=dict(DISCARD, volby={"RAW": "presunout"}))
+    assert r.status_code == 200
+    # RAW/a.rw2 do kořene koliduje s a.rw2 v kořeni, ten jde do RAW.ignored.
+    assert [(o["z"], o["stav"]) for o in r.json["operace"]] == [
+        ("RAW/a.rw2", "blokovano"), ("RAW", "blokovano"),
+        ("a.rw2", "hotovo"), ("pozn.txt", "hotovo")]
 
 
 def test_discard_execute_requires_lock(prod):

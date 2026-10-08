@@ -279,3 +279,79 @@ def test_subfolder_samples_spread_media_first(tree):
     assert samples == sorted(set(samples)) and samples[-1] >= "P11.jpg"
     assert folders["Prez"]["ukazky"] == ["a.pptx", "b.pdf"]
     assert folders["Prázdná"]["ukazky"] == []
+
+
+# --- ostatní soubory do ostatni.ignored (issue #11) ------------------------
+
+def test_other_files_to_ostatni(tree):
+    root = tree({"a.jpg": "", "a.jpg.xmp": "", "prezentace.zip": "",
+                 "P1503713.JPG.xmp": "", "Thumbs.db": "",
+                 "_metadata.json": "{}"})
+    plan = cleanup.plan(root)
+    # Pořadí podle druhu nálezu: nepodporované, pak osiřelé sidecary.
+    assert ops(plan) == [
+        ("move", "prezentace.zip", "ostatni.ignored/prezentace.zip"),
+        ("move", "P1503713.JPG.xmp", "ostatni.ignored/P1503713.JPG.xmp")]
+    assert plan["ostatni_v_koreni"] == 2
+
+
+def test_other_files_disabled(tree):
+    root = tree({"prezentace.zip": ""})
+    plan = cleanup.plan(root, other=False)
+    assert ops(plan) == []
+    assert plan["ostatni_v_koreni"] == 1
+
+
+def test_other_collision_and_existing_dir(tree):
+    root = tree({"zprava.pdf": "", "b.doc": "",
+                 "ostatni.ignored/": {"ZPRAVA.pdf": ""}})
+    plan = cleanup.plan(root)
+    assert ops(plan, blocked=True) == [
+        ("move", "zprava.pdf", "ostatni.ignored/zprava.pdf")]
+    assert ops(plan, blocked=False) == [
+        ("move", "b.doc", "ostatni.ignored/b.doc")]
+    # ostatni.ignored se jako podsložka přeskakuje.
+    assert plan["podslozky"] == []
+
+
+def test_other_target_is_file(tree):
+    root = tree({"ostatni.ignored": "", "b.doc": ""})
+    plan = cleanup.plan(root)
+    # Soubor `ostatni.ignored` je sám nepodporovaný; cíl blokuje oba.
+    assert ops(plan, blocked=True) == [
+        ("move", "b.doc", "ostatni.ignored/b.doc"),
+        ("move", "ostatni.ignored", "ostatni.ignored/ostatni.ignored")]
+    assert ops(plan, blocked=False) == []
+
+
+def test_sidecar_of_file_from_subfolder_not_orphan(tree):
+    root = tree({"v.mp4.xmp": "", "Video/": {"v.mp4": ""}})
+    assert ops(cleanup.plan(root, {"Video": "presunout"})) == [
+        ("move", "Video/v.mp4", "v.mp4"), ("delete", "Video", None)]
+    # Bez přesunu podsložky je sidecar osiřelý.
+    assert ops(cleanup.plan(root)) == [
+        ("move", "v.mp4.xmp", "ostatni.ignored/v.mp4.xmp")]
+
+
+def test_unsupported_file_from_subfolder_stays_for_next_plan(tree):
+    root = tree({"Docs/": {"a.pdf": ""}})
+    assert ops(cleanup.plan(root, {"Docs": "presunout"})) == [
+        ("move", "Docs/a.pdf", "a.pdf"), ("delete", "Docs", None)]
+
+
+def test_execute_other(tree):
+    root = tree({"zprava.pdf": "obsah", "x.jpg.xmp": "<x/>",
+                 "ostatni.ignored/": {"x.jpg.xmp": "jiný"}})
+    result = cleanup.execute(root)
+    assert [(o["z"], o["stav"]) for o in result["operace"]] == [
+        ("zprava.pdf", "hotovo"), ("x.jpg.xmp", "blokovano")]
+    assert (root / "ostatni.ignored" / "zprava.pdf").read_text() == "obsah"
+    assert (root / "ostatni.ignored" / "x.jpg.xmp").read_text() == "jiný"
+    assert (root / "x.jpg.xmp").read_text() == "<x/>"
+
+
+def test_execute_other_creates_dir(tree):
+    root = tree({"b.doc": "x"})
+    cleanup.execute(root)
+    assert (root / "ostatni.ignored" / "b.doc").is_file()
+    assert not (root / "b.doc").exists()

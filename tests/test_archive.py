@@ -149,6 +149,25 @@ def test_list_events_skips_sidecars_and_flags_changes(ws):
     assert event["stav"] == "hotovo" and event["zmeneno_po_exportu"]
 
 
+def test_list_events_consistency(ws):
+    event_dir = ws.archiv / EVENT
+    # Fixture: RAW/ v kořeni je podsložka bez `.ignored`.
+    assert ws.list_events()[0]["kontrola"] == {"podslozka": 1}
+    (event_dir / "RAW").rename(event_dir / "RAW.ignored")
+    assert ws.list_events()[0]["kontrola"] == {}
+    (event_dir / "prezentace.zip").write_text("")
+    (event_dir / "zprava.pdf").write_text("")
+    (event_dir / "a.jpg.xmp").write_text("")
+    (event_dir / "c.jpg.xmp").write_text("")
+    ws.save(EVENT, {"schema": "x", "soubory": {"a.jpg": {}, "d.jpg": {}}},
+            None)
+    event = ws.list_events()[0]
+    assert event["kontrola"] == {"nepodporovany": 2, "sirotek_xmp": 1,
+                                 "chybejici": 1}
+    assert event["souboru"] == 4  # a.jpg, b.mp4, zip, pdf
+    assert ws.list_events()[1]["kontrola"] == {}
+
+
 def test_list_events_flags_incomplete_finished(ws):
     doc = {"schema": "x", "dokonceno": None,
            "akce": {"datum": "2026-04-28", "mista": ["Brno"]},
