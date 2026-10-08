@@ -59,8 +59,9 @@ a RAW se v paměti nedrží.
 je samostatná schopnost a C ji pak volá i z náhledů.
 
 ### Klasifikace
-- *nečitelný*: 0 B; Pillow soubor nerozpozná (`UnidentifiedImageError`);
-  `ffprobe` nenajde video proud nebo skončí chybou; `Error` z exiftoolu.
+- *nečitelný*: 0 B; soubor jen z nul; Pillow soubor nerozpozná
+  (`UnidentifiedImageError`); `ffprobe` nenajde video proud nebo skončí
+  chybou.
 - *podezřelý*: zarovnaný úsek nul ≥ 64 KiB; Pillow ohlásí useknutý nebo
   chybný obraz při `load()`; varování `ffprobe`.
 - Důvody jsou česky pro uživatele, např. „768 KiB nul od začátku“,
@@ -69,6 +70,15 @@ je samostatná schopnost a C ji pak volá i z náhledů.
   z fotoaparátu má kvůli šumu snímače entropii, která 16 bloků nul
   prakticky vylučuje; ověří se prvním průchodem archivem (report).
 *Alternativa:* spoléhat jen na Pillow – odmítnuto podle měření výše.
+
+### Bez chyb z exiftoolu
+Původní návrh počítal s `Error` z exiftoolu. Při volání se seznamem tagů
+(jako `scan.py`) exiftool chybu do JSON nevrátí (jde jen na stderr)
+a 1bajtový CR2 ani NEF z náhodných dat za chybu nepovažoval; jediný
+případ, který poznal (nuly na začátku), zachytí test nul. Kontrola ho
+proto nevolá, RAW se posuzuje jen testem nul.
+*Alternativa:* samostatné volání exiftoolu po složkách – odmítnuto,
+nic by nepřidalo a stálo by start Perlu.
 
 ### Fotky dekódovat s `draft`
 Stejné měřítko jako náhled 1600 px. Chyby dekódování vychází stejně
@@ -139,6 +149,9 @@ Přerušitelné Ctrl+C bez ztráty cache (cache se zapisuje po akcích).
   poškozené soubory, potvrzovací dialog se jménem a důvodem, kontrola
   snímku a zámku, produkční režim, log.
 - [`ffprobe` chybí] → video jen testem nul, s poznámkou ve výsledku.
+- [Useknutý JPEG zakončený značkou `FFD9` dekodér přijme (ověřeno na
+  vzorku)] → známé omezení; zachytil by ho jen `ffmpeg` za cenu
+  dalšího dekódování. Vada z issue (vynulované bloky) ho nemá.
 
 ## Migration Plan
 

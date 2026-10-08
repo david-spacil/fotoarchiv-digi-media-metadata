@@ -14,8 +14,8 @@ a dekodér obrázků nuly uprostřed souboru často přijme jako platná data.
 ## What Changes
 
 - Nová kontrola souboru: jedno čtení souboru, test souvislého úseku
-  nul (zarovnaného na 4 KiB, od 64 KiB), dekódování fotky, `ffprobe`
-  u videa a chyby z exiftoolu. Výsledek *v pořádku*, *podezřelý*
+  nul (zarovnaného na 4 KiB, od 64 KiB), dekódování fotky a `ffprobe`
+  u videa. Výsledek *v pořádku*, *podezřelý*
   (otevře se, ale je poškozený) nebo *nečitelný*, vždy s důvodem.
   Výsledek se cachuje v pracovním adresáři podle jména, velikosti
   a času změny.
@@ -58,7 +58,7 @@ a dekodér obrázků nuly uprostřed souboru často přijme jako platná data.
   provedení, výsledek), `app.py` (stream kontroly, smazání souboru
   importu), `__main__.py` (příkaz `zkontrolovat`), klient průvodce
   importem v `static/app.js`.
-- Závislosti: žádné nové; Pillow a exiftool už jsou, `ffprobe` je
+- Závislosti: žádné nové; Pillow už je, `ffprobe` je
   součástí `ffmpeg` (bez něj se video kontroluje jen testem nul).
 - Výkon: kontrola zdroje v `přetřídit` přečte celé soubory přes SMB
   (dosud se četly jen kandidáti na duplicitu); zmírňuje cache a to, že

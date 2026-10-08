@@ -41,8 +41,7 @@ Fotku (jpg, jpeg, png) SHALL kontrola dekódovat. Soubor, který nejde
 rozpoznat jako obrázek, MUST být *nečitelný*; obrázek useknutý nebo
 s chybou při dekódování MUST být nejméně *podezřelý*. Video SHALL
 kontrola ověřit nástrojem `ffprobe`: bez čitelného video proudu MUST
-být *nečitelné*. RAW SHALL kontrola posoudit jen testem nul a chybou
-z exiftoolu. Prázdný soubor (0 B) MUST být *nečitelný*.
+být *nečitelné*. RAW SHALL kontrola posoudit jen testem nul. Prázdný soubor (0 B) MUST být *nečitelný*.
 
 #### Scenario: Useknutá fotka
 - **WHEN** fotka končí uprostřed obrazových dat
