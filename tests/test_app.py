@@ -327,7 +327,8 @@ def saved(c):
     return doc, r.json["version"]
 
 
-def test_export_endpoint(client, tmp_path):
+def test_finish_dev_mode(client, tmp_path):
+    """Dokončení ve vývojovém režimu píše jen do `.work`."""
     c, archiv = client
     before = snapshot(archiv)
     _, version = saved(c)
@@ -336,18 +337,65 @@ def test_export_endpoint(client, tmp_path):
                  "version": None}
     # Uložení ani kontrola nanečisto index negenerují.
     assert not (tmp_path / "work" / "index").exists()
-    url = f"/api/akce/{EVENT}/export"
-    assert c.post(url, json={"relace": "r2"}).status_code == 423
-    r = c.post(url, json={"relace": "r1"})
-    assert r.status_code == 200
-    assert r.json == {"zapsano": 3, "nezmeneno": 0, "chyby": [],
-                      "export_version": version, "index": []}
+    url = f"/api/akce/{EVENT}/dokoncit"
+    assert c.post(url, json={"relace": "r2", "version": version}) \
+        .status_code == 423
+    r = c.post(url, json={"relace": "r1", "version": version})
+    assert r.status_code == 200 and r.json["dokonceno"]
+    assert r.json["zapsano"] == 3 and r.json["chyby"] == []
+    assert r.json["export_version"] == r.json["version"]
     assert (tmp_path / "work" / "index" / "_INDEX.html").exists()
     assert (tmp_path / "work" / "xmp" / EVENT / "foto.jpg.xmp").exists()
     assert c.get(f"/api/akce/{EVENT}").json["export"]["kontrola"][
         "zapsano"] == 0
-    assert c.get("/api/akce").json[0]["stav"] == "rozpracovano"
+    assert c.get("/api/akce").json[0]["stav"] == "hotovo"
     assert snapshot(archiv) == before
+
+
+def test_export_endpoint_removed(client):
+    c, _ = client
+    saved(c)
+    r = c.post(f"/api/akce/{EVENT}/export", json={"relace": "r1"})
+    assert r.status_code in (404, 405)
+
+
+def finished_before(c, datum="2026-10-01"):
+    """Uloží akci jako dokončenou k `datum` bez exportu; vrátí verzi."""
+    doc, version = saved(c)
+    doc["dokonceno"] = datum
+    r = c.put(f"/api/akce/{EVENT}/metadata",
+              json={"metadata": doc, "version": version, "relace": "r1"})
+    return r.json["version"]
+
+
+def test_refinish_keeps_date(prod):
+    """Opakované dokončení nemění datum prvního dokončení (#20)."""
+    c, archiv = prod
+    version = finished_before(c)
+    r = c.post(f"/api/akce/{EVENT}/dokoncit",
+               json={"relace": "r1", "version": version})
+    assert r.status_code == 200 and r.json["dokonceno"] == "2026-10-01"
+    assert r.json["zapsano"] == 3
+    assert json.loads((archiv / EVENT / "_metadata.json").read_text())[
+        "dokonceno"] == "2026-10-01"
+
+
+def test_refinish_export_error_keeps_done(prod, monkeypatch):
+    """Selhání exportu u dokončené akce ji nevrátí do rozpracovaných."""
+    c, archiv = prod
+    version = finished_before(c)
+
+    def failing(path, data, mode=None):
+        raise OSError("zápis selhal")
+
+    monkeypatch.setattr("fotoarchiv.xmp.write_atomic", failing)
+    r = c.post(f"/api/akce/{EVENT}/dokoncit",
+               json={"relace": "r1", "version": version})
+    assert r.status_code == 200 and r.json["dokonceno"] == "2026-10-01"
+    assert len(r.json["chyby"]) == 3
+    assert json.loads((archiv / EVENT / "_metadata.json").read_text())[
+        "dokonceno"] == "2026-10-01"
+    assert c.get("/api/akce").json[0]["stav"] == "hotovo"
 
 
 def test_finish(prod):
@@ -975,8 +1023,8 @@ def test_overeno_se_nededi_a_neexportuje(prod):
               json={"metadata": doc, "version": version, "relace": "r1"})
     doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
     assert doc["akce"].get("overeno") is None
-    out = c.post(f"/api/akce/{EVENT}/export",
-                 json={"relace": "r1"}).json
+    out = c.post(f"/api/akce/{EVENT}/dokoncit",
+                 json={"relace": "r1", "version": r.json["version"]}).json
     assert out["chyby"] == [] and out["zapsano"] >= 1
     sidecar = (archiv / EVENT / "foto.jpg.xmp").read_text()
     assert "overeno" not in sidecar

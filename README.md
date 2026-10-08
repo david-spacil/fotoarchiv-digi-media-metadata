@@ -524,8 +524,8 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
 
   Fotografové jsou seřazení podle počtu souborů akce ve výsledných
   (zděděných) `autori`, zkráceně `Příjmení J.`. Index se přegeneruje
-  po provedení importu, po exportu z aplikace (Exportovat, dokončení)
-  a na konci `python -m fotoarchiv exportovat`, ne při uložení.
+  po provedení importu, po dokončení akce v aplikaci a na konci
+  `python -m fotoarchiv exportovat`, ne při uložení.
   Zapisuje se atomicky a jen při změně obsahu (bez času generování);
   selhání je jen varování. V produkčním režimu jde do kořene archivu
   s relativními odkazy, ve vývojovém do `.work/index/` s odkazy
@@ -611,13 +611,15 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    Immich, který ji tak poprvé uvidí rovnou se sidecary) a nastaví
    `dokonceno`. Selže-li zápis některého sidecaru nebo přejmenování
    složky (např. soubor v ní drží jiný počítač), akce dokončená
-   není a plocha chybu ukáže. Tlačítko **Exportovat** zapíše sidecary
-   bez kontroly a bez dokončení. U tlačítka plocha ukazuje, kolik
-   sidecarů je neaktuálních, a po úpravě „neexportované změny“; seznam
-   akcí u dokončené akce upravené po exportu uvede „změněno po exportu“.
-   U dokončené akce je Dokončit akci neaktivní, dokud není co
-   dokončovat (neuložené či neexportované změny, neaktuální sidecary,
-   selhaný export).
+   není a plocha chybu ukáže. Dokončit akci je jediný zápis sidecarů
+   z plochy: po úpravě dokončené akce se dokončí znovu. `dokonceno` je
+   datum prvního dokončení, opakované dokončení ho nemění; selže-li
+   přitom export, akce zůstane dokončená a plocha chybu ukáže. U
+   tlačítka plocha ukazuje, kolik sidecarů je neaktuálních, a po úpravě
+   „neexportované změny“; seznam akcí u dokončené akce upravené po
+   exportu uvede „změněno po exportu“. U dokončené akce je Dokončit
+   akci neaktivní, dokud není co dokončovat (neuložené či neexportované
+   změny, neaktuální sidecary, selhaný export).
 
 Našeptávání a kontrola jmen viz výše.
 
@@ -815,9 +817,9 @@ obnovu.
   `.work/metadata/<akce>/`. Rozpracovaná metadata z `.work` převezme do
   archivu jednorázově `python -m fotoarchiv prevzit` (jen u akcí, které
   `_metadata.json` v archivu ještě nemají).
-- XMP sidecary se zapisují při dokončení akce, samostatným tlačítkem
-  Exportovat a dávkově `python -m fotoarchiv exportovat [AKCE]` (bez
-  akce všechny s `_metadata.json`; zámky nekontroluje). **Přepisují se
+- XMP sidecary se zapisují při dokončení akce (i opakovaném)
+  a dávkově `python -m fotoarchiv exportovat [AKCE]` (bez akce všechny
+  s `_metadata.json`; zámky nekontroluje). **Přepisují se
   jen změněné:** obsah sidecaru se generuje deterministicky (bez
   časových razítek) a porovná s obsahem na disku; zapíše se atomicky,
   jen když chybí nebo se liší. Sidecar vznikne jen k souborům se
