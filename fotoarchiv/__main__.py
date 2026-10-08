@@ -3,16 +3,22 @@
 export XMP: python -m fotoarchiv exportovat [AKCE] --archiv …,
 jednorázové heslo: python -m fotoarchiv heslo LOGIN --work …,
 skrytí nedokončených akcí před Immichem: python -m fotoarchiv skryt
---archiv … [--zapis-do-archivu]."""
+--archiv … [--zapis-do-archivu], kontrola poškozených souborů:
+python -m fotoarchiv zkontrolovat [AKCE] --archiv …."""
 
 import argparse
+import json
 import logging
+import os
+import shutil
 import sys
+import time
+from collections import Counter
 from pathlib import Path
 
-from . import auth, geocode, immich, importer, index, xmp
+from . import auth, geocode, immich, importer, index, integrity, xmp
 from .app import create_app
-from .archive import Collision, Workspace, adopt
+from .archive import IGNORED, Collision, Workspace, adopt, event_name
 
 
 def paths(args):
@@ -174,6 +180,120 @@ def migrate_contact(work, kontakt):
               "Nominatim se nastavuje v aplikaci.")
 
 
+STAV_TEXT = {integrity.SUSPECT: "PODEZŘELÝ", integrity.UNREADABLE: "NEČITELNÝ"}
+
+
+def _event_folders(ws, name):
+    """[(složka, název cache)]; při kolizi obě složky (příkaz jen čte)."""
+    try:
+        folder = ws.event_dir(name)
+        return [(folder, event_name(folder))]
+    except Collision:
+        return [(ws.archiv / n, n) for n in (name, name + IGNORED)]
+
+
+def _write_report(path, report):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(report, ensure_ascii=False, indent=1),
+                   encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def zkontrolovat(argv):
+    parser = argparse.ArgumentParser(
+        prog="python -m fotoarchiv zkontrolovat",
+        description="Zkontroluje, zda soubory akce (média v kořeni, RAWy "
+                    "v kořeni a v RAW.ignored) nejsou poškozené: úseky nul "
+                    "od 64 KiB, dekódování fotky, ffprobe u videa. Archiv "
+                    "jen čte; výsledky cachuje v pracovním adresáři a report "
+                    "uloží do <work>/kontrola/.")
+    common(parser)
+    parser.add_argument("akce", nargs="?",
+                        help="název složky akce (bez něj všechny)")
+    args = parser.parse_args(argv)
+    archiv, work = paths(args)
+    ws = Workspace(archiv, work)
+    if args.akce:
+        try:
+            _event_folders(ws, args.akce)
+        except KeyError:
+            sys.exit(f"Akce nenalezena: {args.akce}")
+    if not shutil.which("ffprobe"):
+        print("varování: chybí ffprobe, videa se ověří jen testem nul",
+              file=sys.stderr)
+    names = [args.akce] if args.akce else ws.event_names()
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    path = Path(work) / "kontrola" / f"report-{stamp}.json"
+    n = 1
+    while path.exists():  # dva běhy v téže sekundě report nepřepíšou
+        n += 1
+        path = Path(work) / "kontrola" / f"report-{stamp}-{n}.json"
+    report = {"archiv": str(ws.archiv), "zacatek": stamp,
+              "prah_bajtu": integrity.THRESHOLD, "dokonceno": False,
+              "akce": []}
+    totals = Counter()
+    tty = sys.stderr.isatty()
+    try:
+        for i, name in enumerate(names, 1):
+            for folder, cache_name in _event_folders(ws, name):
+                todo = integrity.event_files(folder)
+                label = folder.name
+                print(f"[{i}/{len(names)}] {label}: "
+                      f"{len(todo)} souborů", file=sys.stderr)
+                gen = integrity.iter_check_files(
+                    todo, Path(work) / "cache" / "kontrola" /
+                    f"{cache_name}.json")
+                total = None
+                while True:
+                    try:
+                        ev = next(gen)
+                    except StopIteration as stop:
+                        results = stop.value
+                        break
+                    if ev["typ"] == "kontrola":
+                        total = ev
+                    elif tty and total["bajtu"]:
+                        print(f"\r  {ev['hotovo_souboru']}/"
+                              f"{total['souboru']} souborů, "
+                              f"{100 * ev['hotovo_bajtu'] // total['bajtu']} "
+                              "%", end="", file=sys.stderr)
+                if tty and todo:
+                    print(file=sys.stderr)
+                counts = Counter(r["stav"] for r in results.values())
+                totals.update(counts)
+                totals["akci"] += 1
+                files = []
+                for key in sorted(results):
+                    r = results[key]
+                    if r["stav"] != integrity.OK:
+                        print(f"{label}/{key}: {STAV_TEXT[r['stav']]}: "
+                              + "; ".join(r["duvody"]))
+                    if r["stav"] != integrity.OK or r["nuly"] \
+                            or r.get("nuly_soubor") or r.get("poznamka"):
+                        files.append(dict(r, soubor=key))
+                report["akce"].append({
+                    "akce": label, "souboru": len(results),
+                    "ok": counts[integrity.OK],
+                    "podezrele": counts[integrity.SUSPECT],
+                    "necitelne": counts[integrity.UNREADABLE],
+                    "soubory": files})
+                # Report po každé akci: přerušení nechá rozpracovaný.
+                _write_report(path, report)
+    except KeyboardInterrupt:
+        report["preruseno"] = True
+        _write_report(path, report)
+        print(f"\nPřerušeno. Report: {path}", file=sys.stderr)
+        sys.exit(130)
+    report["dokonceno"] = True
+    _write_report(path, report)
+    souboru = sum(a["souboru"] for a in report["akce"])
+    print(f"Zkontrolováno {souboru} souborů v {totals['akci']} akcích: "
+          f"podezřelých {totals[integrity.SUSPECT]}, "
+          f"nečitelných {totals[integrity.UNREADABLE]}.")
+    print(f"report: {path}")
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["prevzit"]:
@@ -182,6 +302,8 @@ def main(argv=None):
         return exportovat(argv[1:])
     if argv[:1] == ["heslo"]:
         return heslo(argv[1:])
+    if argv[:1] == ["zkontrolovat"]:
+        return zkontrolovat(argv[1:])
     if argv[:1] == ["skryt"]:
         return skryt(argv[1:])
     parser = argparse.ArgumentParser(
@@ -191,7 +313,8 @@ def main(argv=None):
                     "export XMP: python -m fotoarchiv exportovat, "
                     "jednorázové heslo: python -m fotoarchiv heslo, "
                     "skrytí nedokončených akcí před Immichem: "
-                    "python -m fotoarchiv skryt.")
+                    "python -m fotoarchiv skryt, kontrola poškozených "
+                    "souborů: python -m fotoarchiv zkontrolovat.")
     common(parser)
     parser.add_argument("--zapis-do-archivu", action="store_true",
                         help="produkční režim: _metadata.json ve složkách "

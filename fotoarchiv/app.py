@@ -593,6 +593,71 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         return imports.overview(id, jmeno,
                                 relace=request.args.get("relace"))
 
+    @app.post("/api/import/<id>/kontrola")
+    def import_check(id):
+        """Stream kontroly poškozených souborů importu (`kontrola`,
+        `kontrola_prubeh`), nakonec `kontrola_hotovo` s `vysledky`
+        {cesta: výsledek}; hotové z cache přijdou hned."""
+        body = request.get_json(force=True)
+        jmeno = body.get("jmeno")
+        record = check_import(id, jmeno)
+
+        def events():
+            results = yield from imports.iter_check(id, record)
+            yield {"typ": "kontrola_hotovo", "vysledky": results}
+        return ndjson(events())
+
+    @app.post("/api/import/<id>/poskozene")
+    def import_allowed(id):
+        """Podezřelé soubory, které uživatel povolil importovat."""
+        body = request.get_json(force=True)
+        jmeno = body.get("jmeno")
+        check_import(id, jmeno)
+        try:
+            povolene = imports.set_allowed(id, jmeno, body.get("povolene"))
+        except importer.Refused as e:
+            return refused(e, 400 if e.code == "neplatna_volba" else 409)
+        return {"povolene": povolene}
+
+    @app.delete("/api/import/<id>/soubor")
+    def import_delete_damaged(id):
+        """Smaže poškozený soubor importu (jen po kontrole, nezměněný).
+        U zdroje v `přetřídit` jen v produkčním režimu a pod zámkem
+        zdroje (jako provedení)."""
+        body = request.get_json(force=True, silent=True) or {}
+        jmeno = body.get("jmeno")
+        record = check_import(id, jmeno)
+        cesta = body.get("cesta")
+        if not isinstance(cesta, str):
+            abort(400)
+        source_key = source_relace = None
+        if record.get("zdroj"):
+            if not ws.zapis:
+                return {"chyba": "vyvojovy_rezim"}, 403
+            try:
+                # Před zámkem: provedení téže relace drží zámek zdroje
+                # a uvolnění níže by ho vzalo i jemu.
+                imports.check_idle(id)
+            except importer.Refused as e:
+                return refused(e)
+            source_key = f"{UNSORTED}/{record['zdroj']}"
+            source_relace = f"{body_field(body, 'relace')}#{UNSORTED}"
+            ok, info = locks.acquire(source_key, source_relace,
+                                     g.user["jmeno"] or record["jmeno"],
+                                     session.get("id"))
+            if not ok:
+                return {"chyba": "zdroj_obsazen", "drzitel": info}, 409
+        try:
+            result = imports.delete_damaged(id, jmeno, cesta)
+        except importer.Refused as e:
+            return refused(e, 404 if e.code == "nenalezen" else 409)
+        except OSError as e:
+            return {"chyba": "smazani", "detail": str(e)}, 500
+        finally:
+            if source_key:
+                locks.release(source_key, source_relace)
+        return {"smazano": cesta, "kontrola": result}
+
     @app.post("/api/import/<id>/plan")
     def import_plan(id):
         """Stream průběhu porovnání s cílovou akcí, nakonec `plan`."""

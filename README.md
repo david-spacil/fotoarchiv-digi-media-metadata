@@ -49,6 +49,13 @@ Jednorázové skrytí nedokončených akcí před Immichem (viz
 .venv/bin/python -m fotoarchiv skryt --archiv … --zapis-do-archivu
 ```
 
+Kontrola poškozených souborů v archivu (viz [Poškozené
+soubory](#poškozené-soubory)), archiv jen čte:
+
+```sh
+.venv/bin/python -m fotoarchiv zkontrolovat [AKCE] --archiv … --work .work
+```
+
 Napojení na Immich (obličeje) a kontakt pro Nominatim (geokódování
 míst) nastavuje admin v aplikaci; uloží se do `.work/immich.json`
 a `.work/nominatim.json`. Zastaralý přepínač `--kontakt` server při
@@ -140,6 +147,9 @@ docker compose exec fotoarchiv python -m fotoarchiv heslo LOGIN --work /work
 # dávkový export XMP všech akcí:
 docker compose exec fotoarchiv python -m fotoarchiv exportovat \
   --archiv /archiv --work /work --zapis-do-archivu
+# kontrola poškozených souborů všech akcí (archiv jen čte):
+docker compose exec fotoarchiv python -m fotoarchiv zkontrolovat \
+  --archiv /archiv --work /work
 # jednorázové skrytí nedokončených akcí před Immichem (při zastaveném
 # serveru; bez --zapis-do-archivu jen výpis):
 docker compose stop fotoarchiv
@@ -243,6 +253,52 @@ prohlížení: jen fotky a videa, která patří do Immiche.
   existuje, soubory se do ní přidají.
 - Přesuny a přejmenování mění cesty, které by Immich bral jako nové
   assety. Proto se mají udělat před napojením archivu do Immiche.
+
+## Poškozené soubory
+
+Typická vada archivu (issue #10): bloky souboru jsou na kartě nebo
+v souborovém systému vynulované a délka souboru zůstala. Nuly na
+začátku znemožní soubor otevřít, nuly na konci nebo uprostřed fotky
+dekodér často přijme jako platná data a ukáže šedý pruh. Exiftool ani
+dekodér druhý případ nepoznají, proto hlavní kontrolou je test nul.
+
+- **Kontrola souboru** přečte soubor jednou (zároveň spočítá sha256):
+  - souvislý úsek nul aspoň **64 KiB** začínající na hranici bloku
+    4 KiB (u fotek, videí i RAWů); kratší úseky mívají i zdravé
+    soubory (metadata z Photoshopu, plochá barva);
+  - fotka (jpg, jpeg, png) se dekóduje jako náhled (Pillow, `draft`):
+    nerozpoznaný obrázek je nečitelný, useknutý obraz podezřelý;
+    useknutý JPEG zakončený značkou konce (`FFD9`) dekodér přijme
+    a kontrola ho nepozná;
+  - video ověří `ffprobe` (bez čitelného video proudu, např. chybí
+    `moov` po přerušeném nahrávání = nečitelné); bez `ffprobe` jen
+    test nul s poznámkou; video se celé nedekóduje;
+  - u videa MP4/MOV se nuly počítají **jen v obrazových datech** podle
+    tabulek vzorků v `moov` (úsek přes obraz i zvuk součtem částí
+    v obraze). Nuly mimo ně patří k formátu: výplň `free` (rezerva pro
+    `moov`), pevně velké `udta`/`meta` (Panasonic) a ticho
+    v nekomprimovaném zvuku PCM (Panasonic, ~188 KiB nul za sekundu).
+    Bez čitelných tabulek (fragmentované MP4, poškozená hlavička) se
+    počítá celý soubor;
+  - RAW jen testem nul.
+- **Výsledek:** *v pořádku*, *podezřelý* (otevře se, ale je poškozený),
+  nebo *nečitelný* (prázdný, samé nuly, nejde otevřít), vždy s důvodem,
+  např. „768 KiB nul od začátku“, „119 KiB nul na konci“.
+- **Cache** výsledků je v `.work/cache/kontrola/` podle cesty,
+  velikosti a času změny souboru; nezměněný soubor se znovu nečte.
+  Změna pravidel kontroly cache zneplatní.
+- **Import** kontroluje soubory v kroku Přehled (viz
+  [Import](#import)); poškozené soubory nepřenese bez souhlasu.
+- **Archiv:** příkaz `zkontrolovat` (viz [Lokální
+  spuštění](#lokální-spuštění)) projde kořen a `RAW.ignored/` jedné nebo
+  všech akcí (ostatní podsložky ne) a archiv jen čte.
+  Vypíše podezřelé a nečitelné soubory s důvodem a souhrn po akcích,
+  report uloží do `.work/kontrola/report-<datum-čas>.json`. Report
+  uvádí i nejdelší úsek nul u souborů pod prahem, aby šel práh po
+  prvním průchodu archivem ověřit; u videa s přečtenými tabulkami
+  nejdelší úsek v obrazových datech (`nuly`) i v celém souboru
+  (`nuly_soubor`). Přerušení (Ctrl+C) nevadí: hotové
+  akce jsou v cache.
 
 ## Datový model
 
@@ -529,6 +585,18 @@ plán → výsledek.
   z názvu), přístroje, nepodporované soubory. Přijímají se média
   aplikace (jpg, jpeg, png, mp4, mov) a RAWy; `Thumbs.db` se tiše
   přeskočí, ostatní se vypíšou a nepřenesou.
+
+  Po zobrazení přehledu se soubory **zkontrolují** (viz [Poškozené
+  soubory](#poškozené-soubory)): stream s průběhem po souborech
+  a bajtech, výsledky z cache hned; Pokračovat jde až po doběhnutí.
+  Přehled vypíše podezřelé a nečitelné soubory s důvodem. Nečitelný se
+  nepřenese nikdy, podezřelý jen se zaškrtnutým „přesto importovat“
+  (volba se uloží k importu). Oba jde po potvrzení dialogem (jméno
+  a důvod) **smazat**: nahraný z pracovního adresáře, soubor zdroje
+  v `přetřídit` jen v produkčním režimu, pod zámkem zdroje (jako
+  provedení). Smazat jde jen soubor, který kontrola označila jako
+  poškozený a který se od ní nezměnil; smazání se zapíše do logu
+  serveru.
 - **Cíl:** stávající akce, nebo nová — datum se předvyplní nejstarším
   dnem z EXIF, název doplní uživatel; složka `YYYY-MM-DD název` bez
   `/` a `\`, nekončí na `.ignored` a nesmí existovat s příponou
@@ -548,8 +616,11 @@ plán → výsledek.
   podsložek; jinak nová akce a akce bez `_metadata.json` →
   automaticky, ostatní → jedna nová skupina. Volba se uloží k importu
   spolu s cílem.
-- **Plán:** média do kořene, RAWy do `RAW.ignored/`. Jméno, které
-  v cíli existuje nebo ho má víc souborů výběru, se blokuje.
+- **Plán:** média do kořene, RAWy do `RAW.ignored/`. Poškozené
+  soubory (nečitelné a nepovolené podezřelé) se nepřenesou a plán je
+  uvede zvlášť s důvodem; soubor změněný od kontroly se zkontroluje
+  znovu. Jméno, které v cíli existuje nebo ho má víc souborů výběru,
+  se blokuje.
   Duplicita (stejný sha256 jako soubor v kořeni cílové akce nebo jiný
   soubor výběru) se přeskočí; hashe akce se počítají jen u souborů
   shodné velikosti a cachují se v `.work/cache/sha256/`. Na SMB to
@@ -578,7 +649,11 @@ plán → výsledek.
   v pracovním adresáři. Když dočasný soubor smazat nejde (výpadek
   SMB), smaže ho další import do téže akce: před kopírováním odstraní
   `.import-*.tmp` starší než hodinu v kořeni a v `RAW.ignored/`
-  a uvede je ve výsledku.
+  a uvede je ve výsledku. Po přenosu (kopii i přesunu) server porovná
+  velikost souboru v cíli s originálem; nesoulad je chyba souboru ve
+  výsledku a soubor zůstane v archivu. Obsah se zpětně nečte: kopie
+  porovnává sha256 přenášených dat a SMB/TCP přenos hlídá sám; vada
+  z issue #10 (vynulované bloky) vzniká na kartě, ne přenosem.
 
   Po přenosu server zapíše skupiny jen pro skutečně přenesená média.
   Akce s `_metadata.json`: přenesené soubory (s technickými údaji,
@@ -596,10 +671,12 @@ plán → výsledek.
   spotřebuje): soubor, který od plánu ze zdroje zmizel, je selhaný,
   změněný blokovaný a přibylý se nepřesune a výsledek ho uvede zvlášť.
   Přesun nepřepíše existující soubor; přesun na jiný svazek je
-  selhání souboru. Duplicity, blokované a nepodporované soubory
-  zůstanou ve zdroji. Sha256 se u zdroje počítá jen u souborů, jejichž
-  velikost má soubor v kořeni cílové akce nebo jiný soubor výběru
-  (cache v `.work/cache/sha256/`). Po provedení server smaže odspodu
+  selhání souboru. Duplicity, blokované, poškozené a nepodporované
+  soubory zůstanou ve zdroji. Kontrola přečte každý soubor zdroje
+  jednou a tentýž průchod uloží sha256 do `.work/cache/sha256/`, takže
+  plán zdroj znovu nečte; jinak by se sha256 počítal jen u souborů,
+  jejichž velikost má soubor v kořeni cílové akce nebo jiný soubor
+  výběru. Po provedení server smaže odspodu
   podsložky a nakonec zdrojovou složku, jsou-li prázdné nebo jen
   s `Thumbs.db`; složky `*.ignored` nechá. Výsledek uvede, co ve
   zdroji zůstalo a zda složka zanikla. Import bez zbylých podporovaných
@@ -619,9 +696,9 @@ plán → výsledek.
   Složka s rozpracovaným importem uživatele je zvýrazněná. Kliknutí
   založí (nebo obnoví) import s navrženou novou akcí jako cílem
   a otevře přehled.
-- **Výsledek:** přenesené, blokované, duplicitní a selhané soubory;
-  přenesené zmizí z pracovního adresáře, ostatní tam zůstanou, dokud
-  uživatel import nezahodí. Importy neaktivní přes 7 dní server smaže
+- **Výsledek:** přenesené, blokované, duplicitní, poškozené a selhané
+  soubory; přenesené zmizí z pracovního adresáře, ostatní tam zůstanou,
+  dokud uživatel import nezahodí. Importy neaktivní přes 7 dní server smaže
   při startu. Průvodce nabídne otevřít akci; nové soubory jsou mezi
   „novými od posledního otevření“, metadata se doplňují běžně.
 

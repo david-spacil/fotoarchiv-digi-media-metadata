@@ -31,3 +31,20 @@ def tree(tmp_path):
         make_tree(tmp_path, spec)
         return tmp_path
     return build
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "real_decoders: skutečné dekódování fotek a ffprobe "
+        "v kontrole souborů (jinak je conftest nahradí)")
+
+
+@pytest.fixture(autouse=True)
+def fake_decoders(request, monkeypatch):
+    """Testy importu a aplikace nahrávají do „.jpg“ textový obsah; dekodér
+    by je označil jako nečitelné. Test nul běží vždy naostro."""
+    if request.node.get_closest_marker("real_decoders"):
+        return
+    from fotoarchiv import integrity
+    monkeypatch.setattr(integrity, "decode_image", lambda data: None)
+    monkeypatch.setattr(integrity, "probe_video", lambda path: None)

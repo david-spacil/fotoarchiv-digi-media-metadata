@@ -3,6 +3,9 @@
 
 import { parts, withDay, withTime } from "./datetime.js";
 import { missing, resolve, resolveGroup } from "./inherit.js";
+import {
+  STAV_KONTROLY, checkCounts, damagedFiles, toggleAllowed, unchecked,
+} from "./integrity.js";
 import { byDay, dayLabel, personIndex, stripeStops } from "./sections.js";
 
 // --- pomocné -------------------------------------------------------------
@@ -2678,7 +2681,7 @@ const TYP = {
   nepodporovany: ["nepodporovaný", "nepodporované", "nepodporovaných"],
 };
 const IMPORT_STAV = { ok: "", blokovano: "blokováno", duplicita: "duplicita",
-  hotovo: "hotovo", chyba: "chyba" };
+  hotovo: "hotovo", chyba: "chyba", poskozeny: "poškozený, nepřenese se" };
 const IMPORT_CHYBA = {
   probiha: "import se právě provádí (jiná záložka)",
   neuplny: "přenos se přerušil",
@@ -2705,7 +2708,7 @@ const imp = {
   overview: null, target: null, targetError: null, plan: null,
   result: null, lockHolder: null, error: null, busy: null,
   groups: null, targetGroups: null, pripojit: {}, unsorted: null,
-  sourceHolder: null,
+  sourceHolder: null, checking: false, checkError: null, checkedFor: null,
 };
 
 function importUrl(rest = "") {
@@ -2734,7 +2737,8 @@ async function openImport(id, params) {
       uploading: false, overview: null, target: null, targetError: null,
       plan: null, result: null, lockHolder: null, error: null, busy: null,
       groups: null, targetGroups: null, pripojit: {}, unsorted: null,
-      sourceHolder: null,
+      sourceHolder: null, checking: false, checkError: null,
+      checkedFor: null,
     });
   }
   app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
@@ -2790,6 +2794,18 @@ function setProgress(fraction, text) {
   if (!bar) return;
   bar.value = fraction;
   document.getElementById("import-progress-text").textContent = text;
+}
+
+// Průběh kontroly poškozených souborů (`kontrola`, `kontrola_prubeh`) ve
+// streamu kontroly, plánu i provedení; `total` drží úvodní událost.
+function checkProgress(ev, total) {
+  if (ev.typ === "kontrola") return ev;
+  if (ev.typ === "kontrola_prubeh" && total) {
+    setProgress(total.bajtu ? ev.hotovo_bajtu / total.bajtu : 1,
+      `Kontroluji soubory: ${ev.hotovo_souboru} z ${total.souboru} · ` +
+      `${fmtSize(ev.hotovo_bajtu)} z ${fmtSize(total.bajtu)}`);
+  }
+  return total;
 }
 
 // Tlačítko čekající na server: zablokovat, ukázat stav, dvojklik nic
@@ -3069,8 +3085,121 @@ async function startUpload(todo, total) {
   goStep(1);
 }
 
+// Kontrola poškozených souborů po zobrazení přehledu; hotové z cache
+// přijdou hned. Po doběhnutí se přehled načte znovu (výsledky u souborů).
+async function runCheck() {
+  if (imp.checking) return;
+  imp.checking = true;
+  imp.checkError = null;
+  renderImport();
+  let total = null;
+  try {
+    const last = await apiStream(importUrl("/kontrola"), { jmeno: userName() },
+      (ev) => { total = checkProgress(ev, total); });
+    if (last?.typ !== "kontrola_hotovo") throw new Error("nedoběhla");
+    await loadOverview();
+  } catch (err) {
+    if (err.status === 404) {
+      location.hash = "#/";
+      return;
+    }
+    imp.checkError = `Kontrola souborů selhala (${err.message}); plán ` +
+      "soubory zkontroluje znovu.";
+  } finally {
+    imp.checking = false;
+  }
+  renderImport();
+}
+
+async function setAllowed(cesta, on) {
+  const o = imp.overview;
+  try {
+    const r = await api(importUrl("/poskozene"), { method: "POST", body: {
+      jmeno: userName(),
+      povolene: toggleAllowed(o.povolene_poskozene, cesta, on) } });
+    o.povolene_poskozene = r.povolene;
+    imp.error = null;
+  } catch (err) {
+    imp.error = err.data?.chyba === "probiha"
+      ? IMPORT_CHYBA.probiha : `Volbu nejde uložit (${err.message}).`;
+  }
+  renderImport();
+}
+
+async function deleteDamaged(d, button) {
+  const zdroj = imp.overview.zdroj;
+  if (!(await confirmDialog("Smazat poškozený soubor?", [
+    d.cesta, `${STAV_KONTROLY[d.stav]}: ${d.duvod}`,
+    zdroj ? `Soubor se nevratně smaže ze složky ${UNSORTED}/${zdroj}.`
+      : "Soubor se smaže z nahraných souborů importu; archiv se nezmění.",
+  ], "Smazat"))) return;
+  setBusy(button, "Mažu…");
+  try {
+    await api(importUrl("/soubor"), { method: "DELETE",
+      body: { jmeno: userName(), relace: session(), cesta: d.cesta } });
+    imp.error = null;
+  } catch (err) {
+    const c = err.data?.chyba;
+    imp.error = c === "zdroj_obsazen"
+      ? `Složku ${UNSORTED}/${zdroj} právě přesouvá ` +
+        `${err.data.drzitel?.jmeno || "jiný uživatel"}; soubor teď nejde ` +
+        "smazat."
+      : c === "nezkontrolovano"
+      ? "Soubor se od kontroly změnil; zkontrolujte ho znovu."
+      : c === "probiha" ? IMPORT_CHYBA.probiha
+      : `Soubor nejde smazat (${err.message}).`;
+  }
+  try {
+    await loadOverview();
+  } catch {
+    location.hash = "#/";
+    return;
+  }
+  renderImport();
+}
+
+// Výsledek kontroly v přehledu: souhrn, poškozené s důvodem, volba
+// „přesto importovat“ u podezřelých a smazání (u zdroje jen v produkčním
+// režimu).
+function damagedBlock(o) {
+  if (imp.checking) return progressBox("Kontroluji soubory…");
+  const c = checkCounts(o.soubory);
+  const list = damagedFiles(o.soubory, o.povolene_poskozene);
+  const error = imp.checkError
+    ? h("p", { class: "notice error" }, imp.checkError) : null;
+  if (!list.length) {
+    return [error, c.ok && !c.nezkontrolovano ? h("p", {},
+      "Kontrola souborů: ", h("strong", {}, "bez poškozených")) : null];
+  }
+  const canDelete = !o.zdroj || state.info.zapis;
+  return [error, h("div", { class: "notice error damaged" },
+    h("p", {}, `Poškozené soubory: ${plural(list.length, "soubor",
+      "soubory", "souborů")} (nečitelných ${c.necitelny}, podezřelých ` +
+      `${c.podezrely}). Nečitelné se do archivu nepřenesou, podezřelé jen ` +
+      "po povolení; nepřenesené zůstanou " +
+      (o.zdroj ? "ve zdroji." : "v pracovním adresáři.")),
+    h("table", { class: "ops" }, list.map((d) => h("tr", {},
+      h("td", {}, h("code", {}, d.cesta)),
+      h("td", {}, STAV_KONTROLY[d.stav]),
+      h("td", {}, d.duvod),
+      h("td", {}, d.stav === "podezrely" ? h("label", {},
+        h("input", { type: "checkbox", checked: d.povoleno,
+          onchange: (e) => setAllowed(d.cesta, e.target.checked) }),
+        " přesto importovat") : ""),
+      h("td", {}, canDelete ? h("button", { class: "link",
+        onclick: (e) => deleteDamaged(d, e.currentTarget) }, "Smazat…")
+        : null)))))];
+}
+
 function renderOverview() {
   const o = imp.overview;
+  // Kontrola se sama spustí jednou pro každou sadu nezkontrolovaných
+  // souborů (soubor, který mezitím zmizel, ji nespouští dokola).
+  const pending = unchecked(o.soubory).map((f) => f.cesta).join("\n");
+  if (pending && !imp.checking && imp.checkedFor !== pending) {
+    imp.checkedFor = pending;
+    queueMicrotask(runCheck); // po vykreslení, překreslí s ukazatelem
+  }
   const c = o.pocty;
   const media = (c.foto || 0) + (c.video || 0) + (c.raw || 0);
   const parts = ["foto", "video", "raw"].filter((t) => c[t])
@@ -3078,9 +3207,11 @@ function renderOverview() {
   const dates = !o.od ? "z EXIF nezjištěno"
     : o.od === o.do ? fmtDate(o.od) : `${fmtDate(o.od)} – ${fmtDate(o.do)}`;
   const rows = o.soubory.map((f) => h("tr", {
-    class: f.typ === "nepodporovany" ? "failed" : "" },
+    class: f.typ === "nepodporovany" ||
+      (f.kontrola && f.kontrola.stav !== "ok") ? "failed" : "" },
   h("td", {}, h("code", {}, f.cesta)),
-  h("td", {}, TYP[f.typ][0]),
+  h("td", {}, TYP[f.typ][0], f.kontrola && f.kontrola.stav !== "ok"
+    ? ` (${STAV_KONTROLY[f.kontrola.stav]})` : ""),
   h("td", {}, f.datum ? fmtDate(f.datum) + f.datum.slice(10)
     .replace("T", " ") : ""),
   h("td", {}, f.pristroj || ""),
@@ -3096,6 +3227,7 @@ function renderOverview() {
       "Nepodporované soubory se do archivu nepřenesou: ",
       o.nepodporovane.flatMap((n, i) => [i ? ", " : "", h("code", {}, n)]))
       : null,
+    damagedBlock(o),
     h("details", {}, h("summary", {}, "Seznam souborů"),
       h("table", { class: "ops" }, rows)));
   app.replaceChildren(...importFrame(body, [
@@ -3103,8 +3235,9 @@ function renderOverview() {
       o.zdroj ? null : h("button", { onclick: () => goStep(0) },
         "← Přidat soubory"),
       h("button", { onclick: discardImport }, "Zahodit import")),
-    h("button", { class: "primary", disabled: !media,
-      onclick: () => goStep(2) }, "Pokračovat"),
+    h("button", { class: "primary", disabled: !media || imp.checking,
+      onclick: () => goStep(2) },
+    imp.checking ? "Kontroluji soubory…" : "Pokračovat"),
   ]));
 }
 
@@ -3268,7 +3401,9 @@ function renderTarget() {
     renderTarget();
     let total = null;
     try {
+      let checkTotal = null;
       const last = await apiStream(importUrl("/plan"), body, (ev) => {
+        checkTotal = checkProgress(ev, checkTotal);
         if (ev.typ === "hash") total = ev;
         else if (ev.typ === "hash_prubeh") {
           setProgress(total.bajtu ? ev.hotovo_bajtu / total.bajtu : 1,
@@ -3314,8 +3449,8 @@ function renderTarget() {
 function importOps(ops, group) {
   return h("table", { class: "ops" }, ops.map((o) => h("tr", {
     class: o.stav === "hotovo" || o.stav === "ok" ? ""
-      : o.stav === "chyba" ? "failed" : o.stav === "duplicita" ? "dup"
-        : "blocked" },
+      : o.stav === "chyba" || o.stav === "poskozeny" ? "failed"
+        : o.stav === "duplicita" ? "dup" : "blocked" },
   h("td", {}, h("code", {}, o.z)), h("td", {}, h("code", {}, `→ ${o.do}`)),
   group ? h("td", {}, o.skupina ? group(o.skupina) : "") : null,
   h("td", { class: "num" }, fmtSize(o.velikost)),
@@ -3367,20 +3502,21 @@ function renderImportPlan() {
     zapis && zdroj
       ? h("p", { class: "notice" }, "Po potvrzení se soubory přesunou ze " +
         `složky ${UNSORTED}/${zdroj}, média do kořene akce, RAWy do ` +
-        "RAW.ignored. Nic se nepřepíše; blokované, duplicitní " +
+        "RAW.ignored. Nic se nepřepíše; blokované, duplicitní, poškozené " +
         "a nepodporované soubory zůstanou ve zdroji. Prázdné složky zdroje " +
         "se smažou.")
       : zapis
       ? h("p", { class: "notice" }, "Po potvrzení se soubory zkopírují do " +
         "archivu, média do kořene akce, RAWy do RAW.ignored. Nic se " +
-        "nepřepíše; blokované a duplicitní soubory zůstanou v pracovním " +
-        "adresáři.")
+        "nepřepíše; blokované, duplicitní a poškozené soubory zůstanou " +
+        "v pracovním adresáři.")
       : h("p", { class: "notice" }, "Vývojový režim: plán se jen ukazuje, " +
         "do archivu se nic nezapíše."),
     h("p", {}, p.nova ? "Vznikne nová akce " : "Cíl: ",
       h("code", {}, p.cil), "."),
     h("p", {}, `Přenese se ${n("ok")}, blokováno ${n("blokovano")}, ` +
-      `duplicit ${n("duplicita")}.`),
+      `duplicit ${n("duplicita")}` + (n("poskozeny")
+        ? `, poškozených (nepřenesou se) ${n("poskozeny")}.` : ".")),
     holder ? h("p", { class: "notice readonly" },
       `${holderText(holder)} Import teď nejde provést; ` + (zdroj
         ? "soubory zůstávají ve zdroji."
@@ -3439,12 +3575,14 @@ async function executeImport(button) {
   let total = null;
   let copied = 0;
   let files = 0;
+  let checkTotal = null;
   try {
     const last = await apiStream(importUrl("/provest"), {
       jmeno: userName(), relace: session(),
       [p.nova ? "nova" : "cil"]: p.cil,
       skupiny: p.volba, pripojit: imp.pripojit,
     }, (ev) => {
+      checkTotal = checkProgress(ev, checkTotal);
       if (ev.typ === "hash") total = ev;
       else if (ev.typ === "hash_prubeh") {
         setProgress(total.bajtu ? ev.hotovo_bajtu / total.bajtu : 1,
@@ -3521,7 +3659,9 @@ function renderImportResult() {
   const body = h("main", { class: "wizard" },
     h("p", { class: n("chyba") ? "notice error" : "notice" },
       `Přeneseno ${n("hotovo")}, blokováno ${n("blokovano")}, duplicit ` +
-      `${n("duplicita")}, chyba ${n("chyba")}.` + (r.zahozeno || zdroj ? ""
+      `${n("duplicita")}, ` + (n("poskozeny")
+        ? `poškozených ${n("poskozeny")}, ` : "") +
+      `chyba ${n("chyba")}.` + (r.zahozeno || zdroj ? ""
         : " Nepřenesené soubory zůstaly v pracovním adresáři, dokud " +
           "import nezahodíte.")),
     zdroj ? h("p", {}, r.zdroj_smazan

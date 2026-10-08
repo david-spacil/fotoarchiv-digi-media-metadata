@@ -38,6 +38,9 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv skryt --archiv … --work .work
 # → skryje nedokončené akce před Immichem (přípona .ignored u složky);
 #   bez --zapis-do-archivu jen výpis, spouštět při zastaveném serveru
+.venv/bin/python -m fotoarchiv zkontrolovat [AKCE] --archiv … --work .work
+# → poškozené soubory (nuly od 64 KiB, dekódování, ffprobe) jedné/všech
+#   akcí; archiv jen čte, report do .work/kontrola/, cache v .work/cache/
 cp .env.example .env && docker compose up -d --build
 # → nasazení na server (produkční režim, ./work), viz README, Docker
 

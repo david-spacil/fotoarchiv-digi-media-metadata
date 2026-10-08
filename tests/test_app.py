@@ -853,7 +853,7 @@ def test_api_source_lock(prod):
     r = c.post(f"/api/import/{jana}/provest",
                json=dict(R2, nova="2019-05-01 DOD Jana"), buffered=False)
     chunks = iter(r.response)
-    assert b'"hash"' in next(chunks)  # a.jpg a a.nef mají stejnou velikost
+    assert b'"kontrola"' in next(chunks)  # provedení běží, zámek drží
     refused = c.post(f"/api/import/{david}/provest",
                      json=dict(R1, nova="2019-05-01 DOD David"))
     assert refused.status_code == 409
