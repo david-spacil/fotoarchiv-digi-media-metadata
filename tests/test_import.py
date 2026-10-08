@@ -37,6 +37,19 @@ def last(events):
     return final
 
 
+def no_check(events):
+    """Události bez průběhu kontroly poškozených souborů (`kontrola*`)."""
+    return [e for e in events if not e["typ"].startswith("kontrola")]
+
+
+def until(chunks, word):
+    """První blok streamu se slovem `word` (přeskočí průběh kontroly)."""
+    for chunk in chunks:
+        if word in chunk:
+            return chunk
+    raise AssertionError(word)
+
+
 def staged(imp, id):
     return sorted(os.path.relpath(os.path.join(d, f), imp.root / id)
                   for d, _, files in os.walk(imp.root / id) for f in files)
@@ -312,7 +325,7 @@ def test_execute_events(imports, tree, monkeypatch):
     akce = tree({"akce/": {"x.jpg": "x"}}) / "akce"
     id = make_import(imports, {"a.jpg": "0123456789", "b.jpg": "b",
                                "c.jpg": "x"})
-    events = list(imports.execute(id, ME, akce))
+    events = no_check(imports.execute(id, ME, akce))
     assert [summary(e) for e in events] == [
         ("hash", None, 1), ("hash_prubeh", None, None),
         ("start", None, 11),
@@ -366,7 +379,8 @@ def test_execute_running_refuses(imports, tree):
     akce = tree({"akce/": {}}) / "akce"
     id = make_import(imports, {"a.jpg": "a", "b.jpg": "b"})
     first = imports.execute(id, ME, akce)
-    assert next(first)["typ"] == "start"
+    # Příznak provádění platí od první události (průběh kontroly).
+    assert next(first)["typ"] == "kontrola"
     for action in (lambda: upload(imports, id, "c.jpg", "c"),
                    lambda: imports.discard(id, ME),
                    lambda: next(imports.execute(id, ME, akce))):
@@ -732,8 +746,8 @@ def test_api_dev_mode_plan_only(tmp_path, monkeypatch):
     events = stream(c.post(f"/api/import/{id}/plan",
                            json={"jmeno": ME, "cil": EVENT}))
     # IMG-…jpg, pozn.txt a v.mp4 v akci mají velikost jako nahrané
-    assert [e["typ"] for e in events] == ["hash"] + ["hash_prubeh"] * 3 + \
-        ["plan"]
+    assert [e["typ"] for e in no_check(events)] == ["hash"] + \
+        ["hash_prubeh"] * 3 + ["plan"]
     plan = events[-1]
     assert plan["cil"] == EVENT and not plan["nova"]
     assert plan_ops(plan) == [("Nove/n.jpg", "n.jpg", "ok"),
@@ -782,7 +796,7 @@ def test_api_existing_event_needs_lock(tmp_path, monkeypatch):
     c.delete(f"/api/akce/{EVENT}/zamek", json={"relace": "r2"})
     c.post(f"/api/akce/{EVENT}/zamek", json=R1)
     events = stream(c.post(f"/api/import/{id}/provest", json=body))
-    assert [e["typ"] for e in events] == [
+    assert [e["typ"] for e in no_check(events)] == [
         "hash", "hash_prubeh", "hash_prubeh", "start", "soubor",
         "vysledek"]
     r = events[-1]
@@ -830,7 +844,7 @@ def test_api_new_event_interrupted_releases_lock(tmp_path, monkeypatch):
     r = c.post(f"/api/import/{id}/provest", json=dict(R1, nova=name),
                buffered=False)
     chunks = iter(r.response)
-    assert b'"start"' in next(chunks)
+    until(chunks, b'"start"')
     assert b'"prubeh"' in next(chunks)
     r.close()
     assert os.listdir(archiv / f"{name}.ignored") == []
@@ -1077,8 +1091,11 @@ def test_source_hash_only_same_size(source, monkeypatch):
     calls = counting_sha(monkeypatch)
     id = imp.create(ME, zdroj="HLOZEK")
     events = list(imp.plan(id, ME, archiv / EVENT))
-    # a.jpg má velikost jako y.txt v akci: čte se jen a.jpg a y.txt.
-    assert sorted(calls) == ["a.jpg", "y.txt"]
+    # a.jpg má velikost jako y.txt v akci: hashuje se a.jpg a y.txt; sha256
+    # zdroje už spočítala kontrola (jedno čtení), plán čte jen y.txt.
+    assert calls == ["y.txt"]
+    assert "HLOZEK/a.jpg" in json.loads(
+        imp._source_sha_cache(imp.get(id, ME)).read_text())
     assert [e["typ"] for e in events][-1] == "plan"
     calls.clear()
     last(imp.plan(id, ME, None))
@@ -1105,7 +1122,7 @@ def test_source_duplicate_stays(source):
 
 
 def test_source_execute_moves(source):
-    # Různé velikosti: bez možné duplicity se nic nehashuje.
+    # Různé velikosti: bez možné duplicity se pro plán nic nehashuje.
     files = {f"P{i}.JPG": "j" * (i + 2) for i in range(5)}
     imp, archiv = source({"BONGO ZK/": files | {"Thumbs.db": "t",
                                                 "RAW/": {"P0.RW2": "r"}}})
@@ -1114,7 +1131,7 @@ def test_source_execute_moves(source):
     id = imp.create(ME, zdroj="BONGO ZK")
     last(imp.plan(id, ME, None))
     path = importer.create_event(archiv, "2017-05-10 BONGO ZK")
-    events = list(imp.execute(id, ME, path))
+    events = no_check(imp.execute(id, ME, path))
     assert [e["typ"] for e in events] == ["start"] + ["soubor"] * 6 + \
         ["vysledek"]
     result = events[-1]
@@ -1213,3 +1230,291 @@ def test_source_against_last_plan(source):
     with pytest.raises(Refused) as e:
         next(imp.execute(id, ME, path))
     assert e.value.code == "bez_planu"
+
+
+# --- poškozené soubory (issue #10) -------------------------------------------
+# Dekodéry nahrazuje conftest; test nul běží naostro: nečitelný = jen nuly,
+# podezřelý = 64 KiB nul na konci.
+
+UNREADABLE = bytes(70_000)
+SUSPECT = b"x" * 4096 + bytes(64 * 1024)
+
+
+def damaged_import(imp):
+    id = imp.create(ME)
+    upload(imp, id, "a.jpg", "zdrava")
+    for cesta, data in (("b.jpg", UNREADABLE), ("c.jpg", SUSPECT)):
+        imp.add_file(id, ME, cesta, io.BytesIO(data), len(data), MTIME_MS)
+    return id
+
+
+def checked(imp, id):
+    return importer._drain(imp.iter_check(id, imp.get(id, ME)))
+
+
+def kontrola(overview):
+    return {f["cesta"]: f["kontrola"] and f["kontrola"]["stav"]
+            for f in overview["soubory"]}
+
+
+def test_check_overview_cached(imports, monkeypatch):
+    id = damaged_import(imports)
+    assert kontrola(imports.overview(id, ME, fake_exiftool)) == \
+        {"a.jpg": None, "b.jpg": None, "c.jpg": None}
+    results = checked(imports, id)
+    assert {c: r["stav"] for c, r in results.items()} == {
+        "a.jpg": "ok", "b.jpg": "necitelny", "c.jpg": "podezrely"}
+    assert results["c.jpg"]["duvody"] == ["64 KiB nul na konci"]
+
+    # Návrat k importu: výsledky hned, bez čtení.
+    def no_read(*a, **k):
+        raise AssertionError("čte soubor")
+    monkeypatch.setattr(importer.integrity, "iter_check", no_read)
+    o = imports.overview(id, ME, fake_exiftool)
+    assert kontrola(o) == {"a.jpg": "ok", "b.jpg": "necitelny",
+                           "c.jpg": "podezrely"}
+    assert o["povolene_poskozene"] == []
+    assert checked(imports, id) == results
+
+
+def test_plan_damaged_and_allowed(imports):
+    id = damaged_import(imports)
+    plan = last(imports.plan(id, ME, None))
+    assert plan_ops(plan) == [("a.jpg", "a.jpg", "ok"),
+                              ("b.jpg", "b.jpg", "poskozeny"),
+                              ("c.jpg", "c.jpg", "poskozeny")]
+    b = plan["operace"][1]
+    assert b["poskozeni"] == "necitelny" and b["blocked"]
+    assert b["duvod"] == "soubor obsahuje jen nuly"
+    # Povolit jde jen podezřelý; nečitelný se nepřenese ani s povolením.
+    assert imports.set_allowed(id, ME, ["c.jpg", "b.jpg"]) == \
+        ["b.jpg", "c.jpg"]
+    assert plan_ops(last(imports.plan(id, ME, None))) == [
+        ("a.jpg", "a.jpg", "ok"), ("b.jpg", "b.jpg", "poskozeny"),
+        ("c.jpg", "c.jpg", "ok")]
+    with pytest.raises(Refused):
+        imports.set_allowed(id, ME, "c.jpg")
+
+
+def test_execute_damaged_stays(imports, tree):
+    akce = tree({"akce/": {}}) / "akce"
+    id = damaged_import(imports)
+    result = last(imports.execute(id, ME, akce))
+    assert plan_ops(result) == [("a.jpg", "a.jpg", "hotovo"),
+                                ("b.jpg", "b.jpg", "poskozeny"),
+                                ("c.jpg", "c.jpg", "poskozeny")]
+    assert os.listdir(akce) == ["a.jpg"]
+    assert not result["zahozeno"]
+    assert staged(imports, id) == ["import.json", "soubory/b.jpg",
+                                   "soubory/c.jpg"]
+
+
+def test_plan_rechecks_changed_file(imports):
+    id = damaged_import(imports)
+    checked(imports, id)
+    path = imports.dir(id) / "soubory" / "a.jpg"
+    path.write_bytes(UNREADABLE)
+    os.utime(path, ns=(1, 1))
+    ops = plan_ops(last(imports.plan(id, ME, None)))
+    assert ops[0] == ("a.jpg", "a.jpg", "poskozeny")
+
+
+def test_delete_damaged_upload(imports, caplog):
+    id = damaged_import(imports)
+    with pytest.raises(Refused) as e:
+        imports.delete_damaged(id, ME, "b.jpg")
+    assert e.value.code == "nezkontrolovano"
+    checked(imports, id)
+    imports.set_allowed(id, ME, ["c.jpg"])
+    for cesta, code in (("a.jpg", "neni_poskozeny"), ("x.jpg", "nenalezen")):
+        with pytest.raises(Refused) as e:
+            imports.delete_damaged(id, ME, cesta)
+        assert e.value.code == code
+    with caplog.at_level("INFO"):
+        assert imports.delete_damaged(id, ME, "c.jpg")["stav"] == "podezrely"
+    assert "smazán poškozený soubor" in caplog.text
+    record = imports.get(id, ME)
+    assert [s["cesta"] for s in record["soubory"]] == ["a.jpg", "b.jpg"]
+    assert record["povolene_poskozene"] == []
+    assert staged(imports, id) == ["import.json", "soubory/a.jpg",
+                                   "soubory/b.jpg"]
+    with pytest.raises(KeyError):
+        imports.delete_damaged(id, "Kopáčová, Jana", "b.jpg")
+
+
+def test_delete_damaged_refused_while_running(imports, tree):
+    akce = tree({"akce/": {}}) / "akce"
+    id = damaged_import(imports)
+    checked(imports, id)
+    running = imports.execute(id, ME, akce)
+    next(running)
+    for action in (lambda: imports.delete_damaged(id, ME, "b.jpg"),
+                   lambda: imports.set_allowed(id, ME, ["c.jpg"])):
+        with pytest.raises(Refused) as e:
+            action()
+        assert e.value.code == "probiha"
+    running.close()
+
+
+def test_changed_after_check_not_deleted(imports):
+    id = damaged_import(imports)
+    checked(imports, id)
+    path = imports.dir(id) / "soubory" / "b.jpg"
+    os.utime(path, ns=(1, 1))
+    with pytest.raises(Refused) as e:
+        imports.delete_damaged(id, ME, "b.jpg")
+    assert e.value.code == "nezkontrolovano"
+    assert path.exists()
+
+
+def test_size_mismatch_after_copy(imports, tree, monkeypatch):
+    akce = tree({"akce/": {}}) / "akce"
+    id = make_import(imports, {"a.jpg": "obsah"})
+    monkeypatch.setattr(importer, "_target_size", lambda path: 1)
+    result = last(imports.execute(id, ME, akce))
+    (o,) = result["operace"]
+    assert (o["stav"], o["chyba"]) == ("chyba", "velikost v cíli nesouhlasí")
+    assert (akce / "a.jpg").read_text() == "obsah"  # v archivu zůstane
+    assert staged(imports, id) == ["import.json", "soubory/a.jpg"]
+
+
+def test_source_damaged_stays(source):
+    imp, archiv = source({"HLOZEK/": {"a.jpg": "zdrava"}})
+    src = archiv / "přetřídit" / "HLOZEK"
+    (src / "20151107_140851.jpg").write_bytes(UNREADABLE)
+    id = imp.create(ME, zdroj="HLOZEK")
+    last(imp.plan(id, ME, None))
+    path = importer.create_event(archiv, "2015-11-07 Hlozek")
+    result = last(imp.execute(id, ME, path))
+    assert plan_ops(result) == [
+        ("HLOZEK/20151107_140851.jpg", "20151107_140851.jpg", "poskozeny"),
+        ("HLOZEK/a.jpg", "a.jpg", "hotovo")]
+    assert os.listdir(src) == ["20151107_140851.jpg"]
+    assert result["zdroj_zbyva"] == {"foto": 1}
+    assert not result["zdroj_smazan"] and not result["zahozeno"]
+
+
+def test_source_delete_damaged(source):
+    imp, archiv = source({"HLOZEK/": {"a.jpg": "zdrava"}})
+    src = archiv / "přetřídit" / "HLOZEK"
+    (src / "bad.jpg").write_bytes(UNREADABLE)
+    id = imp.create(ME, zdroj="HLOZEK")
+    last(imp.plan(id, ME, None))
+    imp.delete_damaged(id, ME, "HLOZEK/bad.jpg")
+    assert os.listdir(src) == ["a.jpg"]
+    # Smazaný není „zmizelý po plánu“: provedení ho nehlásí jako chybu.
+    path = importer.create_event(archiv, "2015-11-07 Hlozek")
+    result = last(imp.execute(id, ME, path))
+    assert plan_ops(result) == [("HLOZEK/a.jpg", "a.jpg", "hotovo")]
+    assert result["zdroj_smazan"]
+
+
+def test_source_size_mismatch_after_move(source, monkeypatch):
+    imp, archiv = source({"HLOZEK/": {"a.jpg": "zdrava"}})
+    id = imp.create(ME, zdroj="HLOZEK")
+    last(imp.plan(id, ME, None))
+    path = importer.create_event(archiv, "2015-11-07 Hlozek")
+    monkeypatch.setattr(importer, "_target_size", lambda p: 0)
+    (o,) = last(imp.execute(id, ME, path))["operace"]
+    assert (o["stav"], o["chyba"]) == ("chyba", "velikost v cíli nesouhlasí")
+    assert (path / "a.jpg").read_text() == "zdrava"
+
+
+def test_source_check_feeds_plan_hashes(source, monkeypatch):
+    # Plán po kontrole zdroj znovu nečte (sha256 z téhož průchodu).
+    imp, archiv = source({"HLOZEK/": {"a.jpg": "1", "b.jpg": "2"}})
+    id = imp.create(ME, zdroj="HLOZEK")
+    checked(imp, id)
+    calls = counting_sha(monkeypatch)
+    monkeypatch.setattr(importer.integrity, "iter_check",
+                        lambda *a: (_ for _ in ()).throw(AssertionError))
+    plan = last(imp.plan(id, ME, None))
+    # Stejná velikost: plán sha256 potřebuje (duplicity), bere je z cache.
+    assert calls == []
+    assert plan_ops(plan) == [("HLOZEK/a.jpg", "a.jpg", "ok"),
+                              ("HLOZEK/b.jpg", "b.jpg", "ok")]
+
+
+def api_upload_bytes(c, id, files, jmeno=ME):
+    for cesta, data in files.items():
+        r = c.post(f"/api/import/{id}/soubor", data=data,
+                   query_string={"jmeno": jmeno, "cesta": cesta,
+                                 "mtime": MTIME_MS})
+        assert r.status_code == 200, r.json
+
+
+def test_api_check_allow_delete(tmp_path, monkeypatch):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=False)
+    before = snapshot(archiv)
+    id = c.post("/api/import", json=dict(R1, celkem=10)).json["id"]
+    api_upload_bytes(c, id, {"a.jpg": b"zdrava", "b.jpg": UNREADABLE,
+                             "c.jpg": SUSPECT})
+    r = c.post(f"/api/import/{id}/kontrola", json={"jmeno": ME})
+    events = stream(r)
+    assert [e["typ"] for e in events] == ["kontrola"] + \
+        ["kontrola_prubeh"] * 3 + ["kontrola_hotovo"]
+    assert {k: v["stav"] for k, v in events[-1]["vysledky"].items()} == {
+        "a.jpg": "ok", "b.jpg": "necitelny", "c.jpg": "podezrely"}
+    assert c.post(f"/api/import/{id}/kontrola",
+                  json={"jmeno": R2["jmeno"]}).status_code == 404
+    o = c.get(f"/api/import/{id}", query_string={"jmeno": ME}).json
+    assert kontrola(o)["b.jpg"] == "necitelny"
+
+    r = c.post(f"/api/import/{id}/poskozene",
+               json={"jmeno": ME, "povolene": ["c.jpg"]})
+    assert r.json == {"povolene": ["c.jpg"]}
+    assert c.post(f"/api/import/{id}/poskozene",
+                  json={"jmeno": ME, "povolene": "c"}).status_code == 400
+    plan = stream(c.post(f"/api/import/{id}/plan",
+                         json={"jmeno": ME, "nova": "2026-05-01 Nova"}))[-1]
+    assert plan_ops(plan) == [("a.jpg", "a.jpg", "ok"),
+                              ("b.jpg", "b.jpg", "poskozeny"),
+                              ("c.jpg", "c.jpg", "ok")]
+
+    r = c.delete(f"/api/import/{id}/soubor", json=dict(R1, cesta="a.jpg"))
+    assert r.status_code == 409 and r.json["chyba"] == "neni_poskozeny"
+    r = c.delete(f"/api/import/{id}/soubor", json=dict(R1, cesta="x.jpg"))
+    assert r.status_code == 404
+    r = c.delete(f"/api/import/{id}/soubor", json=dict(R2, cesta="b.jpg"))
+    assert r.status_code == 404
+    r = c.delete(f"/api/import/{id}/soubor", json=dict(R1, cesta="b.jpg"))
+    assert r.status_code == 200 and r.json["smazano"] == "b.jpg"
+    o = c.get(f"/api/import/{id}", query_string={"jmeno": ME}).json
+    assert sorted(kontrola(o)) == ["a.jpg", "c.jpg"]
+    # Nahraný soubor jde smazat i ve vývojovém režimu; archiv se nemění.
+    assert snapshot(archiv) == before
+
+
+def source_client(tmp_path, monkeypatch, zapis):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=zapis)
+    src = archiv / "přetřídit" / "HLOZEK"
+    src.mkdir(parents=True)
+    (src / "a.jpg").write_text("zdrava")
+    (src / "bad.jpg").write_bytes(UNREADABLE)
+    id = c.post("/api/import", json=dict(R1, zdroj="HLOZEK")).json["id"]
+    stream(c.post(f"/api/import/{id}/kontrola", json={"jmeno": ME}))
+    return c, src, id
+
+
+def test_api_source_delete_dev_mode_refused(tmp_path, monkeypatch):
+    c, src, id = source_client(tmp_path, monkeypatch, zapis=False)
+    r = c.delete(f"/api/import/{id}/soubor",
+                 json=dict(R1, cesta="HLOZEK/bad.jpg"))
+    assert r.status_code == 403 and r.json["chyba"] == "vyvojovy_rezim"
+    assert sorted(os.listdir(src)) == ["a.jpg", "bad.jpg"]
+
+
+def test_api_source_delete(tmp_path, monkeypatch):
+    c, src, id = source_client(tmp_path, monkeypatch, zapis=True)
+    locks = c.application.config["LOCKS"]
+    locks.acquire("přetřídit/HLOZEK", "jina#přetřídit", "Kopáčová, Jana")
+    r = c.delete(f"/api/import/{id}/soubor",
+                 json=dict(R1, cesta="HLOZEK/bad.jpg"))
+    assert r.status_code == 409 and r.json["chyba"] == "zdroj_obsazen"
+    assert sorted(os.listdir(src)) == ["a.jpg", "bad.jpg"]
+    locks.release("přetřídit/HLOZEK", "jina#přetřídit")
+    r = c.delete(f"/api/import/{id}/soubor",
+                 json=dict(R1, cesta="HLOZEK/bad.jpg"))
+    assert r.status_code == 200
+    assert os.listdir(src) == ["a.jpg"]
+    assert locks.holder("přetřídit/HLOZEK") is None
