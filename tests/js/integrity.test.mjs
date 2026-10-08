@@ -5,7 +5,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  checkCounts, damagedFiles, toggleAllowed, unchecked,
+  applyDecisionChanges, checkCounts, cleanupDecisions, damagedFiles,
+  damagedMap, damagedText, decisionChanges,
+  toggleAllowed, unchecked,
 } from "../../fotoarchiv/static/integrity.js";
 
 const ok = { stav: "ok", duvody: [], nuly: null };
@@ -53,4 +55,91 @@ test("přepnutí povolení", () => {
     ["a.jpg", "b.jpg", "c.jpg"]);
   assert.deepEqual(toggleAllowed(["a.jpg", "b.jpg"], "a.jpg", false),
     ["b.jpg"]);
+});
+
+// --- odznak a přehodnocení na ploše akce (issue #10, varianta C) -----------
+
+test("damagedMap vyřadí potvrzené a vyřazené", () => {
+  const poskozene = {
+    "a.jpg": { stav: "podezrely", duvody: ["119 KiB nul na konci"] },
+    "b.jpg": { stav: "necitelny", duvody: ["soubor nejde otevřít"] },
+    "c.jpg": { stav: "podezrely", duvody: ["8 KiB nul"] },
+  };
+  const soubory = { "b.jpg": { overeno: true } };
+  assert.deepEqual(Object.keys(damagedMap(poskozene, soubory)),
+    ["a.jpg", "c.jpg"]);
+  // Vyřazený se též počítá mimo; bez dokumentu zůstává vše.
+  soubory["a.jpg"] = { vyradit: true };
+  assert.deepEqual(Object.keys(damagedMap(poskozene, soubory)), ["c.jpg"]);
+  assert.deepEqual(damagedMap(null, {}), {});
+});
+
+test("damagedText: stav a důvody", () => {
+  assert.equal(
+    damagedText({ stav: "necitelny", duvody: ["nejde otevřít", "768 KiB"] }),
+    "nečitelný: nejde otevřít; 768 KiB");
+  assert.equal(damagedText({ stav: "podezrely", duvody: [] }),
+    "podezřelý");
+});
+
+test("damagedMap respektuje znacky ze serveroveho souhrnu", () => {
+  const poskozene = {
+    "a.jpg": { stav: "podezrely", duvody: ["d"] },
+    "b.jpg": { stav: "necitelny", duvody: ["d"], overeno: true },
+    "c.jpg": { stav: "necitelny", duvody: ["d"], vyradit: true },
+  };
+  assert.deepEqual(Object.keys(damagedMap(poskozene)), ["a.jpg"]);
+  assert.equal(Object.keys(damagedMap(poskozene)).length, 1);
+  // Nezapsana znacka v rozepsanem dokumentu hosti take.
+  assert.deepEqual(damagedMap(poskozene, { "a.jpg": { overeno: true } }), {});
+});
+
+test("cleanupDecisions: výchozí stav řádků dialogu úklidu", () => {
+  const poskozene = {
+    "a.jpg": { stav: "podezrely" },
+    "b.jpg": { stav: "necitelny", overeno: true },
+    "c.jpg": { stav: "necitelny", vyradit: true },
+    "d.jpg": { stav: "podezrely" },
+  };
+  // d.jpg: potvrzení zatím jen v rozepsaném dokumentu.
+  const soubory = { "d.jpg": { overeno: true } };
+  assert.deepEqual(
+    cleanupDecisions(["a.jpg", "b.jpg", "c.jpg", "d.jpg"], poskozene,
+      soubory),
+    { "a.jpg": null, "b.jpg": "overeno", "c.jpg": "vyradit",
+      "d.jpg": "overeno" });
+});
+
+test("decisionChanges: jen rozdíly proti dokumentu", () => {
+  const soubory = {
+    "a.jpg": {}, "b.jpg": { overeno: true }, "c.jpg": { overeno: true },
+    "d.jpg": { vyradit: true }, "e.jpg": { overeno: true },
+  };
+  const changes = decisionChanges({
+    "a.jpg": "overeno",   // nově potvrzený
+    "b.jpg": null,        // potvrzení zrušené
+    "c.jpg": "vyradit",   // z potvrzeného rovnou k vyřazení
+    "d.jpg": "vyradit",   // už označený: beze změny
+    "e.jpg": "overeno",   // potvrzený: beze změny
+  }, soubory);
+  assert.deepEqual(changes, {
+    vyradit: ["c.jpg"], overeno: ["a.jpg"], zrusit: ["b.jpg", "c.jpg"],
+  });
+  assert.deepEqual(decisionChanges({ "a.jpg": null }, soubory),
+    { vyradit: [], overeno: [], zrusit: [] });
+});
+
+test("applyDecisionChanges zapíše změny a umí je vrátit", () => {
+  const soubory = { "a.jpg": { popis: "x" }, "b.jpg": { overeno: true },
+    "c.jpg": { overeno: true } };
+  const original = structuredClone(soubory);
+  const changes = { vyradit: ["c.jpg", "n.jpg"], overeno: ["a.jpg"],
+    zrusit: ["b.jpg", "c.jpg"] };
+  const revert = applyDecisionChanges(soubory, changes);
+  assert.deepEqual(soubory, {
+    "a.jpg": { popis: "x", overeno: true }, "b.jpg": {},
+    "c.jpg": { vyradit: true }, "n.jpg": { vyradit: true },
+  });
+  revert();
+  assert.deepEqual(soubory, original);
 });

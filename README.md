@@ -314,6 +314,19 @@ dekodér druhý případ nepoznají, proto hlavní kontrolou je test nul.
 - **Cache** výsledků je v `.work/cache/kontrola/` podle cesty,
   velikosti a času změny souboru; nezměněný soubor se znovu nečte.
   Změna pravidel kontroly cache zneplatní.
+- **Aplikace:** při vytváření nového náhledu souboru z kořene akce se
+  kontrola spustí a výsledek doplní do cache akce (prohlížením se
+  zásobník plní sám; při hitu cache se soubor nečte). Odznak
+  „N poškozených“ je v seznamu akcí i v liště plochy, dlaždice
+  poškozeného souboru je červeně orámovaná s důvodem v tooltipu.
+  U poškozeného souboru lze potvrdit „Považovat za v pořádku“
+  v panelu dlaždice nebo hromadně v dialogu Uklidit…
+  (falešná pozitivita dekodéru) — uloží se jako `overeno` a odznak ho
+  nadále nepočítá; zrušení je stejné tlačítko. Náprava v archivu jde
+  po cestě vyřazení: označit k vyřazení (dlaždice nebo dialog) a uklidit
+  (do `k_odstraneni.ignored`, viz `vyradit` v
+  [Datovém modelu](#datový-model)); žádná zvlášť složka poškozených
+  není.
 - **Import** kontroluje soubory v kroku Přehled (viz
   [Import](#import)); poškozené soubory nepřenese bez souhlasu.
 - **Archiv:** příkaz `zkontrolovat` (viz [Lokální
@@ -418,6 +431,9 @@ přístroje a vzoru názvu, uživatel je může upravit.
 - **`vyradit: true`** označuje soubor k vyřazení (jen u souboru, nedědí
   se). Do XMP exportu takový soubor nejde, do lišty chybějících údajů se
   nepočítá; úklid ho přesune do `k_odstraneni.ignored` a záznam smaže.
+- **`overeno: true`** je ruční potvrzení, že soubor je i přes výsledek
+  kontroly integrity v pořádku (jen u souboru, nedědí se, do sidecaru
+  ani indexu nejde). Takový soubor se nepočítá do odznaku poškozených.
 - Originály se nemění.
 
 ## Jména osob
@@ -573,10 +589,19 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    vybrané soubory k vyřazení (jsou-li už všechny označené, označení
    zruší). Označené dlaždice zůstávají na místě, zašedlé a přeškrtnuté.
    Lišta ukazuje počet souborů k vyřazení a nálezy kontroly akce.
-   Tlačítko **Uklidit…** (je-li co vyřadit nebo napravit) uloží změny
+   Tlačítko **Uklidit…** (je-li co vyřadit nebo napravit, včetně
+   poškozených souborů) uloží změny
    a ukáže plán: označené do `k_odstraneni.ignored`, ostatní soubory do
    `ostatni.ignored`, RAWy do `RAW.ignored` a u podsložek volbu
    přesunout/ponechat jako v průvodci — podsložka bez volby zůstane.
+   Sekce **Poškozené soubory** je tabulka poškozených souborů kořene
+   (náhled, stav a důvod) se dvěma výlučnými sloupci: **Vyřadit**
+   (přesune se spolu s ostatními do `k_odstraneni.ignored`) a **V
+   pořádku** (`overeno`, kontrola se mýlí); hlavička sloupce označí
+   všechny. Výchozí je uložený stav, soubor bez volby zůstane, jak je.
+   Volby se zapíší až tlačítkem; bez přesunů jen „Uložit“. Soubor už
+   označený k vyřazení je šedý (zrušit jde na dlaždici); ve vývojovém
+   režimu je sloupec Vyřadit vypnutý.
    V produkčním režimu plán po potvrzení provede (viz Podsložky a RAW),
    ve vývojovém ho jen ukáže.
 4. **Dokončení akce** uloží změny, zkontroluje úplnost a nálezy

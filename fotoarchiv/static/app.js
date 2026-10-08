@@ -4,7 +4,9 @@
 import { parts, withDay, withTime } from "./datetime.js";
 import { missing, resolve, resolveGroup } from "./inherit.js";
 import {
-  STAV_KONTROLY, checkCounts, damagedFiles, toggleAllowed, unchecked,
+  STAV_KONTROLY, applyDecisionChanges, checkCounts, cleanupDecisions,
+  damagedFiles, damagedMap, damagedText, decisionChanges, toggleAllowed,
+  unchecked,
 } from "./integrity.js";
 import { byDay, dayLabel, personIndex, stripeStops } from "./sections.js";
 
@@ -493,6 +495,11 @@ async function showList() {
           ? [h("span", { class: "badge vyresit" }, "k vyřešení"),
             h("span", { class: "vyresit-detail" },
               ` ${nalezyText(e.kontrola)}`)] : null,
+        e.poskozene
+          ? h("span", { class: "badge poskozene",
+            title: "Poškozené soubory z kontroly integrity" },
+            plural(e.poskozene, "poškozený", "poškozené", "poškozených"))
+          : null,
         e.zmeneno_po_exportu
           ? h("span", { class: "warn" }, " změněno po exportu") : null)));
   app.replaceChildren(header(), h("main", { class: "list" },
@@ -1085,6 +1092,7 @@ function tile(f, markOf) {
   const datum = resolve(state.doc, f).datum?.hodnota;
   const mark = markOf(f);
   const m = markAttrs(mark, f);
+  const d = damagedAttrs(f);
   const thumb = present
     ? h("img", {
       src: eventUrl(state.name, `/nahled/${encodeURIComponent(f)}`),
@@ -1096,8 +1104,8 @@ function tile(f, markOf) {
   return h("div", {
     class: `tile${present ? "" : " missing"}${info.video ? " video" : ""}` +
       `${state.sel.has(f) ? " selected" : ""}${discarded(f) ? " discard" : ""}` +
-      m.cls,
-    dataset: { file: f }, title: m.title, style: m.style,
+      d.cls + m.cls,
+    dataset: { file: f }, title: d.title || m.title, style: m.style,
   }, thumb,
   h("div", { class: "cap" }, h("span", { class: "fn" }, f),
     h("span", { class: "dt" }, datum ? datum.replace("T", " ") : "bez data"),
@@ -1244,6 +1252,47 @@ function discarded(f) {
   return !!state.doc.soubory[f]?.vyradit;
 }
 
+// Poškozené soubory pro zobrazení: souhrn z detailu omezený na
+// aktuální dokument (přepínače `overeno`/`vyradit` svítí hned).
+function damagedOf(f) {
+  return damagedMap(state.detail?.poskozene || {},
+                    state.doc?.soubory || {})[f] || null;
+}
+
+// Poškozený soubor bez rozhodnutí (ani potvrzený, ani označený
+// k vyřazení) — kvůli takovým se v liště nabízí Uklidit….
+function damagedRepairable(f) {
+  const info = (state.detail?.poskozene || {})[f];
+  if (!info || !state.present.has(f)) return null;
+  const record = state.doc?.soubory?.[f] || {};
+  if (info.overeno || info.vyradit || record.overeno || record.vyradit) {
+    return null;
+  }
+  return info;
+}
+
+// Dlaždice poškozeného souboru: odlišení + důvod v tooltipu.
+function damagedAttrs(f) {
+  const info = damagedOf(f);
+  return info ? { cls: " damaged", title: damagedText(info) }
+              : { cls: "", title: null };
+}
+
+// „Považovat za v pořádku“ / zrušení potvrzení (falešná pozitivita
+// dekodéru); uloží se běžným autosave jako ostatní ruční údaje.
+function toggleVerified() {
+  const files = [...state.sel].filter((f) => state.doc.soubory[f]
+    && (damagedOf(f) || state.doc.soubory[f].overeno));
+  if (state.readonly || !files.length) return;
+  const unmark = files.every((f) => state.doc.soubory[f].overeno);
+  for (const f of files) {
+    if (unmark) delete state.doc.soubory[f].overeno;
+    else state.doc.soubory[f].overeno = true;
+  }
+  changed({ grid: true });
+  renderPanel();
+}
+
 // Del a tlačítko: označí vybrané soubory k vyřazení; jsou-li už všechny
 // označené, označení zruší.
 function toggleDiscard() {
@@ -1266,6 +1315,16 @@ async function workspaceCleanup() {
   if (state.readonly || !(await flushSave())) return;
   const name = state.name;
   const volby = {};
+  // Rozhodnutí u poškozených souborů (výlučné sloupce Vyřadit /
+  // V pořádku). Žije jen v dialogu, zapíše se až při spuštění — Zrušit
+  // nic nezmění. Výchozí je uložený stav; nerozhodnuté zůstanou, jak jsou.
+  const damaged = Object.keys(state.detail?.poskozene || {})
+    .filter((f) => state.present.has(f)).sort();
+  const decisions = cleanupDecisions(damaged, state.detail?.poskozene,
+    state.doc.soubory);
+  // Označený k vyřazení už je v plánu serveru; zrušit jde jen z dlaždice.
+  const lockedRows = new Set(damaged.filter(
+    (f) => decisions[f] === "vyradit"));
   const body = () => ({ z_plochy: true, volby, relace: session() });
   const zapis = state.info.zapis;
   const main = h("div");
@@ -1292,6 +1351,103 @@ async function workspaceCleanup() {
     : h("p", {}, "Není co přesouvat.");
   const cancel = h("button", { onclick: close }, "Zavřít");
   const run = h("button", { class: "primary" });
+  let todo = 0;
+  // Tlačítko podle toho, co se stane: přesuny (jen produkční režim)
+  // a změny potvrzení „v pořádku“; bez přesunů jen „Uložit“.
+  const updateRun = () => {
+    const ch = decisionChanges(decisions, state.doc.soubory);
+    const moves = zapis ? todo + ch.vyradit.length : 0;
+    const parts = [];
+    if (moves) parts.push(plural(moves, "přesun", "přesuny", "přesunů"));
+    if (ch.overeno.length) parts.push(`${ch.overeno.length}× v pořádku`);
+    if (ch.zrusit.length) {
+      parts.push(`${ch.zrusit.length}× zrušit potvrzení`);
+    }
+    run.textContent = `${moves ? "Provést úklid" : "Uložit"} ` +
+      `(${parts.join(", ")})`;
+    const work = parts.length > 0;
+    cancel.textContent = work ? "Zrušit" : "Zavřít";
+    buttons.replaceChildren(...(work ? [run] : []), cancel);
+  };
+
+  // Tabulka poškozených: náhled, soubor s důvodem, dva výlučné sloupce.
+  // Vstupy se při změně jen přenastaví (náhledy se nenačítají znovu).
+  const damagedTable = () => {
+    if (!damaged.length) return null;
+    const editable = (col) => damaged.filter((f) => !lockedRows.has(f)
+      && !(col === "vyradit" && !zapis));
+    const inputs = {};
+    const head = {};
+    const sync = () => {
+      for (const f of damaged) {
+        inputs[f].vyradit.checked = decisions[f] === "vyradit";
+        inputs[f].overeno.checked = decisions[f] === "overeno";
+      }
+      for (const col of ["vyradit", "overeno"]) {
+        const rows = editable(col);
+        head[col].checked = rows.length > 0
+          && rows.every((f) => decisions[f] === col);
+        head[col].disabled = !rows.length;
+      }
+      updateRun();
+    };
+    const choose = (f, col, on) => {
+      decisions[f] = on ? col : null;
+      sync();
+    };
+    const box = (f, col) => h("input", {
+      type: "checkbox",
+      disabled: lockedRows.has(f) || (col === "vyradit" && !zapis),
+      onchange: (e) => choose(f, col, e.target.checked),
+    });
+    const headBox = (col, label, title) => {
+      head[col] = h("input", {
+        type: "checkbox",
+        onchange: (e) => {
+          for (const f of editable(col)) {
+            if (e.target.checked) decisions[f] = col;
+            else if (decisions[f] === col) decisions[f] = null;
+          }
+          sync();
+        },
+      });
+      return h("th", { class: "choice", title },
+        h("label", {}, head[col], " ", label));
+    };
+    const rows = damaged.map((f) => {
+      const info = state.detail.poskozene[f];
+      inputs[f] = { vyradit: box(f, "vyradit"), overeno: box(f, "overeno") };
+      const ph = () => h("span", { class: "ph" },
+        state.scan[f]?.video ? "▶ video" : "bez náhledu");
+      return h("tr", { class: lockedRows.has(f) ? "locked" : "" },
+        h("td", { class: "thumb" }, h("img", {
+          src: thumbUrl(f), loading: "lazy", alt: "",
+          onerror: (e) => e.target.replaceWith(ph()),
+        })),
+        h("td", {}, h("div", { class: "fn" }, f),
+          h("div", { class: "meta" }, damagedText(info)),
+          lockedRows.has(f) ? h("div", { class: "meta" },
+            "už označeno k vyřazení — zrušit jde v panelu dlaždice") : ""),
+        h("td", { class: "choice" }, inputs[f].vyradit),
+        h("td", { class: "choice" }, inputs[f].overeno));
+    });
+    const table = h("table", { class: "damaged" },
+      h("thead", {}, h("tr", {}, h("th", {}), h("th", {}, "Soubor"),
+        headBox("vyradit", "Vyřadit", zapis
+          ? "Přesunout do k_odstraneni.ignored"
+          : "Jen v produkčním režimu"),
+        headBox("overeno", "V pořádku",
+          "Soubor je v pořádku, kontrola se mýlí"))),
+      h("tbody", {}, rows));
+    sync();
+    return [h("h3", {}, "Poškozené soubory"),
+      h("p", { class: "notice" }, "U každého souboru vyberte nejvýš " +
+        "jedno: Vyřadit (přesune se do k_odstraneni.ignored spolu " +
+        "s ostatními, údaje zůstanou v sidecaru), nebo V pořádku " +
+        "(kontrola se mýlí, soubor přestane být hlášený). Soubor bez " +
+        "volby zůstane, jak je. Zapíše se až tlačítkem dole."),
+      table];
+  };
 
   const showPlan = async () => {
     let plan;
@@ -1305,7 +1461,8 @@ async function workspaceCleanup() {
       return;
     }
     if (name !== state.name) return;
-    const todo = plan.operace.filter((o) => !o.blocked).length;
+    todo = plan.operace.filter((o) => !o.blocked).length;
+    const damagedBlock = damagedTable();
     main.replaceChildren(
       h("p", { class: "notice" }, zapis
         ? "Označené soubory se přesunou do k_odstraneni.ignored a jejich " +
@@ -1320,18 +1477,47 @@ async function workspaceCleanup() {
         volby[f.nazev] = value;
         showPlan();
       })),
-      plan.podslozky.length ? h("h3", {}, "Plán") : null,
-      opsTable(plan.operace));
-    run.textContent = `Provést úklid (${plural(todo, "operace", "operace",
-      "operací")})`;
-    cancel.textContent = zapis && todo ? "Zrušit" : "Zavřít";
-    buttons.replaceChildren(...(zapis && todo ? [run] : []), cancel);
+      plan.podslozky.length ? h("h3", {}, "Plán") : "",
+      // Prázdný plán: „Není co přesouvat“ jen bez poškozených (ty se
+      // přesunou až po označení při spuštění); pod nadpisem Plán
+      // (akce s podsložkou) aspoň věta, ať nadpis nevisí.
+      plan.operace.length || !damagedBlock ? opsTable(plan.operace)
+        : plan.podslozky.length ? h("p", {}, "Zatím žádné přesuny; " +
+          "poškozené soubory označené níže k vyřazení se přidají při " +
+          "spuštění.") : "",
+      ...(damagedBlock || []));
+    updateRun();
   };
 
   run.onclick = async () => {
     dialog.dataset.busy = "1";
     run.disabled = cancel.disabled = true;
     main.querySelectorAll("input").forEach((i) => { i.disabled = true; });
+    // Rozhodnutí u poškozených zapsat a hned uložit — provedení čte
+    // `vyradit` z metadat. Ne přes changed(): jeho odložené uložení by
+    // přišlo až po úklidu se starou verzí (409, konflikt na ploše).
+    const ch = decisionChanges(decisions, state.doc.soubory);
+    if (ch.vyradit.length || ch.overeno.length || ch.zrusit.length) {
+      run.textContent = "Ukládám…";
+      const revert = applyDecisionChanges(state.doc.soubory, ch);
+      state.dirty = true;
+      if (!(await flushSave()) || name !== state.name) {
+        // Neuloženo: vrátit, ať dokument odpovídá serveru.
+        revert();
+        delete dialog.dataset.busy;
+        cancel.disabled = false;
+        run.remove();
+        main.append(h("p", { class: "notice error" },
+          "Volby u poškozených se nepodařilo uložit, nic se neprovedlo."));
+        return;
+      }
+    }
+    if (!(zapis && todo + ch.vyradit.length)) {
+      // Jen potvrzení „v pořádku“ (nebo vývojový režim): hotovo.
+      delete dialog.dataset.busy;
+      done = true;
+      return close();
+    }
     run.textContent = "Přesouvám…";
     let result;
     try {
@@ -1445,12 +1631,13 @@ function filmTile(f, markOf) {
   const info = state.scan[f] || {};
   const present = state.present.has(f);
   const m = markAttrs(markOf(f), f);
+  const d = damagedAttrs(f);
   return h("div", {
     class: `ftile${present ? "" : " missing"}` +
       `${state.sel.has(f) ? " selected" : ""}` +
       `${discarded(f) ? " discard" : ""}` +
-      `${f === state.current ? " current" : ""}` + m.cls,
-    dataset: { file: f }, title: m.title, style: m.style,
+      `${f === state.current ? " current" : ""}` + d.cls + m.cls,
+    dataset: { file: f }, title: d.title || m.title, style: m.style,
   }, present
     ? h("img", { src: thumbUrl(f), loading: "lazy", alt: "", draggable: false,
       onerror: (e) => e.target.replaceWith(
@@ -2340,7 +2527,14 @@ function cleanupNeeded() {
   const vyradit = Object.keys(state.doc.soubory || {})
     .some((f) => state.present.has(f) && discarded(f));
   return vyradit || (state.detail?.kontrola || [])
-    .some((n) => NALEZY_UKLID.includes(n.druh));
+    .some((n) => NALEZY_UKLID.includes(n.druh))
+    || damagedToRepair().length > 0;
+}
+
+// Poškozené bez rozhodnutí (stav podle dokumentu).
+function damagedToRepair() {
+  return Object.keys(state.detail?.poskozene || {})
+    .filter((f) => damagedRepairable(f)).sort();
 }
 
 function renderBar() {
@@ -2353,6 +2547,16 @@ function renderBar() {
   if (vyradit) {
     items.push(h("span", { class: "info discard" },
       `${plural(vyradit, "soubor", "soubory", "souborů")} k vyřazení`));
+  }
+  const poskozene = Object.keys(damagedMap(
+    state.detail?.poskozene || {}, state.doc.soubory)).length;
+  if (poskozene) {
+    items.push(h("span", {
+      class: "info damaged",
+      title: "Poškozené soubory z kontroly integrity;" +
+        " v panelu souboru lze potvrdit „v pořádku“ nebo vyřadit",
+    }, plural(poskozene, "poškozený soubor", "poškozené soubory",
+      "poškozených souborů")));
   }
   if (cleanupNeeded()) {
     items.push(h("button", { disabled: !!state.readonly,
@@ -2399,6 +2603,21 @@ function renderPanel() {
       title: "Del", onclick: toggleDiscard,
     }, marked ? "Zrušit vyřazení" : "Vyřadit"),
     marked ? h("span", { class: "warn" }, " Označeno k vyřazení.") : null));
+    const pos = ids.filter((f) => damagedOf(f)
+      || state.doc.soubory[f]?.overeno);
+    if (pos.length) {
+      const confirmed = pos.every((f) => state.doc.soubory[f]?.overeno);
+      const first = pos.map(damagedOf).find(Boolean);
+      extra.push(h("div", { class: "row" }, h("button", {
+        onclick: toggleVerified,
+      }, confirmed ? "Zrušit potvrzení integrity"
+                   : "Považovat za v pořádku"),
+      confirmed ? h("span", { class: "meta" }, " Potvrzeno uživatelem.")
+                : first ? h("span", { class: "warn damaged" }, " "
+                    + damagedText(first)
+                    + (pos.length > 1 ? ` (+${pos.length - 1})` : ""))
+                        : null));
+    }
     extra.push(groupTools(afterGroupChange));
   } else if (state.group && state.doc.skupiny[state.group]) {
     const gid = state.group;

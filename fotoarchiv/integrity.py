@@ -25,6 +25,7 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 
 from PIL import Image
@@ -280,12 +281,93 @@ def _hit(entry, st):
             and entry.get("mtime_ns") == st.st_mtime_ns)
 
 
+# Cache akce zapisuje i server z více vláken (líné náhledy téže akce);
+# znovunačtení před zápisem kryje zpoždění vlákna, zámek řeší i současné
+# čtení-zápis téhož procesu.
+_CACHE_LOCK = threading.Lock()
+
+
 def cached(todo, cache_path):
     """{klíč: výsledek} z cache pro `todo` = [(klíč, cesta, stat, typ)];
     soubory bez platného záznamu chybí. Nic nečte."""
     cache = _load(cache_path)
     return {key: cache[key]["vysledek"] for key, _, st, _ in todo
             if _hit(cache.get(key), st)}
+
+
+def event_cache_path(work, nazev):
+    """Cache výsledků jedné akce (`zkontrolovat`, náhledy, souhrny)."""
+    return Path(work) / "cache" / "kontrola" / f"{nazev}.json"
+
+
+def ensure_event_file(path, cache_path, key=None):
+    """Výsledek kontroly jednoho souboru, uložený do cache akce.
+
+    Hit z cache nic nečte; při miss se soubor zkontroluje a výsledek
+    se uloží (bez sha256). Nepodporovaný typ a chyba čtení vrátí None
+    bez zápisu — kontrola nesmí zastavit generování náhledu.
+    """
+    from .importer import kind  # importer importuje tento modul
+    key = key or Path(path).name
+    if kind(key) == "nepodporovany":
+        return None
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    cache = _load(cache_path)
+    if _hit(cache.get(key), st):
+        return cache[key]["vysledek"]
+    try:
+        result = check(path, kind(key))
+    except OSError:
+        return None
+    result.pop("sha256", None)
+    # Před zápisem znovu načíst: náhledy jedné akce se počítají
+    # souběžně a každý zapisuje jen svůj záznam (nejde přepsat cizí).
+    with _CACHE_LOCK:
+        cache = _load(cache_path)
+        cache[key] = {"verze": VERSION, "size": st.st_size,
+                      "mtime_ns": st.st_mtime_ns, "vysledek": result}
+        _save(cache_path, cache)
+    return result
+
+
+def summary(cache_path, doc, present=None):
+    """{název: {"stav", "duvody", "overeno"?, "vyradit"?}} poškozených.
+
+    `doc` je `_metadata.json` akce (může být None); u souborů s ručním
+    potvrzením nebo označením k vyřazení přídá příznak — počty je nechají
+    vyniknout, dialog úklidu je ukáže šedě. `present` jsou názvy souborů
+    v kořeni: bez něj se počítají i výsledky souborů, které už byly
+    vytroupeny (zastaralá cache). Záznamy starší verze pravidel a klíče
+    z podsložek (RAW.ignored) do souhrnu nepatří; kromě cache JSONu
+    se nic nečte."""
+    files = (doc or {}).get("soubory") or {}
+    present = None if present is None else set(present)
+    out = {}
+    for key, entry in sorted(_load(cache_path).items()):
+        if "/" in key or entry.get("verze") != VERSION:
+            continue
+        if present is not None and key not in present:
+            continue
+        result = entry.get("vysledek") or {}
+        if result.get("stav") not in (SUSPECT, UNREADABLE):
+            continue
+        record = files.get(key) or {}
+        item = {"stav": result["stav"], "duvody": result.get("duvody") or []}
+        if record.get("overeno"):
+            item["overeno"] = True
+        if record.get("vyradit"):
+            item["vyradit"] = True
+        out[key] = item
+    return out
+
+
+def counted(summary_map):
+    """Počet do odznaku: bez ručně potvrzených a označených k vyřazení."""
+    return sum(1 for item in summary_map.values()
+               if not (item.get("overeno") or item.get("vyradit")))
 
 
 def iter_check_files(todo, cache_path, sha_cache=None):

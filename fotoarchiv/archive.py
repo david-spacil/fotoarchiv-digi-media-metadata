@@ -133,6 +133,7 @@ class Workspace:
     def list_events(self):
         # model a consistency importují archive
         from .consistency import classify, counts
+        from .integrity import counted, event_cache_path, summary
         from .model import incomplete
         events = []
         for name in self.event_names():
@@ -147,6 +148,7 @@ class Workspace:
                     "zmeneno_po_exportu": False,
                     "chybi": [],
                     "kontrola": {},
+                    "poskozene": 0,
                 })
                 continue
             present = set()
@@ -180,6 +182,10 @@ class Workspace:
                 "zmeneno_po_exportu": zmeneno,
                 "chybi": chybi,
                 "kontrola": counts(classify(files, dirs, doc)),
+                # Počet poškozených z cache kontroly (issue #10); bez
+                # vyřazených a ručně potvrzených, bez čtení souborů.
+                "poskozene": counted(summary(
+                    event_cache_path(self.work, name), doc, present)),
             })
         return events
 

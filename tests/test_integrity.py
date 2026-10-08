@@ -538,3 +538,92 @@ def test_cli_repair_confirmed(archive, tmp_path, monkeypatch, capsys):
                         lambda *a: (_ for _ in ()).throw(
                             AssertionError("ptá se znovu")))
     run(archive, tmp_path, "--rychle")
+
+
+# --- cache akce z náhledu a souhrn (issue #10, varianta C) ------------------
+
+def test_event_cache_path_nazev(tmp_path):
+    p = integrity.event_cache_path(tmp_path, "2026-04-28 akce")
+    assert p == (tmp_path / "cache" / "kontrola" / "2026-04-28 akce.json")
+
+
+def test_ensure_event_file_pise_cache(tmp_path):
+    path = tmp_path / "a.jpg"
+    path.write_bytes(b"\x00" * (70 * 1024))
+    cache = tmp_path / "kontrola" / "akce.json"
+    r = integrity.ensure_event_file(path, cache)
+    assert r["stav"] == UNREADABLE
+    data = json.loads(cache.read_text())
+    assert data["a.jpg"]["vysledek"]["stav"] == UNREADABLE
+    assert "sha256" not in data["a.jpg"]["vysledek"]
+    # Hit: výsledek je z cache, soubor se znovu nekontroluje.
+    assert integrity.ensure_event_file(path, cache)["stav"] == UNREADABLE
+
+
+def test_ensure_event_file_preskakuje(tmp_path):
+    cache = tmp_path / "k.json"
+    txt = tmp_path / "a.txt"
+    txt.write_text("x")
+    assert integrity.ensure_event_file(txt, cache) is None
+    assert integrity.ensure_event_file(tmp_path / "neni.jpg", cache) is None
+    assert not cache.exists()
+
+
+def test_summary(tmp_path):
+    cache = tmp_path / "k.json"
+    entry = lambda stav: {"verze": integrity.VERSION, "size": 1,
+                          "mtime_ns": 1, "vysledek": {"stav": stav,
+                                                      "duvody": ["d"]}}
+    data = {"a.jpg": entry(SUSPECT), "b.jpg": entry(UNREADABLE),
+            "c.jpg": entry(OK), "RAW.ignored/d.nef": entry(UNREADABLE),
+            "mizny.jpg": entry(UNREADABLE),
+            "stary.nef": {"verze": 1, "size": 1, "mtime_ns": 1,
+                          "vysledek": {"stav": SUSPECT, "duvody": []}}}
+    cache.write_text(json.dumps(data))
+    doc = {"soubory": {"b.jpg": {"overeno": True},
+                       "c.jpg": {}, "mizny.jpg": {}}}
+    present = {"a.jpg", "b.jpg", "c.jpg"}
+    s = integrity.summary(cache, doc, present)
+    assert set(s) == {"a.jpg", "b.jpg"}
+    assert s["b.jpg"]["overeno"] is True and "vyradit" not in s["b.jpg"]
+    assert integrity.counted(s) == 1
+    doc["soubory"]["a.jpg"] = {"vyradit": True}
+    s = integrity.summary(cache, doc, present)
+    assert s["a.jpg"]["vyradit"] is True
+    assert integrity.counted(s) == 0
+    # Bez `present` zastaralá cache počítá i zmizelý soubor.
+    assert "mizny.jpg" in integrity.summary(cache, doc)
+    assert integrity.summary(tmp_path / "neni.json", None) == {}
+
+
+def test_ensure_event_file_soubbezne(tmp_path):
+    """Dva náhledy najednou se v cache nepřepíšou (issue #10, C)."""
+    import threading
+
+    paths = []
+    for name in ("a.jpg", "b.jpg"):
+        p = tmp_path / name
+        p.write_bytes(b"\x00" * (70 * 1024))
+        paths.append(p)
+    cache = tmp_path / "k.json"
+    # Zpomalí čtení souboru tak, aby obě vlákna zkontrolovala před
+    # zápisem toho druhého.
+    real_check = integrity.check
+    barrier = threading.Barrier(2, timeout=5)
+
+    def slow_check(path, typ):
+        barrier.wait()
+        return real_check(path, typ)
+
+    integrity.check = slow_check
+    try:
+        ts = [threading.Thread(target=integrity.ensure_event_file,
+                               args=(p, cache)) for p in paths]
+        for t in ts:
+            t.start()
+        for t in ts:
+            t.join()
+    finally:
+        integrity.check = real_check
+    data = json.loads(cache.read_text())
+    assert set(data) == {"a.jpg", "b.jpg"}
