@@ -85,7 +85,7 @@ z nich. Autor bez souboru MUST NOT být uveden.
 
 ### Requirement: Okamžiky generování
 Aplikace SHALL index přegenerovat po provedení importu, po exportu XMP
-z aplikace (tlačítko Exportovat i dokončení akce) a jednou na konci
+z aplikace (dokončení akce) a jednou na konci
 příkazu `exportovat`. Uložení `_metadata.json` a kontrola exportu
 nanečisto MUST NOT index generovat. Soubor indexu SHALL být zapsán
 atomicky a jen tehdy, když chybí nebo se jeho obsah liší; obsah MUST
