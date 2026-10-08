@@ -42,6 +42,13 @@ Volitelné přepínače:
 - `--work CESTA` — jiný pracovní adresář než `.work`.
 - `--host`, `--port` — adresa a port (výchozí `127.0.0.1:5000`).
 
+Jednorázové skrytí nedokončených akcí před Immichem (viz
+[Archiv](#archiv)), při zastaveném serveru:
+
+```sh
+.venv/bin/python -m fotoarchiv skryt --archiv … --zapis-do-archivu
+```
+
 Napojení na Immich (obličeje) a kontakt pro Nominatim (geokódování
 míst) nastavuje admin v aplikaci; uloží se do `.work/immich.json`
 a `.work/nominatim.json`. Zastaralý přepínač `--kontakt` server při
@@ -133,6 +140,12 @@ docker compose exec fotoarchiv python -m fotoarchiv heslo LOGIN --work /work
 # dávkový export XMP všech akcí:
 docker compose exec fotoarchiv python -m fotoarchiv exportovat \
   --archiv /archiv --work /work --zapis-do-archivu
+# jednorázové skrytí nedokončených akcí před Immichem (při zastaveném
+# serveru; bez --zapis-do-archivu jen výpis):
+docker compose stop fotoarchiv
+docker compose run --rm fotoarchiv skryt \
+  --archiv /archiv --work /work --zapis-do-archivu
+docker compose start fotoarchiv
 ```
 
 Aktualizace: `git pull && docker compose up -d --build`.
@@ -160,6 +173,21 @@ Poznámky:
   beze změny. Výjimkou je generovaný index `_INDEX.html` a `_INDEX.md`
   (viz [Výstupy](#výstupy)) a `přetřídit`, ze které v produkčním
   režimu přesouvá soubory import (viz [Import](#import)).
+- **Nedokončená akce je skrytá před Immichem** (issue #13): její složka
+  má příponu `.ignored` (`2026-04-28 kontrola Stezky.ignored`), takže ji
+  Immich vynechá stejným vzorem jako ignorované podsložky. Akce se
+  v aplikaci, v URL, u zámku i v `.work` jmenuje bez přípony; přípona je
+  jen vlastnost složky. Import zakládá novou akci rovnou skrytou,
+  dokončení příponu odebere (viz [Tok práce](#tok-práce)) a dokončená
+  akce ji už znovu nedostane. Stávající nedokončené akce (a akce
+  nakopírované do archivu mimo aplikaci) skryje jednorázově
+  `python -m fotoarchiv skryt --archiv … --zapis-do-archivu` při
+  zastaveném serveru; bez přepínače jen vypíše, co by přejmenoval.
+  Akce, kterou Immich už načetl, z něj skrytím zmizí i s obličeji
+  a po dokončení se načte znovu jako nové assety. Existuje-li složka
+  s příponou i bez ní, aplikace akci ukáže jako *kolize složek*
+  a nepracuje s ní, dokud jednu správce archivu neodstraní nebo
+  nesloučí; nic sama nepřesouvá.
 - `přetřídit` drží nezatříděné akce k importu, `fotky mimo akce`
   materiál, který akcí není (sbírky, portréty, výběry pro web, podklady
   na večírky). Kopie, které při zploštění `přetřídit` vyšly jako
@@ -371,7 +399,8 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
   poškozený Immich. Export pro obnovu nemění záznam o exportu; běžný
   export pak sidecary vrátí do běžného tvaru.
 - **Immich** bude archiv číst jako externí knihovnu jen pro čtení
-  s výjimkami `**/*.ignored/**` a nezpracovávanými složkami první úrovně
+  s výjimkami `**/*.ignored/**` (ignorované podsložky i nedokončené
+  akce, viz [Archiv](#archiv)) a nezpracovanými složkami první úrovně
   (`přetřídit`, `přednášky SKLEP TIC`, `fotky mimo akce`). Testovací
   knihovna vidí archiv pod `/mnt/media/fotoarchiv/…`; aplikace z ní čte
   jen pojmenované obličeje (viz Aplikace, Immich).
@@ -456,12 +485,15 @@ Lokální webová aplikace spouštěná nad složkou archivu.
    a v produkčním režimu ho po potvrzení provede (viz Podsložky a RAW);
    ve vývojovém jen ukáže plán.
 4. **Dokončení akce** uloží změny, zkontroluje úplnost (co chybí,
-   ukáže a dokončí až po potvrzení), zapíše sidecary a nastaví
-   `dokonceno`. Selže-li zápis některého sidecaru, akce dokončená
-   není. Tlačítko **Exportovat** zapíše sidecary bez kontroly
-   a bez dokončení. U tlačítka plocha ukazuje, kolik sidecarů je
-   neaktuálních, a po úpravě „neexportované změny“; seznam akcí
-   u dokončené akce upravené po exportu uvede „změněno po exportu“.
+   ukáže a dokončí až po potvrzení), zapíše sidecary, v produkčním
+   režimu odebere složce akce příponu `.ignored` (zveřejní ji pro
+   Immich, který ji tak poprvé uvidí rovnou se sidecary) a nastaví
+   `dokonceno`. Selže-li zápis některého sidecaru nebo přejmenování
+   složky (např. soubor v ní drží jiný počítač), akce dokončená
+   není a plocha chybu ukáže. Tlačítko **Exportovat** zapíše sidecary
+   bez kontroly a bez dokončení. U tlačítka plocha ukazuje, kolik
+   sidecarů je neaktuálních, a po úpravě „neexportované změny“; seznam
+   akcí u dokončené akce upravené po exportu uvede „změněno po exportu“.
    U dokončené akce je Dokončit akci neaktivní, dokud není co
    dokončovat (neuložené či neexportované změny, neaktuální sidecary,
    selhaný export).
@@ -499,9 +531,11 @@ plán → výsledek.
   přeskočí, ostatní se vypíšou a nepřenesou.
 - **Cíl:** stávající akce, nebo nová — datum se předvyplní nejstarším
   dnem z EXIF, název doplní uživatel; složka `YYYY-MM-DD název` bez
-  `/` a `\` a nesmí existovat (bez ohledu na velikost písmen; jinak
-  průvodce nabídne zvolit ji jako stávající). U dokončené akce
-  upozorní, že nové soubory budou bez metadat.
+  `/` a `\`, nekončí na `.ignored` a nesmí existovat s příponou
+  `.ignored` ani bez ní (bez ohledu na velikost písmen; jinak průvodce
+  nabídne zvolit ji jako stávající). Nová akce vznikne skrytá před
+  Immichem (`název.ignored`, viz [Archiv](#archiv)). U dokončené akce
+  upozorní, že nové soubory budou bez metadat a Immich je uvidí hned.
 
   Ve stejném kroku se volí **skupiny** importovaných médií (RAWy
   skupinu nedostanou): *podle podsložek* (jen má-li výběr podsložky;
@@ -608,7 +642,9 @@ Otestovat ověří verzi, osoby a čtení obličejů. Nastavení
   a obličeje na nich; nepojmenované obličeje se ignorují.
 - Asset se páruje se souborem podle posledních dvou částí cesty
   (složka akce, soubor), kořen archivu v Immichi se nenastavuje.
-  Zpracují se jen akce, které už mají `_metadata.json`.
+  Zpracují se jen akce, které už mají `_metadata.json`. Nedokončenou
+  akci Immich nevidí (přípona `.ignored`), obličeje k ní přibudou až
+  po dokončení.
 - `oblast` se počítá z obdélníku a rozměru, ke kterému ho Immich
   vztahuje (zmenšenina už otočené fotky), takže na měřítku nezáleží.
 - `_metadata.json` se přepíše, jen když se obličeje některého souboru

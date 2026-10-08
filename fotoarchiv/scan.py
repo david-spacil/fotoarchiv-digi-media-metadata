@@ -7,7 +7,7 @@ import subprocess
 import unicodedata
 from pathlib import Path
 
-from .archive import is_metadata, is_skipped
+from .archive import event_name, is_metadata, is_skipped
 
 MEDIA_EXT = {"jpg", "jpeg", "png", "mp4", "mov"}
 VIDEO_EXT = {"mp4", "mov"}
@@ -114,10 +114,11 @@ def scan(event_dir, cache_dir, exiftool=run_exiftool, cache_name=None):
 
     Výsledek se cachuje podle (název, velikost, mtime); exiftool dostane jen
     soubory, které v cache nejsou nebo se změnily. Cache je pod názvem
-    složky, nebo pod `cache_name`.
+    akce (bez přípony `.ignored`, přežije zveřejnění), nebo pod
+    `cache_name`.
     """
     event_dir = Path(event_dir)
-    cache_name = cache_name or event_dir.name
+    cache_name = cache_name or event_name(event_dir)
     cache_path = Path(cache_dir) / "scan" / f"{cache_name}.json"
     try:
         cache = json.loads(cache_path.read_text(encoding="utf-8"))

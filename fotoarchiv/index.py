@@ -61,18 +61,21 @@ def collect(ws):
     """Záznamy všech akcí archivu, seřazené podle data sestupně."""
     records = []
     for event in ws.list_events():
+        if event["stav"] == "kolize":
+            continue  # nejde říct, která složka je akce
         name = event["nazev"]
         date_, title = EVENT_RE.match(name).groups()
-        media, _ = scan.root_files(ws.archiv / name)
+        folder = ws.event_dir(name)
+        media, _ = scan.root_files(folder)
         video = sum(scan.is_video(n) for n, _ in media)
         jpeg = first_jpeg(media)
         record = {
-            "slozka": name, "stav": event["stav"],
+            "slozka": folder.name, "stav": event["stav"],
             "datum_od": date_, "datum_do": date_, "nazev": title,
             "popis": "", "mista_akce": [], "mista": [], "autori": [],
             "ucastnici": [], "osoby": [], "pristroje": [],
             "foto": len(media) - video, "video": video,
-            "nahled": preview(ws, ws.archiv / name / jpeg) if jpeg else None,
+            "nahled": preview(ws, folder / jpeg) if jpeg else None,
         }
         doc, _ = ws.load(name)
         if doc is not None:

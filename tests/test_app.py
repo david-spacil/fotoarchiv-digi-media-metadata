@@ -372,6 +372,91 @@ def test_finish_export_error(prod, monkeypatch):
     assert c.get("/api/akce").json[0]["stav"] == "rozpracovano"
 
 
+HIDDEN = f"{EVENT}.ignored"
+
+
+def finish(c, version):
+    return c.post(f"/api/akce/{EVENT}/dokoncit",
+                  json={"relace": "r1", "version": version})
+
+
+def test_finish_publishes_hidden_event(prod):
+    """Dokončení odebere příponu `.ignored` až po zápisu sidecarů."""
+    c, archiv = prod
+    (archiv / EVENT).rename(archiv / HIDDEN)
+    assert c.get("/api/akce").json[0]["nazev"] == EVENT
+    doc, version = saved(c)
+    assert (archiv / HIDDEN / "_metadata.json").is_file()
+    r = finish(c, version)
+    assert r.status_code == 200 and r.json["dokonceno"]
+    assert "zverejneni" not in r.json
+    assert not (archiv / HIDDEN).exists()
+    assert (archiv / EVENT / "foto.jpg.xmp").exists()
+    assert 'href="./2026-04-28%20kontrola/"' in \
+        (archiv / "_INDEX.html").read_text()
+    # Akce jde dál otevřít a upravit pod týmž názvem a zámkem.
+    d = c.get(f"/api/akce/{EVENT}").json
+    doc = d["metadata"]
+    doc["akce"]["popis"] = "nový popis"
+    r = c.put(f"/api/akce/{EVENT}/metadata", json={
+        "metadata": doc, "version": d["version"], "relace": "r1"})
+    assert r.status_code == 200
+    # Opakované dokončení příponu nevrátí.
+    assert finish(c, r.json["version"]).json["dokonceno"]
+    assert (archiv / EVENT).is_dir() and not (archiv / HIDDEN).exists()
+
+
+def test_finish_rename_error(prod, monkeypatch):
+    c, archiv = prod
+    (archiv / EVENT).rename(archiv / HIDDEN)
+    _, version = saved(c)
+
+    def failing(src, dst):
+        raise OSError("soubor je otevřený")
+
+    monkeypatch.setattr("fotoarchiv.archive.os.rename", failing)
+    r = finish(c, version)
+    assert r.status_code == 200 and r.json["dokonceno"] is None
+    assert r.json["zverejneni"] == "soubor je otevřený"
+    assert r.json["chyby"] == []
+    assert (archiv / HIDDEN / "foto.jpg.xmp").exists()
+    assert json.loads((archiv / HIDDEN / "_metadata.json").read_text())[
+        "dokonceno"] is None
+    assert c.get("/api/akce").json[0]["stav"] == "rozpracovano"
+
+
+def test_finish_dev_mode_keeps_suffix(tmp_path, monkeypatch):
+    c, archiv = make_client(tmp_path, monkeypatch)
+    (archiv / EVENT).rename(archiv / HIDDEN)
+    _, version = saved(c)
+    assert finish(c, version).json["dokonceno"]
+    assert (archiv / HIDDEN).is_dir() and not (archiv / EVENT).exists()
+
+
+def test_collision_refused(prod):
+    c, archiv = prod
+    (archiv / HIDDEN).mkdir()
+    before = snapshot(archiv)
+    assert c.get("/api/akce").json[0]["stav"] == "kolize"
+    r = c.get(f"/api/akce/{EVENT}")
+    assert r.status_code == 409 and r.json["chyba"] == "kolize_pripony"
+    assert c.post(f"/api/akce/{EVENT}/dokoncit", json={
+        "relace": "r1", "version": None}).status_code == 409
+    assert c.get(f"/api/akce/{HIDDEN}").status_code == 404
+    assert snapshot(archiv) == before
+
+
+def test_scan_cache_survives_publish(prod, tmp_path):
+    c, archiv = prod
+    (archiv / EVENT).rename(archiv / HIDDEN)
+    _, version = saved(c)
+    cache = tmp_path / "work" / "cache" / "scan" / f"{EVENT}.json"
+    assert cache.is_file()
+    finish(c, version)
+    assert cache.is_file()
+    assert not (cache.parent / f"{HIDDEN}.json").exists()
+
+
 def test_cli_export(tmp_path, monkeypatch, capsys):
     c, archiv = make_client(tmp_path, monkeypatch)
     saved(c)
@@ -781,6 +866,6 @@ def test_api_source_lock(prod):
     result = ndjson(r)[-1]
     r.close()
     assert result["typ"] == "vysledek" and result["zahozeno"]
-    moved = sorted(os.listdir(archiv / "2019-05-01 DOD David"))
+    moved = sorted(os.listdir(archiv / "2019-05-01 DOD David.ignored"))
     assert "RAW.ignored" in moved
     assert c.application.config["LOCKS"].holder("přetřídit/DOD 2019") is None
