@@ -29,8 +29,8 @@ from datetime import date
 from pathlib import Path
 
 from . import names, scan
-from .archive import (EVENT_RE, IMPORT_TMP_PREFIX, UNSORTED, is_metadata,
-                      is_skipped)
+from .archive import (EVENT_RE, IMPORT_TMP_PREFIX, UNSORTED, event_name,
+                      is_metadata, is_skipped)
 from .cleanup import (BLOCKED, DONE, FAILED, IGNORED, RAW_DIR, Blocked, _key,
                       is_raw)
 
@@ -125,9 +125,14 @@ def file_sha256(path):
 # --- nová akce ---------------------------------------------------------------
 
 def check_new_name(archiv, nazev):
-    """Vyhodí Refused, když složku nové akce `nazev` nejde založit."""
+    """Vyhodí Refused, když složku nové akce `nazev` nejde založit.
+
+    Akce existuje, je-li v archivu složka `nazev` s příponou `.ignored`
+    nebo bez ní; `akce` v odmítnutí je název bez přípony.
+    """
     m = EVENT_RE.match(nazev) if isinstance(nazev, str) else None
     if (not m or nazev != nazev.strip() or nazev.endswith(".")
+            or _key(nazev).endswith(_key(IGNORED))
             or "/" in nazev or "\\" in nazev or nazev.startswith(".")):
         raise Refused("neplatny_nazev")
     try:
@@ -135,19 +140,23 @@ def check_new_name(archiv, nazev):
     except ValueError:
         raise Refused("neplatny_nazev") from None
     # SMB nerozlišuje velikost písmen: existence přes _key, ne přes stat.
-    existing = {_key(n): n for n in os.listdir(archiv)}
+    existing = {_key(event_name(n)): event_name(n) for n in os.listdir(archiv)}
     if _key(nazev) in existing:
         raise Refused("existuje", akce=existing[_key(nazev)])
 
 
 def create_event(archiv, nazev):
-    """Založí složku nové akce; existující (i mezitím vzniklou) odmítne."""
+    """Založí složku nové akce skrytou před Immichem (`nazev.ignored`,
+    zveřejní ji dokončení); existující (i mezitím vzniklou) odmítne."""
     check_new_name(archiv, nazev)
-    path = Path(archiv) / nazev
+    path = Path(archiv) / (nazev + IGNORED)
     try:
         os.mkdir(path)
     except FileExistsError:
         raise Refused("existuje", akce=nazev) from None
+    if (Path(archiv) / nazev).exists():  # mezitím vznikla bez přípony
+        os.rmdir(path)
+        raise Refused("existuje", akce=nazev)
     return path
 
 
@@ -1107,7 +1116,8 @@ class Imports:
     def sha_cache(self, event_dir):
         if event_dir is None:
             return None
-        return self.work / "cache" / "sha256" / f"{Path(event_dir).name}.json"
+        return (self.work / "cache" / "sha256"
+                / f"{event_name(event_dir)}.json")
 
     def set_target(self, id, jmeno, cil, nova, skupiny=None):
         """Uloží zamýšlený cíl (název akce, nová?) a volbu skupin pro

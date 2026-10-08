@@ -2,7 +2,8 @@ import json
 
 import pytest
 
-from fotoarchiv.archive import Conflict, Workspace, version_of
+from fotoarchiv.__main__ import main
+from fotoarchiv.archive import Collision, Conflict, Workspace, version_of
 from .conftest import make_tree, snapshot
 
 EVENT = "2026-04-28 kontrola Stezky"
@@ -169,3 +170,105 @@ def test_list_events_flags_incomplete_finished(ws):
     doc["soubory"]["a.jpg"]["misto"] = "Brno"
     ws.save(EVENT, doc, v)
     assert ws.list_events()[0]["chybi"] == []
+
+
+# --- skrytí nedokončených akcí před Immichem (issue #13) -------------------
+
+HIDDEN = f"{EVENT}.ignored"
+
+
+def hide_event(ws):
+    (ws.archiv / EVENT).rename(ws.archiv / HIDDEN)
+
+
+def test_hidden_event_listed_without_suffix(ws):
+    hide_event(ws)
+    events = ws.list_events()
+    assert [e["nazev"] for e in events] == [EVENT, "2025-01-02 starší"]
+    assert events[0]["souboru"] == 2
+    assert ws.event_dir(EVENT) == ws.archiv / HIDDEN
+    assert ws.is_hidden(EVENT) and not ws.is_hidden("2025-01-02 starší")
+
+
+def test_hidden_name_with_suffix_refused(ws):
+    hide_event(ws)
+    with pytest.raises(KeyError):
+        ws.event_dir(HIDDEN)
+    (ws.archiv / f"{HIDDEN}.ignored").mkdir()  # dvojitá přípona
+    assert HIDDEN not in ws.event_names()
+
+
+def test_hidden_metadata_in_event_dir(ws_prod):
+    hide_event(ws_prod)
+    ws_prod.save(EVENT, {"n": 1}, None)
+    assert (ws_prod.archiv / HIDDEN / "_metadata.json").is_file()
+    assert ws_prod.sidecar_path(EVENT, "a.jpg") == \
+        ws_prod.archiv / HIDDEN / "a.jpg.xmp"
+    assert ws_prod.list_events()[0]["stav"] == "rozpracovano"
+
+
+def test_collision(ws_prod):
+    (ws_prod.archiv / HIDDEN).mkdir()
+    before = snapshot(ws_prod.archiv)
+    with pytest.raises(Collision):
+        ws_prod.event_dir(EVENT)
+    event = ws_prod.list_events()[0]
+    assert event["nazev"] == EVENT and event["stav"] == "kolize"
+    assert ws_prod.event_names().count(EVENT) == 1
+    with pytest.raises(Collision):
+        ws_prod.publish(EVENT)
+    assert snapshot(ws_prod.archiv) == before
+
+
+def test_publish(ws_prod):
+    hide_event(ws_prod)
+    ws_prod.save(EVENT, {"n": 1}, None)
+    assert ws_prod.publish(EVENT) == ws_prod.archiv / EVENT
+    assert not (ws_prod.archiv / HIDDEN).exists()
+    assert ws_prod.load(EVENT)[0] == {"n": 1}
+    # Bez přípony nic nedělá.
+    assert ws_prod.publish(EVENT) == ws_prod.archiv / EVENT
+
+
+def test_publish_dev_mode_keeps_archive(ws):
+    hide_event(ws)
+    before = snapshot(ws.archiv)
+    assert ws.publish(EVENT) == ws.archiv / HIDDEN
+    assert snapshot(ws.archiv) == before
+
+
+def cli_hide(ws, *flags):
+    main(["skryt", "--archiv", str(ws.archiv), "--work", str(ws.work),
+          *flags])
+
+
+def test_cli_hide_dry_run(ws_prod, capsys):
+    before = snapshot(ws_prod.archiv)
+    cli_hide(ws_prod)
+    out = capsys.readouterr().out
+    assert f"skryje: {EVENT}" in out and "skryje: 2025-01-02 starší" in out
+    assert "Ke skrytí: 2" in out
+    assert snapshot(ws_prod.archiv) == before
+
+
+def test_cli_hide(ws_prod, capsys):
+    # nezpracovaná EVENT, rozpracovaná, dokončená, už skrytá, kolize
+    ws_prod.save("2025-01-02 starší", {"dokonceno": None}, None)
+    for name in ("2024-03-14 výzkum Hradisko", "2023-01-01 skrytá",
+                 "2022-01-01 dvojí", "2022-01-01 dvojí.ignored"):
+        (ws_prod.archiv / name).mkdir()
+    ws_prod.save("2024-03-14 výzkum Hradisko",
+                 {"dokonceno": "2024-04-01"}, None)
+    (ws_prod.archiv / "2023-01-01 skrytá").rename(
+        ws_prod.archiv / "2023-01-01 skrytá.ignored")
+    cli_hide(ws_prod, "--zapis-do-archivu")
+    out = capsys.readouterr().out
+    assert "přeskočeno: 2022-01-01 dvojí" in out
+    assert "Skryto: 2, kolizí: 1" in out
+    assert sorted(p.name for p in ws_prod.archiv.iterdir()
+                  if p.name[0].isdigit()) == [
+        "2022-01-01 dvojí", "2022-01-01 dvojí.ignored",
+        "2023-01-01 skrytá.ignored", "2024-03-14 výzkum Hradisko",
+        "2025-01-02 starší.ignored", HIDDEN]
+    # Metadata jdou se složkou.
+    assert ws_prod.load("2025-01-02 starší")[0] == {"dokonceno": None}

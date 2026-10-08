@@ -14,13 +14,13 @@ import secrets
 from datetime import date
 from pathlib import Path
 
-from flask import (Flask, Response, abort, g, jsonify, redirect, request,
-                   send_file, session)
+from flask import (Flask, Response, abort, g, jsonify, make_response,
+                   redirect, request, send_file, session)
 
 from . import (auth, cleanup, geocode, immich, importer, lock, model, names,
                scan, thumbs, unsorted, xmp)
 from . import index as archive_index
-from .archive import SCHEMA, UNSORTED, Conflict, Workspace
+from .archive import SCHEMA, UNSORTED, Collision, Conflict, Workspace
 
 STATIC = Path(__file__).parent / "static"
 
@@ -168,6 +168,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     def event_dir(nazev):
         try:
             return ws.event_dir(nazev)
+        except Collision:
+            abort(make_response({"chyba": "kolize_pripony"}, 409))
         except KeyError:
             abort(404)
 
@@ -324,7 +326,9 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     @app.post("/api/akce/<nazev>/dokoncit")
     def akce_finish(nazev):
-        """Uloží `dokonceno`, exportuje; při chybě exportu ho vrátí."""
+        """Uloží `dokonceno`, exportuje a zveřejní složku akce pro Immich
+        (odebere `.ignored`); při chybě exportu nebo přejmenování
+        `dokonceno` vrátí."""
         event_dir(nazev)
         body = request.get_json(force=True)
         denied = require_lock(nazev, body)
@@ -339,7 +343,14 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         try:
             version = ws.save(nazev, doc, version)
             result = xmp.export(ws, nazev)
-            if result["chyby"]:
+            if not result["chyby"]:
+                try:
+                    ws.publish(nazev)
+                except OSError as e:
+                    result["zverejneni"] = str(e)
+                except Collision:
+                    result["zverejneni"] = "kolize_pripony"
+            if result["chyby"] or result.get("zverejneni"):
                 doc["dokonceno"] = None
                 version = ws.save(nazev, doc, version)
         except Conflict as e:
@@ -655,6 +666,13 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         if denied:
             release_source()
             return denied
+        if not created:
+            # Složku zjistit až pod zámkem: dokončení ji mohlo zveřejnit.
+            try:
+                path = ws.event_dir(nazev)
+            except KeyError:
+                release_source()
+                abort(404)
         finished = False
 
         def release():

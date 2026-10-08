@@ -35,6 +35,9 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv exportovat [AKCE] --archiv … --work .work
 # → XMP sidecary jedné/všech akcí (jen změněné); bez --zapis-do-archivu
 #   do .work/xmp/; --obliceje přidá oblasti obličejů pro obnovu Immiche
+.venv/bin/python -m fotoarchiv skryt --archiv … --work .work
+# → skryje nedokončené akce před Immichem (přípona .ignored u složky);
+#   bez --zapis-do-archivu jen výpis, spouštět při zastaveném serveru
 cp .env.example .env && docker compose up -d --build
 # → nasazení na server (produkční režim, ./work), viz README, Docker
 
@@ -84,6 +87,11 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
   a v nich jen kořen. Podsložky se buď sloučí s kořenem, nebo dostanou
   příponu `.ignored` — ta je jediným záznamem o ignorování. RAWy do
   Immiche nejdou (`RAW.ignored`). `Thumbs.db` se přeskakuje.
+- **Složka nedokončené akce má v produkci příponu `.ignored`** (Immich ji
+  nevidí); dokončení ji po zápisu sidecarů odebere. Název akce je vždy
+  bez přípony (URL, zámek, cache, `.work`); složku na disku skládá jen
+  `Workspace.event_dir`, nikdy `archiv / název` přímo. Obě složky
+  zároveň = kolize, nic se nepřesouvá.
 - Přesun souborů nikdy nepřepíše existující soubor.
 - Formát XMP: co Immich nemá vlastní pole, jde do tagů podle konvencí
   `arubrno/archiv-immich` (viz README, Výstupy).

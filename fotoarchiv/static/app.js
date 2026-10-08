@@ -130,7 +130,13 @@ const STAV = {
   nezpracovano: "nezpracováno",
   rozpracovano: "rozpracováno",
   hotovo: "hotovo",
+  kolize: "kolize složek",
 };
+
+// Složka akce je v archivu s příponou `.ignored` i bez ní (issue #13).
+const KOLIZE = "Akce má v archivu dvě složky, s příponou .ignored i bez " +
+  "ní. Aplikace s ní nepracuje, dokud jednu z nich správce archivu " +
+  "neodstraní nebo nesloučí.";
 
 // Pole, která chybí dokončené akci (`chybi` v seznamu akcí).
 const CHYBI = { autori: "autoři", datum: "data", misto: "místa" };
@@ -449,7 +455,8 @@ async function showList() {
       h("td", {}, h("a", { href: `#/akce/${encodeURIComponent(e.nazev)}` },
         e.nazev.slice(11))),
       h("td", { class: "num" }, e.souboru),
-      h("td", {}, h("span", { class: "badge" }, STAV[e.stav]),
+      h("td", {}, h("span", { class: "badge",
+        title: e.stav === "kolize" ? KOLIZE : null }, STAV[e.stav]),
         e.chybi.length ? h("span", { class: "badge nekompletni",
           title: "Chybí: " + e.chybi.map((k) => CHYBI[k]).join(", ") },
           "nekompletní") : null,
@@ -650,6 +657,10 @@ async function openEvent(name) {
   const entry = events.find((e) => e.nazev === name);
   if (!entry) {
     app.replaceChildren(header(), h("main", {}, "Akce nenalezena."));
+    return;
+  }
+  if (entry.stav === "kolize") {
+    app.replaceChildren(header(), h("main", {}, KOLIZE));
     return;
   }
   if (!userName()) await askName();
@@ -2115,9 +2126,13 @@ async function runExport(finish) {
       state.doc.dokonceno = r.dokonceno;
     }
     state.exportVersion = r.export_version;
-    state.exportNote = (finish && !r.dokonceno
-      ? "Export selhal, akce není dokončená: " : "Exportováno: ") +
-      exportResult(r);
+    state.exportNote = r.zverejneni
+      ? "Akci nešlo zveřejnit pro Immich (přejmenovat složku), není " +
+        `dokončená: ${r.zverejneni === "kolize_pripony" ? KOLIZE
+          : r.zverejneni}`
+      : (finish && !r.dokonceno
+        ? "Export selhal, akce není dokončená: " : "Exportováno: ") +
+        exportResult(r);
     if (r.index?.length) state.exportNote += ` · Index: ${r.index.join("; ")}`;
   } catch (err) {
     if (name !== state.name) return;
@@ -3202,12 +3217,13 @@ function renderTarget() {
   updatePreview();
   const existing = t.mode === "stavajici" ? h("div", { class: "folder" },
     h("select", { onchange: (e) => { t.cil = e.target.value; renderTarget(); } },
-      events.map((e) => h("option", { value: e.nazev,
-        selected: e.nazev === t.cil },
-      e.nazev + (e.stav === "hotovo" ? " (hotovo)" : "")))),
+      events.filter((e) => e.stav !== "kolize").map((e) =>
+        h("option", { value: e.nazev, selected: e.nazev === t.cil },
+          e.nazev + (e.stav === "hotovo" ? " (hotovo)" : "")))),
     event?.stav === "hotovo" ? h("p", { class: "warn" }, "Akce je " +
       "dokončená. Nové soubory v ní budou bez metadat, dokud je " +
-      "nedoplníte a akci znovu nedokončíte.") : null) : null;
+      "nedoplníte a akci znovu nedokončíte, a Immich je uvidí hned.")
+      : null) : null;
   const created = t.mode === "nova" ? h("div", { class: "folder" },
     h("div", { class: "row" },
       h("input", { type: "date", value: t.datum,

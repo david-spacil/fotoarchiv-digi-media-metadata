@@ -453,17 +453,46 @@ def test_copy_cleans_tmp_on_changed_content(tree):
     assert list((root / "akce").iterdir()) == []
 
 
-def test_create_event_race(tmp_path, monkeypatch):
+@pytest.mark.parametrize("folder", ["", ".ignored"])
+def test_create_event_race(tmp_path, monkeypatch, folder):
     name = "2026-04-28 kontrola Stezky"
     real = importer.check_new_name
 
     def check(archiv, nazev):
         real(archiv, nazev)
-        os.mkdir(archiv / nazev)  # jiný uživatel byl rychlejší
+        os.mkdir(archiv / (nazev + folder))  # jiný uživatel byl rychlejší
     monkeypatch.setattr(importer, "check_new_name", check)
     with pytest.raises(Refused) as e:
         importer.create_event(tmp_path, name)
     assert e.value.code == "existuje"
+    assert os.listdir(tmp_path) == [name + folder]
+
+
+def test_create_event_hidden(tmp_path):
+    """Nová akce vzniká skrytá před Immichem (issue #13)."""
+    name = "2026-04-28 kontrola Stezky"
+    path = importer.create_event(tmp_path, name)
+    assert path == tmp_path / f"{name}.ignored" and path.is_dir()
+    assert os.listdir(tmp_path) == [f"{name}.ignored"]
+
+
+@pytest.mark.parametrize("existing", [
+    "2026-04-28 kontrola Stezky", "2026-04-28 kontrola Stezky.ignored",
+    "2026-04-28 KONTROLA Stezky.ignored"])
+def test_check_new_name_hidden_exists(tmp_path, existing):
+    os.mkdir(tmp_path / existing)
+    with pytest.raises(Refused) as e:
+        importer.check_new_name(tmp_path, "2026-04-28 kontrola Stezky")
+    assert e.value.code == "existuje"
+    assert e.value.detail["akce"] == existing.removesuffix(".ignored")
+
+
+@pytest.mark.parametrize("name", [
+    "2026-04-28 kontrola Stezky.ignored", "2026-04-28 Stezky.IGNORED"])
+def test_check_new_name_suffix_refused(tmp_path, name):
+    with pytest.raises(Refused) as e:
+        importer.check_new_name(tmp_path, name)
+    assert e.value.code == "neplatny_nazev"
 
 
 def test_activity_in_other_tab(imports, tree):
@@ -772,12 +801,18 @@ def test_api_new_event(tmp_path, monkeypatch):
     r = stream(c.post(f"/api/import/{id}/provest",
                       json=dict(R1, nova=name)))[-1]
     assert r["cil"] == name and not r["zahozeno"]
-    assert sorted(os.listdir(archiv / name)) == ["RAW.ignored", "a.jpg"]
+    # Skrytá před Immichem do dokončení; akce se jmenuje bez přípony.
+    assert not (archiv / name).exists()
+    assert sorted(os.listdir(archiv / f"{name}.ignored")) == [
+        "RAW.ignored", "a.jpg"]
+    assert name in [e["nazev"] for e in c.get("/api/akce").json]
     assert r["index"] == []
     row = next(line for line in (archiv / "_INDEX.md").read_text()
                .splitlines() if "kontrola Stezky" in line)
     assert [c.strip() for c in row.strip("│").split("│")][-2:] == ["1", "0"]
-    assert 'data-stav="nezpracovano"' in (archiv / "_INDEX.html").read_text()
+    html = (archiv / "_INDEX.html").read_text()
+    assert 'data-stav="nezpracovano"' in html
+    assert 'href="./2026-04-28%20kontrola%20Stezky.ignored/"' in html
     lock = c.post(f"/api/akce/{name}/zamek", json=R2)
     assert lock.status_code == 409  # drží ho relace importu
     assert c.post(f"/api/import/{id}/provest", json=dict(
@@ -798,7 +833,7 @@ def test_api_new_event_interrupted_releases_lock(tmp_path, monkeypatch):
     assert b'"start"' in next(chunks)
     assert b'"prubeh"' in next(chunks)
     r.close()
-    assert os.listdir(archiv / name) == []
+    assert os.listdir(archiv / f"{name}.ignored") == []
     assert c.post(f"/api/akce/{name}/zamek", json=R2).status_code == 200
 
 
@@ -918,6 +953,7 @@ def test_api_groups_conflict_keeps_files(tmp_path, monkeypatch):
 def test_api_groups_proposal(tmp_path, monkeypatch):
     c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
     name = "2026-04-28 DOD"
+    folder = archiv / f"{name}.ignored"  # import zakládá skrytou akci
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"DOD 2015/DOD 2015_Jana/a.jpg": "a",
                        "DOD 2015/DOD 2015_Pavla/b.jpg": "b"})
@@ -925,7 +961,7 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     r = stream(c.post(f"/api/import/{id}/provest",
                       json=dict(R1, nova=name, skupiny=volba)))[-1]
     assert r["skupiny"]["zapsano"]
-    assert not (archiv / name / "_metadata.json").exists()
+    assert not (folder / "_metadata.json").exists()
     assert c.get("/api/akce").json[0]["stav"] == "nezpracovano"
     g = c.get(f"/api/akce/{name}/skupiny").json
     assert g["zdroj"] == "navrh"
@@ -944,7 +980,7 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     assert len(c.get(f"/api/akce/{name}/skupiny").json["skupiny"]) == 3
 
     # Průvodce: návrh z importu, soubor mimo návrh automaticky.
-    (archiv / name / "IMG-20260428-WA0001.jpg").write_text("w")
+    (folder / "IMG-20260428-WA0001.jpg").write_text("w")
     d = c.get(f"/api/akce/{name}").json
     assert d["novy"]
     doc = d["metadata"]

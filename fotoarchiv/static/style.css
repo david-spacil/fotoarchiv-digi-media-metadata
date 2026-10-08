@@ -45,6 +45,7 @@ main.list, main.loading, main.wizard { padding: 12px 16px; overflow: auto; }
   background: #e2e8f0; }
 .stav-rozpracovano .badge { background: #fefcbf; }
 .stav-hotovo .badge { background: #c6f6d5; }
+.stav-kolize .badge { background: #fed7d7; }
 .badge.nekompletni { background: #fed7aa; margin-left: 4px; }
 
 .bar { display: flex; gap: 8px; flex-wrap: wrap; padding: 6px 12px;
