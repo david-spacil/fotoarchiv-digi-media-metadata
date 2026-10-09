@@ -17,7 +17,7 @@
 
 ## 3. Klient
 
-- [ ] 3.1 Přehled: blok „Odebraná poloha“ s vysvětlením a seznamem,
+- [x] 3.1 Přehled: blok „Odebraná poloha“ s vysvětlením a seznamem,
   bez volby povolení a bez Smazat; plán a výsledek je uvedou jako
   samostatnou skupinu; ověřit ručně na `2026-09-17 Test.ignored`
   fotkách (vývojový režim, import ze souborů)
