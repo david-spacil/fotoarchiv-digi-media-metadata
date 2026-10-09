@@ -3518,8 +3518,8 @@ function odebranaPolohaBlock(o) {
       "nebo mailem vynuluje blok GPS v EXIF, takže soubor přijde o " +
       "polohu — pro archiv zásadní informaci. Do archivu se " +
       "nepřenesou a nelze ani povolit, ani smazat; originál předejte " +
-      "jinou cestou: např. kabelem z telefonu, FileSenderem z počítače " +
-      `nebo ho přetřiďte do složky ${UNSORTED}.`),
+      "jinou cestou: např. kabelem z telefonu nebo FileSenderem " +
+      "z počítače."),
     h("table", { class: "ops" }, list.map((d) => h("tr", {},
       h("td", {}, h("code", {}, d.cesta)),
       h("td", {}, d.duvod)))));
@@ -3540,7 +3540,7 @@ function bezPolohyGroup(ops, zdroj) {
       "GPS polohy; zůstane " +
       (zdroj ? `ve zdroji ${UNSORTED}/${zdroj}`
         : "v pracovním adresáři") + " do zahodení importu. Originál " +
-      "předejte jinou cestou (kabel, FileSender, přetřídit)."),
+      "předejte jinou cestou (kabel, FileSender)."),
     h("table", { class: "ops" }, ops.map((o) => h("tr", { class: "failed" },
       h("td", {}, h("code", {}, o.z)),
       h("td", {}, o.duvod)))));

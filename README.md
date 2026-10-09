@@ -675,8 +675,8 @@ plán → výsledek.
   poloha“ bez tlačítka Smazat, plán a výsledek ji uvedou mezi
   nepřenesenými s důvodem „telefon odebral polohu“ (originál zůstane
   v pracovním adresáři nebo ve zdroji `přetřídit`). Uživatel má
-  předat originál jinou cestou — kabelem, FileSenderem z počítače
-  nebo přes `přetřídit`. Videa se zatím neřeší (chování Androidu
+  předat originál jinou cestou — kabelem nebo FileSenderem
+  z počítače. Videa se zatím neřeší (chování Androidu
   u MP4/MOV není změřené). Pokračovat zůstává dostupné, pokud zbývá
   aspoň jedno přenositelné médium.
 - **Cíl:** stávající akce, nebo nová — datum se předvyplní nejstarším
