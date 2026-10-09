@@ -5,8 +5,8 @@ import { parts, withDay, withTime } from "./datetime.js";
 import { missing, resolve, resolveGroup } from "./inherit.js";
 import {
   STAV_KONTROLY, applyDecisionChanges, checkCounts, cleanupDecisions,
-  damagedFiles, damagedMap, damagedText, decisionChanges, toggleAllowed,
-  unchecked,
+  damagedFiles, damagedMap, damagedText, decisionChanges,
+  odebranaPolohaFiles, toggleAllowed, unchecked,
 } from "./integrity.js";
 import { byDay, dayLabel, personIndex, stripeStops } from "./sections.js";
 
@@ -3476,7 +3476,8 @@ async function deleteDamaged(d, button) {
 function damagedBlock(o) {
   if (imp.checking) return progressBox("Kontroluji soubory…");
   const c = checkCounts(o.soubory);
-  const list = damagedFiles(o.soubory, o.povolene_poskozene);
+  const list = damagedFiles(o.soubory, o.povolene_poskozene,
+    o.odebrana_poloha);
   const error = imp.checkError
     ? h("p", { class: "notice error" }, imp.checkError) : null;
   if (!list.length) {
@@ -3503,6 +3504,48 @@ function damagedBlock(o) {
         : null)))))];
 }
 
+// Soubory s odebranou polohou v přehledu: samostatný blok s vysvětlením
+// a seznamem, bez volby „přesto importovat“ a bez Smazat — soubor není
+// poškozený, jen přišel bez polohy; originál je potřeba předat jinou
+// cestou (`odebranaPolohaFiles`).
+function odebranaPolohaBlock(o) {
+  const list = odebranaPolohaFiles(o.soubory, o.odebrana_poloha);
+  if (!list.length) return null;
+  return h("div", { class: "notice error damaged" },
+    h("p", {}, h("strong", {}, "Odebraná poloha: "),
+      `${plural(list.length, "soubor", "soubory", "souborů")} ` +
+      "(telefon odebral polohu). Android při předání fotky prohlížeči " +
+      "nebo mailem vynuluje blok GPS v EXIF, takže soubor přijde o " +
+      "polohu — pro archiv zásadní informaci. Do archivu se " +
+      "nepřenesou a nelze ani povolit, ani smazat; originál předejte " +
+      "jinou cestou: např. kabelem z telefonu, FileSenderem z počítače " +
+      `nebo ho přetřiďte do složky ${UNSORTED}.`),
+    h("table", { class: "ops" }, list.map((d) => h("tr", {},
+      h("td", {}, h("code", {}, d.cesta)),
+      h("td", {}, d.duvod)))));
+}
+
+// Operace plánu/výsledku s fotkou, které telefon odebral polohu
+// (`iter_plan` je vede jako poškozené se stavem `bez_polohy`).
+const bezPolohyOp = (o) => o.stav === "poskozeny"
+  && o.poskozeni === "bez_polohy";
+
+// Samostatná skupina nepřenesených s odebranou polohou v plánu i
+// výsledku, s důvodem.
+function bezPolohyGroup(ops, zdroj) {
+  if (!ops.length) return null;
+  return h("div", { class: "notice error damaged" },
+    h("p", {}, "Odebraná poloha (nepřenesou se): ",
+      h("strong", {}, `${ops.length}.`), " Telefon předal soubor bez " +
+      "GPS polohy; zůstane " +
+      (zdroj ? `ve zdroji ${UNSORTED}/${zdroj}`
+        : "v pracovním adresáři") + " do zahodení importu. Originál " +
+      "předejte jinou cestou (kabel, FileSender, přetřídit)."),
+    h("table", { class: "ops" }, ops.map((o) => h("tr", { class: "failed" },
+      h("td", {}, h("code", {}, o.z)),
+      h("td", {}, o.duvod)))));
+}
+
 function renderOverview() {
   const o = imp.overview;
   // Kontrola se sama spustí jednou pro každou sadu nezkontrolovaných
@@ -3519,11 +3562,12 @@ function renderOverview() {
   const dates = !o.od ? "z EXIF nezjištěno"
     : o.od === o.do ? fmtDate(o.od) : `${fmtDate(o.od)} – ${fmtDate(o.do)}`;
   const rows = o.soubory.map((f) => h("tr", {
-    class: f.typ === "nepodporovany" ||
+    class: f.typ === "nepodporovany" || f.poloha_odebrana ||
       (f.kontrola && f.kontrola.stav !== "ok") ? "failed" : "" },
   h("td", {}, h("code", {}, f.cesta)),
-  h("td", {}, TYP[f.typ][0], f.kontrola && f.kontrola.stav !== "ok"
-    ? ` (${STAV_KONTROLY[f.kontrola.stav]})` : ""),
+  h("td", {}, TYP[f.typ][0], f.poloha_odebrana ? " (odebraná poloha)"
+    : f.kontrola && f.kontrola.stav !== "ok"
+      ? ` (${STAV_KONTROLY[f.kontrola.stav]})` : ""),
   h("td", {}, f.datum ? fmtDate(f.datum) + f.datum.slice(10)
     .replace("T", " ") : ""),
   h("td", {}, f.pristroj || ""),
@@ -3539,6 +3583,7 @@ function renderOverview() {
       "Nepodporované soubory se do archivu nepřenesou: ",
       o.nepodporovane.flatMap((n, i) => [i ? ", " : "", h("code", {}, n)]))
       : null,
+    odebranaPolohaBlock(o),
     damagedBlock(o),
     h("details", {}, h("summary", {}, "Seznam souborů"),
       h("table", { class: "ops" }, rows)));
@@ -3766,7 +3811,9 @@ function importOps(ops, group) {
   h("td", {}, h("code", {}, o.z)), h("td", {}, h("code", {}, `→ ${o.do}`)),
   group ? h("td", {}, o.skupina ? group(o.skupina) : "") : null,
   h("td", { class: "num" }, fmtSize(o.velikost)),
-  h("td", {}, IMPORT_STAV[o.stav], o.stav === "hotovo" || o.stav === "ok"
+  h("td", {}, o.poskozeni === "bez_polohy"
+    ? "odebraná poloha, nepřenese se" : IMPORT_STAV[o.stav],
+    o.stav === "hotovo" || o.stav === "ok"
     ? "" : `: ${o.chyba || o.duvod}`))));
 }
 
@@ -3807,6 +3854,7 @@ function importPlanGroups(p) {
 function renderImportPlan() {
   const p = imp.plan;
   const n = countBy(p.operace);
+  const bezPolohy = p.operace.filter(bezPolohyOp);
   const zapis = state.info.zapis;
   const holder = imp.lockHolder;
   const zdroj = imp.overview?.zdroj;
@@ -3827,8 +3875,11 @@ function renderImportPlan() {
     h("p", {}, p.nova ? "Vznikne nová akce " : "Cíl: ",
       h("code", {}, p.cil), "."),
     h("p", {}, `Přenese se ${n("ok")}, blokováno ${n("blokovano")}, ` +
-      `duplicit ${n("duplicita")}` + (n("poskozeny")
-        ? `, poškozených (nepřenesou se) ${n("poskozeny")}.` : ".")),
+      `duplicit ${n("duplicita")}` + (bezPolohy.length
+        ? `, s odebranou polohou ${bezPolohy.length}` : "") +
+      (n("poskozeny") - bezPolohy.length
+        ? `, poškozených (nepřenesou se) ` +
+          `${n("poskozeny") - bezPolohy.length}.` : ".")),
     holder ? h("p", { class: "notice readonly" },
       `${holderText(holder)} Import teď nejde provést; ` + (zdroj
         ? "soubory zůstávají ve zdroji."
@@ -3839,6 +3890,7 @@ function renderImportPlan() {
     p.nepodporovane.length ? h("p", { class: "meta" },
       `Nepodporované (nepřenesou se): ${p.nepodporovane.join(", ")}`) : null,
     importPlanGroups(p),
+    bezPolohyGroup(bezPolohy, zdroj),
     importOps(p.operace, (gid) => {
       const join = imp.pripojit[gid];
       if (join) return p.skupiny.existujici[join].nazev || join;
@@ -3966,13 +4018,16 @@ async function executeImport(button) {
 function renderImportResult() {
   const r = imp.result;
   const n = countBy(r.operace);
+  const bezPolohy = r.operace.filter(bezPolohyOp);
   const zdroj = imp.overview?.zdroj;
   const left = Object.values(r.zdroj_zbyva || {}).reduce((a, b) => a + b, 0);
   const body = h("main", { class: "wizard" },
     h("p", { class: n("chyba") ? "notice error" : "notice" },
       `Přeneseno ${n("hotovo")}, blokováno ${n("blokovano")}, duplicit ` +
-      `${n("duplicita")}, ` + (n("poskozeny")
-        ? `poškozených ${n("poskozeny")}, ` : "") +
+      `${n("duplicita")}, ` + (bezPolohy.length
+        ? `s odebranou polohou ${bezPolohy.length}, ` : "") +
+      (n("poskozeny") - bezPolohy.length
+        ? `poškozených ${n("poskozeny") - bezPolohy.length}, ` : "") +
       `chyba ${n("chyba")}.` + (r.zahozeno || zdroj ? ""
         : " Nepřenesené soubory zůstaly v pracovním adresáři, dokud " +
           "import nezahodíte.")),
@@ -4003,6 +4058,7 @@ function renderImportResult() {
       Object.keys(r.skupiny.prirazeni).length
       ? h("p", { class: "meta" }, "Skupiny se použijí jako návrh při " +
         "prvním otevření akce.") : null,
+    bezPolohyGroup(bezPolohy, zdroj),
     importOps(r.operace, r.skupiny && ((gid) =>
       r.skupiny.skupiny[gid]?.nazev || gid)));
   app.replaceChildren(...importFrame(body, [

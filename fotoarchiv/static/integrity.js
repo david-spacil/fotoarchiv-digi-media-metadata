@@ -24,12 +24,30 @@ export function checkCounts(soubory) {
   return c;
 }
 
+// Důvod fotek, kterým telefon odebral polohu (na serveru `iter_plan` se
+// stavem `bez_polohy`).
+export const BEZ_POLOHY_DUVOD = "telefon odebral polohu";
+
+// Fotky s odebranou polohou z přehledu (`soubory[].poloha_odebrana`,
+// `odebrana_poloha`). Nepřenesou se stejně jako poškozené, ale povolit
+// ani smazat se nedají — originál je potřeba předat jinou cestou.
+export function odebranaPolohaFiles(soubory, odebrana = []) {
+  const seznam = new Set(odebrana);
+  return soubory
+    .filter((f) => f.poloha_odebrana || seznam.has(f.cesta))
+    .map((f) => ({ cesta: f.cesta, duvod: BEZ_POLOHY_DUVOD }));
+}
+
 // Poškozené soubory s důvodem a tím, zda se přenesou: nečitelný nikdy,
 // podezřelý jen povolený (stejně jako `Imports._damaged` na serveru).
-export function damagedFiles(soubory, povolene = []) {
+// Soubory s odebranou polohou (`poloha_odebrana`, resp. `odebrane`) sem
+// nepatří — mají vlastní blok bez volby povolení a bez Smazat.
+export function damagedFiles(soubory, povolene = [], odebrane = []) {
   const allowed = new Set(povolene);
+  const vynechat = new Set(odebrane);
   return soubory
-    .filter((f) => checkable(f) && f.kontrola && f.kontrola.stav !== "ok")
+    .filter((f) => checkable(f) && f.kontrola && f.kontrola.stav !== "ok"
+      && !f.poloha_odebrana && !vynechat.has(f.cesta))
     .map((f) => ({
       cesta: f.cesta,
       stav: f.kontrola.stav,

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 import {
   applyDecisionChanges, checkCounts, cleanupDecisions, damagedFiles,
-  damagedMap, damagedText, decisionChanges,
+  damagedMap, damagedText, decisionChanges, odebranaPolohaFiles,
   toggleAllowed, unchecked,
 } from "../../fotoarchiv/static/integrity.js";
 
@@ -142,4 +142,30 @@ test("applyDecisionChanges zapíše změny a umí je vrátit", () => {
   });
   revert();
   assert.deepEqual(soubory, original);
+});
+
+// --- odebraná poloha (blokovat-odebranou-polohu, úkol 3.1) -----------------
+
+const souboryPoloha = [
+  { cesta: "PXL_20260917.MP.jpg", typ: "foto", poloha_odebrana: true,
+    kontrola: ok },
+  { cesta: "mailem.jpg", typ: "foto", kontrola: podezrely },
+  { cesta: "IMG-20260428-WA0003.jpg", typ: "foto", kontrola: ok },
+];
+
+test("odebraná poloha z příznaku i ze seznamu cest", () => {
+  assert.deepEqual(odebranaPolohaFiles(souboryPoloha, ["mailem.jpg"]), [
+    { cesta: "PXL_20260917.MP.jpg", duvod: "telefon odebral polohu" },
+    { cesta: "mailem.jpg", duvod: "telefon odebral polohu" },
+  ]);
+  assert.deepEqual(odebranaPolohaFiles(souboryPoloha).map((f) => f.cesta),
+    ["PXL_20260917.MP.jpg"]);
+});
+
+test("odebraná poloha nevstoupí do bloku poškozených", () => {
+  const d = damagedFiles(souboryPoloha, [], ["mailem.jpg"]);
+  assert.deepEqual(d.map((x) => x.cesta), []);
+  // Bez seznamu zůstává podezřelý v bloku poškozených jako dosud.
+  assert.deepEqual(damagedFiles(souboryPoloha).map((x) => x.cesta),
+    ["mailem.jpg"]);
 });

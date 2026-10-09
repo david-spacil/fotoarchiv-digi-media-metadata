@@ -664,6 +664,21 @@ plán → výsledek.
   provedení). Smazat jde jen soubor, který kontrola označila jako
   poškozený a který se od ní nezměnil; smazání se zapíše do logu
   serveru.
+
+  Samostatně se chovají fotky s **odebranou polohou**: Android při
+  předání fotky prohlížeči nebo mailem vynuluje GPS blok (ověřeno na
+  Pixel 8a, Android 17, 2026-10-09, v Chrome i Firefoxu — `exiftool`
+  pak vrátí `GPSVersionID 0 0 0 0` a prázdné souřadnice). Poloha je
+  pro archiv zásadní, taková fotka se nepřinese žádnou cestou
+  importu, volba „přesto importovat“ se pro ni nenabízí a povolení
+  podezřelých ji neuvolní. Přehled ji vypíše v bloku „Odebraná
+  poloha“ bez tlačítka Smazat, plán a výsledek ji uvedou mezi
+  nepřenesenými s důvodem „telefon odebral polohu“ (originál zůstane
+  v pracovním adresáři nebo ve zdroji `přetřídit`). Uživatel má
+  předat originál jinou cestou — kabelem, FileSenderem z počítače
+  nebo přes `přetřídit`. Videa se zatím neřeší (chování Androidu
+  u MP4/MOV není změřené). Pokračovat zůstává dostupné, pokud zbývá
+  aspoň jedno přenositelné médium.
 - **Cíl:** stávající akce, nebo nová — datum se předvyplní nejstarším
   dnem z EXIF, název doplní uživatel; složka `YYYY-MM-DD název` bez
   `/` a `\`, nekončí na `.ignored` a nesmí existovat s příponou
