@@ -53,6 +53,7 @@ ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 OK = "ok"
 DUPLICATE = "duplicita"
 DAMAGED = "poskozeny"     # poškozený soubor (kontrola), nepřenáší se
+NO_LOCATION = "bez_polohy"  # telefon odebral polohu, nepřenáší se, nelze povolit
 
 
 class Refused(Exception):
@@ -384,8 +385,9 @@ def iter_plan(event_dir, entries, sha_cache=None, damaged=None):
     do kořene, RAWy do `RAW.ignored/`. Duplicita (stejný sha256 jako soubor
     v kořeni akce nebo dřívější soubor výběru) se přeskočí; jméno, které
     v cíli existuje nebo ho má víc souborů výběru, se zablokuje.
-    `damaged` = {cesta: výsledek kontroly} souborů, které se nepřenesou
-    (stav `poskozeny`, `poskozeni` = podezrely / necitelny).
+    `damaged` = {cesta: výsledek} souborů, které se nepřenesou
+    (stav `poskozeny`, `poskozeni` = podezrely / necitelny / bez_polohy
+    — fotce s odebranou polohou nepomůže ani povolení).
     """
     damaged = damaged or {}
     entries = sorted((e for e in entries if not is_skipped(e["nazev"])),
@@ -963,6 +965,23 @@ class Imports:
         return {c: r for c, r in results.items() if r["stav"] != integrity.OK
                 and not (r["stav"] == integrity.SUSPECT and c in allowed)}
 
+    def _no_location(self, id, record):
+        """Fotky s odebranou polohou ze skenu EXIF, které se nepřenesou
+        (povolení jako u podezřelých se nenabízí, viz `iter_plan`)."""
+        return {c: {"stav": NO_LOCATION,
+                    "duvody": ["telefon odebral polohu"]}
+                for c, f in self._scanned(id, record).items()
+                if f.get("poloha_odebrana") and kind(f["nazev"]) == "foto"}
+
+    def _blocked(self, id, record, checked):
+        """Nepřenositelné soubory plánu: poškozené kontrolou (pokud
+        uživatel nepovolil) a fotky s odebranou polohou. Výsledek
+        kontroly má přednost."""
+        damaged = self._damaged(record, checked)
+        for cesta, res in self._no_location(id, record).items():
+            damaged.setdefault(cesta, res)
+        return damaged
+
     def set_allowed(self, id, jmeno, povolene):
         """Uloží podezřelé soubory, které uživatel povolil importovat."""
         if not isinstance(povolene, list) or \
@@ -1225,6 +1244,9 @@ class Imports:
                           "typ": kind(s["nazev"]), "velikost": s["velikost"],
                           "datum": d and d["datum"],
                           "pristroj": d and d["pristroj"],
+                          "poloha_odebrana": bool(
+                              d and d.get("poloha_odebrana")
+                              and kind(s["nazev"]) == "foto"),
                           "kontrola": checked.get(s["cesta"])})
         days = sorted(i["datum"][:10] for i in items if i["datum"])
         return {
@@ -1237,6 +1259,8 @@ class Imports:
                                  if i["pristroj"]}),
             "nepodporovane": [i["cesta"] for i in items
                               if i["typ"] == "nepodporovany"],
+            "odebrana_poloha": [i["cesta"] for i in items
+                                if i["poloha_odebrana"]],
             "cil": record.get("cil"),
             "nova": record.get("nova", False),
             "skupiny": record.get("skupiny"),
@@ -1275,7 +1299,7 @@ class Imports:
             self._set_snapshot(id, jmeno, self._snapshot(entries))
         result = yield from iter_plan(event_dir, entries,
                                       self.sha_cache(event_dir),
-                                      self._damaged(record, checked))
+                                      self._blocked(id, record, checked))
         groups = plan_groups(result, entries, devices, existing, volba)
         yield dict(result, typ="plan", skupiny={
             "nove": {gid: dict(groups["skupiny"][gid],
@@ -1321,7 +1345,7 @@ class Imports:
             transfer = move_from_source if folder else copy_from(path)
             for event in execute(event_dir, entries, transfer,
                                  self.sha_cache(event_dir),
-                                 self._damaged(record, checked)):
+                                 self._blocked(id, record, checked)):
                 if event["typ"] == "soubor" and \
                         event["operace"]["stav"] == DONE and not folder:
                     self._moved(id, jmeno, by_path[event["operace"]["z"]])

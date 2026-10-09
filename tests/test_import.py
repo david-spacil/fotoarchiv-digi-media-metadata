@@ -1319,6 +1319,81 @@ def test_plan_rechecks_changed_file(imports):
     assert ops[0] == ("a.jpg", "a.jpg", "poskozeny")
 
 
+# --- odebraná poloha (blokovat-odebranou-polohu, úkoly 2.1, 2.2) -------------
+# Ověřený výstup exiftoolu: odebraná {"GPSVersionID": "0 0 0 0",
+# "GPSLatitude": "", "GPSLongitude": ""} (Pixel 8a, Android 17).
+
+def poloha_exiftool(event_dir, names):
+    return {n: ({"GPSVersionID": "0 0 0 0", "GPSLatitude": "",
+                 "GPSLongitude": ""} if "bez-polohy" in n else {})
+            for n in names}
+
+
+def stripped_import(imp):
+    id = imp.create(ME)
+    upload(imp, id, "ok.jpg", "data")
+    upload(imp, id, "bez-polohy.jpg", "data2")
+    return id
+
+
+def test_overview_odebrana_poloha(imports):
+    id = stripped_import(imports)
+    o = imports.overview(id, ME, exiftool=poloha_exiftool)
+    assert o["odebrana_poloha"] == ["bez-polohy.jpg"]
+    assert {f["cesta"]: f["poloha_odebrana"] for f in o["soubory"]} == \
+        {"bez-polohy.jpg": True, "ok.jpg": False}
+
+
+def test_plan_odebrana_poloha_blocked(imports):
+    id = stripped_import(imports)
+    imports.overview(id, ME, exiftool=poloha_exiftool)
+    plan = last(imports.plan(id, ME, None))
+    assert plan_ops(plan) == [("bez-polohy.jpg", "bez-polohy.jpg",
+                               "poskozeny"),
+                              ("ok.jpg", "ok.jpg", "ok")]
+    o = plan["operace"][0]
+    assert o["poskozeni"] == "bez_polohy" and o["blocked"]
+    assert o["duvod"] == "telefon odebral polohu"
+    # Povolení jako u podezřelého se nenabízí: ani po set_allowed
+    # se fotka nepřenese.
+    assert imports.set_allowed(id, ME, ["bez-polohy.jpg"]) == \
+        ["bez-polohy.jpg"]
+    assert plan_ops(last(imports.plan(id, ME, None)))[0] == \
+        ("bez-polohy.jpg", "bez-polohy.jpg", "poskozeny")
+
+
+def test_execute_odebrana_poloha_stays(imports, tree):
+    akce = tree({"akce/": {}}) / "akce"
+    id = stripped_import(imports)
+    imports.overview(id, ME, exiftool=poloha_exiftool)
+    result = last(imports.execute(id, ME, akce))
+    assert plan_ops(result) == [("bez-polohy.jpg", "bez-polohy.jpg",
+                                 "poskozeny"),
+                                ("ok.jpg", "ok.jpg", "hotovo")]
+    assert os.listdir(akce) == ["ok.jpg"]
+    assert not result["zahozeno"]
+    assert "soubory/bez-polohy.jpg" in staged(imports, id)
+
+
+def test_source_odebrana_poloha_stays(source):
+    imp, archiv = source({"PXL/": {"ok.jpg": "a"}})
+    src = archiv / "přetřídit" / "PXL"
+    (src / "bez-polohy.jpg").write_text("x")
+    id = imp.create(ME, zdroj="PXL")
+    o = imp.overview(id, ME, exiftool=poloha_exiftool)
+    assert o["odebrana_poloha"] == ["PXL/bez-polohy.jpg"]
+    last(imp.plan(id, ME, None))
+    path = importer.create_event(archiv, "2026-10-09 PXL")
+    result = last(imp.execute(id, ME, path))
+    assert plan_ops(result) == [
+        ("PXL/bez-polohy.jpg", "bez-polohy.jpg", "poskozeny"),
+        ("PXL/ok.jpg", "ok.jpg", "hotovo")]
+    assert result["operace"][0]["poskozeni"] == "bez_polohy"
+    assert os.listdir(src) == ["bez-polohy.jpg"]
+    assert result["zdroj_zbyva"] == {"foto": 1}
+    assert not result["zdroj_smazan"] and not result["zahozeno"]
+
+
 def test_delete_damaged_upload(imports, caplog):
     id = damaged_import(imports)
     with pytest.raises(Refused) as e:

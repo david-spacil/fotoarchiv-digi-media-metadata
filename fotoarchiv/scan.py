@@ -12,7 +12,10 @@ from .archive import event_name, is_metadata, is_skipped
 MEDIA_EXT = {"jpg", "jpeg", "png", "mp4", "mov"}
 VIDEO_EXT = {"mp4", "mov"}
 TAGS = ["DateTimeOriginal", "CreateDate", "Make", "Model",
-        "GPSLatitude", "GPSLongitude"]
+        "GPSLatitude", "GPSLongitude", "GPSVersionID"]
+# Verze záznamu cache: 2 přináší příznak `poloha_odebrana`; záznam bez
+# verze se bere jako chybějící a exiftool ho přečte znovu.
+CACHE_VERSION = 2
 
 WHATSAPP_RE = re.compile(r"^IMG-(\d{4})(\d{2})(\d{2})-WA\d+", re.I)
 # (id, název skupiny bez přístroje, vzor názvu souboru)
@@ -82,13 +85,18 @@ def parse_record(name, tags):
         if m:
             datum = "-".join(m.groups())
     lat, lon = tags.get("GPSLatitude"), tags.get("GPSLongitude")
-    gps = [lat, lon] if isinstance(lat, (int, float)) and \
-        isinstance(lon, (int, float)) else None
+    numeric = isinstance(lat, (int, float)) and \
+        isinstance(lon, (int, float))
+    gps = [lat, lon] if numeric else None
+    # Odebraná poloha: blok GPS s vynulovaným `GPSVersionID` a bez
+    # číselných souřadnic (Android při předání fotky prohlížeči).
+    poloha_odebrana = tags.get("GPSVersionID") == "0 0 0 0" and not numeric
     return {
         "nazev": name,
         "datum": datum,
         "pristroj": device(tags.get("Make"), tags.get("Model")),
         "gps": gps,
+        "poloha_odebrana": poloha_odebrana,
     }
 
 
@@ -113,7 +121,8 @@ def scan(event_dir, cache_dir, exiftool=run_exiftool, cache_name=None):
     """Technické údaje všech médií v kořeni akce.
 
     Výsledek se cachuje podle (název, velikost, mtime); exiftool dostane jen
-    soubory, které v cache nejsou nebo se změnily. Cache je pod názvem
+    soubory, které v cache nejsou nebo se změnily (i záznam bez aktuální
+    verze se přečte znovu). Cache je pod názvem
     akce (bez přípony `.ignored`, přežije zveřejnění), nebo pod
     `cache_name`.
     """
@@ -128,7 +137,8 @@ def scan(event_dir, cache_dir, exiftool=run_exiftool, cache_name=None):
     todo = []
     for name, st in media:
         hit = cache.get(name)
-        if not hit or hit["size"] != st.st_size or \
+        if not hit or hit.get("v") != CACHE_VERSION or \
+                hit["size"] != st.st_size or \
                 hit["mtime"] != st.st_mtime:
             todo.append(name)
     if todo:
@@ -136,6 +146,7 @@ def scan(event_dir, cache_dir, exiftool=run_exiftool, cache_name=None):
         for name, st in media:
             if name in todo:
                 cache[name] = {
+                    "v": CACHE_VERSION,
                     "size": st.st_size,
                     "mtime": st.st_mtime,
                     "data": parse_record(name, tags.get(name, {})),
