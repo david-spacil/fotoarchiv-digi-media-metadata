@@ -888,7 +888,7 @@ def test_purge_on_start(tmp_path, monkeypatch):
     imp = Imports(work, clock=lambda: 0, disk_usage=free(10 * 2**30))
     old = imp.create(ME)
     (tmp_path / "archiv").mkdir()
-    monkeypatch.setattr("fotoarchiv.app.Flask.run", lambda *a, **k: None)
+    monkeypatch.setattr("fotoarchiv.__main__.serve", lambda *a, **k: None)
     main(["--archiv", str(tmp_path / "archiv"), "--work", str(work)])
     assert not (work / "import" / old).exists()
 

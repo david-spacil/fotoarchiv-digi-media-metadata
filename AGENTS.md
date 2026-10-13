@@ -4,13 +4,13 @@ Pokyny pro AI agenty (Claude Code, Codex aj.) pracující v tomto repozitáři.
 
 ## Stav
 
-Flask server v `fotoarchiv/`, klient v `fotoarchiv/static/` (čisté ES
-moduly bez build kroku). Bez přepínače vývojový režim: archiv
-jen čte, `_metadata.json` a cache ukládá do `.work/`. S
-`--zapis-do-archivu` produkční: `_metadata.json` ve složce akce, úklid
-a import se provádějí; cache a nahrané soubory importu
-(`.work/import/`) zůstávají v `.work/`. Zámek akcí je v paměti serveru
-(`lock.py`) — **server smí běžet jen jako jeden proces**.
+Flask server v `fotoarchiv/` na WSGI serveru cheroot, klient
+v `fotoarchiv/static/` (čisté ES moduly bez build kroku). Bez přepínače
+vývojový režim: archiv jen čte, `_metadata.json` a cache ukládá do `.work/`.
+S `--zapis-do-archivu` produkční: `_metadata.json` ve složce akce, úklid
+a import se provádějí; cache a nahrané soubory importu (`.work/import/`)
+zůstávají v `.work/`. Zámek akcí je v paměti serveru (`lock.py`) — **server
+smí běžet jen jako jeden proces**.
 
 `README.md` je specifikace (archiv, datový model, jména osob, výstupy,
 aplikace). Při změně návrhu ho aktualizovat; tady ho neopakovat.
@@ -25,9 +25,10 @@ agent dává do větve `agents/<agent>/<nazev-zmeny>`.
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv \
   --archiv /mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
-# → http://127.0.0.1:5000, volitelně --work .work --port 5000,
-#   --zapis-do-archivu (produkční režim, zapisuje do archivu),
-#   --bez-prihlaseni (jen vývojový režim, každý admin),
+# → http://127.0.0.1:5000 (cheroot, 32 vláken), volitelně --work .work
+#   --port 5000, --vlakna N, --zapis-do-archivu (produkční režim, zapisuje
+#   do archivu), --bez-prihlaseni (jen vývojový režim, každý admin),
+#   --debug (vývojový server Werkzeugu s reloaderem),
 #   --https (cookie relace jen přes HTTPS)
 .venv/bin/python -m fotoarchiv heslo LOGIN --work .work
 # → jednorázové heslo pro login z .work/uzivatele.json

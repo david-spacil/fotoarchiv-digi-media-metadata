@@ -16,6 +16,8 @@ import time
 from collections import Counter
 from pathlib import Path
 
+from cheroot import wsgi
+
 from . import (auth, consistency, geocode, immich, importer, index,
                integrity, xmp)
 from .app import create_app
@@ -382,6 +384,22 @@ def zkontrolovat(argv):
     print(f"report: {path}")
 
 
+def serve(app, host, port, threads):
+    """Produkční WSGI server cheroot: jeden proces, `threads` vláken.
+
+    Tělo požadavku čte průběžně ze spojení (upload importu bez
+    mezibufferu) a odpověď posílá po kusech (NDJSON průběh).
+    """
+    server = wsgi.Server((host, port), app, numthreads=threads)
+    print(f"Server: http://{host}:{port} ({threads} vláken)", flush=True)
+    try:
+        server.start()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.stop()
+
+
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] == ["prevzit"]:
@@ -417,8 +435,13 @@ def main(argv=None):
     parser.add_argument("--kontakt", help=argparse.SUPPRESS)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5000)
-    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--vlakna", type=int, default=32,
+                        help="počet obslužných vláken serveru (výchozí 32)")
+    parser.add_argument("--debug", action="store_true",
+                        help="vývojový server Werkzeugu s reloaderem")
     args = parser.parse_args(argv)
+    if args.vlakna < 1:
+        parser.error("--vlakna musí být aspoň 1")
     if args.zapis_do_archivu and args.bez_prihlaseni:
         sys.exit("Produkční režim (--zapis-do-archivu) bez přihlášení "
                  "nejde spustit.")
@@ -432,8 +455,11 @@ def main(argv=None):
     if removed:
         print(f"Smazané importy neaktivní přes 7 dní: {len(removed)}")
 
+    # Pod --debug běží hlídací proces reloaderu (bez WERKZEUG_RUN_MAIN)
+    # a obslužný podproces; synchronizace Immiche jen v obslužném.
+    watcher = args.debug and not os.environ.get("WERKZEUG_RUN_MAIN")
     app = create_app(archiv, work, zapis=args.zapis_do_archivu,
-                     immich_interval=immich.INTERVAL,
+                     immich_interval=None if watcher else immich.INTERVAL,
                      prihlaseni=not args.bez_prihlaseni, https=args.https)
     print(f"Archiv: {archiv.resolve()}")
     print(f"Pracovní adresář: {work.resolve()}")
@@ -450,8 +476,10 @@ def main(argv=None):
         print("Geokódování míst vypnuto (kontakt nastaví admin "
               "v aplikaci).")
     # Zámek akcí je v paměti: server smí běžet jen jako jeden proces.
-    app.run(host=args.host, port=args.port, debug=args.debug,
-            threaded=True)
+    if args.debug:
+        app.run(host=args.host, port=args.port, debug=True, threaded=True)
+    else:
+        serve(app, args.host, args.port, args.vlakna)
 
 
 if __name__ == "__main__":

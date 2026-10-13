@@ -863,7 +863,7 @@ def test_password_command(tmp_path, capsys):
 
 def test_contact_option_migrated(tmp_path, monkeypatch, capsys):
     from fotoarchiv import geocode
-    monkeypatch.setattr("flask.Flask.run", lambda self, **kw: None)
+    monkeypatch.setattr("fotoarchiv.__main__.serve", lambda *a, **k: None)
     (tmp_path / "archiv").mkdir()
     args = ["--archiv", str(tmp_path / "archiv"), "--work",
             str(tmp_path / "work"), "--bez-prihlaseni"]
