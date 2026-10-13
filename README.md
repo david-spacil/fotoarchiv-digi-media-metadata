@@ -23,7 +23,8 @@ python -m venv .venv
   --archiv /mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
 ```
 
-Aplikace běží na <http://127.0.0.1:5000>. Bez dalších přepínačů je to
+Aplikace běží na <http://127.0.0.1:5000> na produkčním WSGI serveru cheroot
+v jediném procesu s obslužnými vlákny. Bez dalších přepínačů je to
 vývojový režim: archiv se jen čte, metadata a cache jdou do `.work/`.
 Server spouštět jen jednou (zámky akcí jsou v paměti procesu).
 Přístup vyžaduje přihlášení (viz Přihlášení níže).
@@ -38,6 +39,8 @@ Volitelné přepínače:
 - `--bez-prihlaseni` — vývojový režim bez přihlášení: každý je admin
   a jméno u zámku se zadává v prohlížeči. S `--zapis-do-archivu` server
   odmítne start.
+- `--vlakna N` — počet obslužných vláken serveru (výchozí 32).
+- `--debug` — vývojový server Werkzeugu s reloaderem pro ladění kódu.
 - `--https` — cookie relace jen přes HTTPS (za reverzní proxy s HTTPS).
 - `--work CESTA` — jiný pracovní adresář než `.work`.
 - `--host`, `--port` — adresa a port (výchozí `127.0.0.1:5000`).
@@ -109,9 +112,10 @@ Na Windows místo `.venv/bin/` použít `.venv\Scripts\`.
 
 Pro server s Dockerem (např. tam, kde běží Immich) je v repozitáři
 `Dockerfile`, `compose.yaml` a `.env.example`. Kontejner běží
-v produkčním režimu (`--zapis-do-archivu`), archiv se připojuje z
-hostitele (typicky SMB/CIFS mount) a pracovní adresář je bind mount
-`./work`; správce v něm ručně edituje `uzivatele.json`.
+v produkčním režimu (`--zapis-do-archivu`) na serveru cheroot v jediném
+procesu bez varování vývojového serveru, archiv se připojuje z hostitele
+(typicky SMB/CIFS mount) a pracovní adresář je bind mount `./work`;
+správce v něm ručně edituje `uzivatele.json`.
 
 ```sh
 cp .env.example .env          # a vyplnit FOTOARCHIV_ARCHIV, UID, GID
@@ -849,10 +853,10 @@ obnovu.
 
 ### Souběh
 
-Aplikace běží jako jeden sdílený server; zámek otevřené akce drží
+Aplikace běží jako jeden sdílený server (cheroot); zámek otevřené akce drží
 server v paměti (kdo, relace prohlížeče, od kdy, poslední heartbeat).
-Proto **server smí běžet jen jako jeden proces** (vlákna ano, víc
-workerů ne). Do archivu se žádný soubor zámku nezapisuje.
+Proto **server smí běžet jen jako jeden proces** (vlákna ano — výchozí 32,
+víc workerů ne). Do archivu se žádný soubor zámku nezapisuje.
 
 - Při otevření akce klient požádá o zámek. Drží-li akci někdo jiný,
   otevře ji jen ke čtení s upozorněním „Akci upravuje …“.
