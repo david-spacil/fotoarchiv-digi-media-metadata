@@ -16,7 +16,8 @@ a import se provádějí; cache a nahrané soubory importu
 aplikace). Při změně návrhu ho aktualizovat; tady ho neopakovat.
 
 Změny se vedou přes OpenSpec (`openspec/`, příkazy `/opsx:*`). Úpravy v
-`openspec/` se řeší samostatnými commity, ne zároveň s kódem.
+`openspec/` se řeší samostatnými commity, ne zároveň s kódem. Nové úpravy
+agent dává do větve `agents/<agent>/<nazev-zmeny>`.
 
 ## Příkazy
 
