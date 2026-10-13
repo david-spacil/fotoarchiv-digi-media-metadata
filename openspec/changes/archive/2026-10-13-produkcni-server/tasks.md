@@ -36,10 +36,10 @@
 
 ## 4. Ruční ověření
 
-- [ ] 4.1 `python -m fotoarchiv` i `docker compose up -d --build`: log
+- [x] 4.1 `python -m fotoarchiv` i `docker compose up -d --build`: log
       bez varování vývojového serveru, `ps` ukáže jeden proces
       aplikace, `docker compose stop` skončí hned
-- [ ] 4.2 Import s průběhem a přerušením zavřením stránky (rozkopírovaný
+- [x] 4.2 Import s průběhem a přerušením zavřením stránky (rozkopírovaný
       soubor v archivu nezůstane), upload souboru nad 1 GiB s průběhem
       v jiné záložce, přehrávání a přetáčení videa v lupě,
       synchronizace Immiche (v logu jednou)
