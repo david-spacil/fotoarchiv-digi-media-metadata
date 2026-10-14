@@ -57,6 +57,7 @@ Odsouhlasený směr (varianta C z porovnání 2026-10-13):
 - Hotovost = podíl souborů, ne jen ano/ne; počítá server při výpisu.
 - Náhledy: 4 rovnoměrně vybrané soubory, načítané líně.
 - Tabulkové zobrazení se neponechává.
+- Prototyp: dlaždice (B) výchozí, přepínač na řádkové karty (A).
 - Kontrolní stránka je samostatná adresa, ne krok nad plochou.
 - „Moje“ = jméno v `upravili` v `_metadata.json` (ne záznam v `.work`).
 - Vzhled karet se ověří funkčním prototypem s reálnými daty před

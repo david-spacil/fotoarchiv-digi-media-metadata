@@ -125,6 +125,15 @@ uložením. Nasazení běžným `docker compose up -d --build`; návrat na
 předchozí verzi pole `upravili` ignoruje (klient ho posílá zpět
 s dokumentem a `model.clean` neznámé klíče neořezává).
 
+**Dvě podoby karet (prototyp 2026-10-14).** Uživatel vybral
+z prototypu přepínač mezi variantou B (dlaždice: náhledy 2 × 2, pod
+nimi datum, název, štítky a jeden souhrnný pruh hotovosti se zlomky
+polí) jako výchozí a variantou A (řádkové karty: pruh 4 náhledů,
+uprostřed název a štítky, vpravo pruh hotovosti pro každé pole).
+Volba je preference prohlížeče (`localStorage`, jako režim nebo
+zobrazení plochy), ne součást adresy seznamu — sdílený odkaz nese
+filtr, hledání a řazení, ne vzhled.
+
 ## Open Questions
 
-- Přesné rozložení karty a filtrů — rozhodne prototyp (nemění spec).
+(žádné)

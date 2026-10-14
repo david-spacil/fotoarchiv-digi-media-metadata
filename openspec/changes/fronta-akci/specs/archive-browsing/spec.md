@@ -13,6 +13,8 @@ měnit. Výjimkou jsou soubory indexu `_INDEX.html` a `_INDEX.md`, které
 v produkčním režimu zapisuje aplikace (viz `archive-index`), a složka
 `přetřídit`, ze které v produkčním režimu přesouvá soubory import (viz
 `unsorted-import`). Seznam SHALL obsahovat odkaz na stránku Přetřídit.
+Seznam SHALL nabídnout přepínač podoby karet: dlaždice (výchozí)
+a řádky; volbu si pamatuje prohlížeč.
 
 #### Scenario: Složky mimo vzor
 - **WHEN** archiv obsahuje `2026-04-28 kontrola Stezky…`, `přetřídit`
@@ -36,6 +38,11 @@ v produkčním režimu zapisuje aplikace (viz `archive-index`), a složka
 - **WHEN** seznam ukazuje akci `2026-04-28 kontrola Stezky` s 50 soubory
 - **THEN** karta uvádí `2026-04-28`, název `kontrola Stezky` jako odkaz
   na plochu akce a 50 souborů
+
+#### Scenario: Podoba karet
+- **WHEN** uživatel otevře seznam poprvé, přepne na řádky a znovu
+  načte stránku
+- **THEN** seznam je napoprvé v dlaždicích a po načtení v řádcích
 
 ### Requirement: Stav akce
 U každé akce SHALL seznam uvádět počet souborů v kořeni (bez
