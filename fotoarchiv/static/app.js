@@ -221,7 +221,7 @@ const state = {
   saving: false,
   conflict: false,
   locked: null,      // akce, jejíž zámek tahle relace drží
-  readonly: null,    // držitel cizího zámku otevřené akce, nebo null
+  readonly: null,    // držitel cizího zámku otevřené akce, {bezPrava}, nebo null
   placeOpen: null,   // místo, jehož volba souřadnic je otevřená
   geo: {},           // název místa → odpověď /api/geokodovani
   exporting: false,  // běží export nebo dokončení
@@ -296,13 +296,21 @@ function askName() {
 const HEARTBEAT_MS = 60_000;
 let heartbeatTimer = null;
 
-// Získá zámek akce; při cizím zámku nastaví `state.readonly` (držitel).
+// Jen ke čtení bez oprávnění k úpravě akce (role, `upravili`).
+const NO_RIGHTS = { bezPrava: true };
+
+// Získá zámek akce; při cizím zámku nastaví `state.readonly` (držitel),
+// bez oprávnění `NO_RIGHTS`.
 async function acquireLock(name) {
   try {
     await api(eventUrl(name, "/zamek"), {
       method: "POST", body: { relace: session(), jmeno: userName() },
     });
   } catch (err) {
+    if (err.status === 403 && err.data?.chyba === "jen_cteni") {
+      state.readonly = NO_RIGHTS;
+      return false;
+    }
     if (err.status !== 409) throw err;
     state.readonly = err.data.drzitel;
     return false;
@@ -326,7 +334,7 @@ async function heartbeat() {
     state.locked = null;
     clearInterval(heartbeatTimer);
     if (err.data?.uvolnil) {
-      // Zámek uvolnil admin: znovu nezískávat, rozdělané změny propadly.
+      // Zámek uvolnil admin/archivář: znovu nezískávat, rozdělané změny propadly.
       state.readonly = err.data.drzitel || { jmeno: err.data.uvolnil };
       state.readonly.uvolnil = err.data.uvolnil;
       lostLock();
@@ -347,6 +355,14 @@ function releaseLock() {
   }).catch(() => {});
 }
 
+// Odmítnutá změna pod zámkem: držitel (423), `NO_RIGHTS` (403, oprávnění
+// zmizelo během práce), jinak undefined.
+function deniedLock(err) {
+  if (err.status === 423) return err.data?.drzitel || { jmeno: "jiný uživatel" };
+  if (err.status === 403 && err.data?.chyba === "jen_cteni") return NO_RIGHTS;
+  return undefined;
+}
+
 // Klíč jména jako `names.normalize` na serveru: bez diakritiky, velikosti
 // písmen a pořadí slov.
 function nameKey(name) {
@@ -362,7 +378,7 @@ function holderText(holder) {
     : `Akci upravuje ${holder.jmeno}.`;
 }
 
-// Admin uvolní cizí zámek (opuštěná rozdělaná práce) a akci otevře.
+// Admin nebo archivář uvolní cizí zámek (opuštěná rozdělaná práce) a akci otevře.
 async function forceRelease() {
   const holder = state.readonly?.jmeno || "jiný uživatel";
   if (!await confirmDialog("Uvolnit zámek akce?", [
@@ -378,9 +394,14 @@ function lockNotice() {
   // Prázdný řetězec, ne null: jde přímo do replaceChildren, který by
   // null vypsal jako text.
   if (!r) return "";
+  if (r.bezPrava) {
+    return h("p", { class: "notice readonly" }, "Jen ke čtení – akci " +
+      "upravují jen ti, kdo ji importovali nebo upravovali, archivář " +
+      "a admin.");
+  }
   if (r.uvolnil) {
     return h("p", { class: "notice readonly" },
-      `Zámek akce uvolnil admin ${r.uvolnil}. Jen ke čtení – ` +
+      `Zámek akce uvolnil ${r.uvolnil}. Jen ke čtení – ` +
       "neuložené změny se neuloží.",
       " ", h("button", { class: "link", onclick: () => route() },
         "Zkusit znovu"));
@@ -390,7 +411,7 @@ function lockNotice() {
     `${holderText(r)} Jen ke čtení – změny se neukládají.`,
     " ", h("button", { class: "link", onclick: () => route() },
       "Zkusit znovu"),
-    state.me?.admin && state.me.prihlaseni && !own
+    state.me?.archivar && state.me.prihlaseni && !own
       ? [" · ", h("button", { class: "link", onclick: forceRelease },
         "Uvolnit zámek")] : null);
 }
@@ -575,7 +596,8 @@ async function showList() {
     h("div", { class: "row" }, h("h1", {}, "Akce"),
       h("button", { onclick: () => { location.hash = "#/import"; } },
         "Importovat fotky a videa…"),
-      h("a", { href: "#/pretridit" }, "Přetřídit")),
+      state.me?.archivar ? h("a", { href: "#/pretridit" }, "Přetřídit")
+        : null),
     pendingImports(pending),
     h("div", { class: "fronta-lista" }, filters, search, sort, layouts),
     list));
@@ -629,6 +651,9 @@ function eventBadges(e) {
         title: "Poškozené soubory z kontroly integrity" },
       plural(e.poskozene, "poškozený", "poškozené", "poškozených"))
       : null,
+    e.upravit === false ? h("span", { class: "badge jen-cteni",
+      title: "Akci upravují jen ti, kdo ji importovali nebo upravovali, " +
+        "archivář a admin." }, "jen ke čtení") : null,
   ];
 }
 
@@ -785,6 +810,12 @@ async function showUnsorted() {
   state.mode = "pretridit";
   state.name = null;
   const run = ++unsortedRun;
+  if (!state.me?.archivar) {
+    app.replaceChildren(header(), h("main", { class: "list" },
+      h("h1", {}, "Přetřídit"),
+      h("p", {}, "Složku přetřídit spravuje jen archivář a admin.")));
+    return;
+  }
   app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
   if (!userName()) await askName();
   const own = new Map((await api(
@@ -895,7 +926,8 @@ async function openEvent(name, finish = false) {
   }
   if (!userName()) await askName();
   if (name !== state.name) return; // mezitím jinam
-  await acquireLock(name);
+  if (entry.upravit === false) state.readonly = NO_RIGHTS;
+  else await acquireLock(name);
   if (state.readonly) {
     await loadDetail();
     state.dirty = false;
@@ -1030,8 +1062,8 @@ async function save() {
     if (err.status === 409) {
       state.conflict = true;
       conflictDialog();
-    } else if (err.status === 423 && name === state.name) {
-      state.readonly = err.data?.drzitel;
+    } else if (deniedLock(err) && name === state.name) {
+      state.readonly = deniedLock(err);
       state.locked = null;
       clearInterval(heartbeatTimer);
       lostLock();
@@ -2057,10 +2089,10 @@ async function workspaceCleanup() {
         { method: "POST", body: body() });
     } catch (err) {
       delete dialog.dataset.busy;
-      if (err.status === 423) {
+      if (deniedLock(err)) {
         dialog.close();
         dialog.remove();
-        state.readonly = err.data?.drzitel;
+        state.readonly = deniedLock(err);
         state.locked = null;
         clearInterval(heartbeatTimer);
         return lostLock();
@@ -2919,8 +2951,8 @@ async function finishEvent() {
     if (err.status === 409 && err.data?.chyba === "konflikt") {
       state.conflict = true;
       conflictDialog();
-    } else if (err.status === 423) {
-      state.readonly = err.data?.drzitel;
+    } else if (deniedLock(err)) {
+      state.readonly = deniedLock(err);
       state.locked = null;
       clearInterval(heartbeatTimer);
       lostLock();
@@ -3457,8 +3489,8 @@ async function executeCleanup() {
         relace: session() },
     });
   } catch (err) {
-    if (err.status === 423) {
-      state.readonly = err.data?.drzitel;
+    if (deniedLock(err)) {
+      state.readonly = deniedLock(err);
       state.locked = null;
       return lostLock();
     }
@@ -4010,8 +4042,8 @@ function renderPick() {
   ". Soubory z podsložek se zpracují, jako by ležely v jedné úrovni.",
   fileInput, dirInput);
 
-  const fromSource = !imp.id && !imp.picked.length && !imp.uploading
-    ? unsortedChoice() : null;
+  const fromSource = state.me?.archivar && !imp.id && !imp.picked.length &&
+    !imp.uploading ? unsortedChoice() : null;
   const tooBig = imp.picked.filter((p) => p.file.size > limit);
   const todo = imp.picked.filter((p) => p.file.size <= limit);
   const total = todo.reduce((s, p) => s + p.file.size, 0);
@@ -4431,7 +4463,8 @@ function newEventFields(t) {
 
 function renderTarget() {
   const o = imp.overview;
-  const events = state.events || [];
+  // Cílem jen akce, kterou uživatel smí upravit (server jinak odmítne).
+  const events = (state.events || []).filter((e) => e.upravit !== false);
   // Předvyplnit: cíl z adresy (plocha akce), zvolený dřív (návrat
   // k rozpracovanému importu), jinak nová akce s datem z EXIF.
   imp.target ||= imp.cil
@@ -4444,6 +4477,9 @@ function renderTarget() {
         : { mode: "nova", cil: events[0]?.nazev, datum: o.od || "",
           nazev: o.zdroj || "" };
   const t = imp.target;
+  if (t.mode === "stavajici" && !events.some((e) => e.nazev === t.cil)) {
+    t.cil = events[0]?.nazev;
+  }
   const radio = (mode, label) => h("label", {},
     h("input", { type: "radio", name: "cil", checked: t.mode === mode,
       onchange: () => { t.mode = mode; imp.targetError = null;

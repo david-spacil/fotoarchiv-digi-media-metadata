@@ -72,12 +72,21 @@ startu převezme do `.work/nominatim.json`, pokud ještě neexistuje.
 
 Účty jsou lokální. Uživatele zapisuje správce ručně do
 `.work/uzivatele.json` (login → kanonické jméno, volitelně e-mail
-a příznak admina); aplikace ho jen čte, změna platí bez restartu
-a odebraný uživatel přijde o přístup při dalším požadavku:
+a role); aplikace ho jen čte, změna platí bez restartu a odebraný
+uživatel přijde o přístup při dalším požadavku:
 
 ```json
-{"spacil": {"jmeno": "Spáčil, David", "email": "…", "admin": true}}
+{"spacil": {"jmeno": "Spáčil, David", "email": "…", "role": "admin"},
+ "novak": {"jmeno": "Novák, Petr", "role": "archivar"},
+ "kopacova": {"jmeno": "Kopáčová, Zuzana"}}
 ```
+
+Role je `"admin"`, `"archivar"`, nebo chybí (běžný uživatel).
+Dřívější zápis `"admin": true` a neznámá role jsou chyba: server ani
+příkaz `heslo` nenastartují a vypíšou chybné loginy s návodem
+(`"admin": true` → `"role": "admin"`). Objeví-li se chybný záznam za
+běhu, server běží dál, chybný login nemá přístup (401) a chyba jde do
+logu.
 
 Úvodní nebo zapomenuté heslo vydá správce na serveru:
 
@@ -98,8 +107,18 @@ přihlášení neprozradí, zda login existuje; po 5 chybných pokusech na
 login server další pokusy zdržuje.
 
 Jen **admin** smí měnit Nastavení (Immich včetně synchronizace na
-požádání, kontakt pro Nominatim) a vynuceně uvolnit zámek akce;
-ostatním server vrátí 403 a klient tyto prvky nezobrazí.
+požádání, kontakt pro Nominatim). **Admin a archivář** smějí stránku
+Přetřídit s importem ze složky `přetřídit` a vynuceně uvolnit zámek
+akce. Ostatním server vrátí 403 a klient tyto prvky nezobrazí.
+
+**Úprava akce** (zámek, uložení, dokončení, úklid, import do ní): admin
+a archivář každou akci, běžný uživatel jen akci, v jejímž `upravili`
+je jeho jméno (porovnání jako u jmen) — v praxi tu, kterou sám
+naimportoval nebo upravoval. Akci bez `_metadata.json` nebo bez
+`upravili` upravují jen admin a archivář. Prohlížet smí každý všechno.
+Bez oprávnění server zámek odmítne (403) a klient akci otevře jen ke
+čtení s vysvětlením; seznam ji označí „jen ke čtení“ a průvodce
+importem ji nenabídne jako cíl. Bez přihlášení smí každý všechno.
 
 Zatím běží přes HTTP ve firemní síti (přijaté riziko): heslo a cookie
 jdou sítí čitelně, přihlašovací stránka na to upozorní. Cookie je
@@ -115,7 +134,10 @@ Pro server s Dockerem (např. tam, kde běží Immich) je v repozitáři
 v produkčním režimu (`--zapis-do-archivu`) na serveru cheroot v jediném
 procesu bez varování vývojového serveru, archiv se připojuje z hostitele
 (typicky SMB/CIFS mount) a pracovní adresář je bind mount `./work`;
-správce v něm ručně edituje `uzivatele.json`.
+správce v něm ručně edituje `uzivatele.json`. Před nasazením verze
+s rolemi přepsat `"admin": true` na `"role": "admin"` (a doplnit
+`"role": "archivar"`), jinak se kontejner restartuje dokola a důvod je
+v `docker compose logs`.
 
 ```sh
 cp .env.example .env          # a vyplnit FOTOARCHIV_ARCHIV, UID, GID
@@ -441,11 +463,13 @@ přístroje a vzoru názvu, uživatel je může upravit.
   kontroly integrity v pořádku (jen u souboru, nedědí se, do sidecaru
   ani indexu nejde). Takový soubor se nepočítá do odznaku poškozených.
 - **`upravili`** = kdo akci ukládal: jméno uživatele → čas jeho
-  posledního uložení nebo dokončení (ISO 8601, místní čas serveru, na
-  sekundy). Zapisuje jen server jménem z přihlášené relace (stejné jako
-  u zámku); hodnotu od klienta zahodí a vezme ji z uložené verze. Starší
-  akce pole nemají, vznikne prvním uložením. Nedědí se, do sidecaru ani
-  indexu nejde; slouží filtru „Moje rozpracované“ a řazení seznamu akcí.
+  posledního uložení, dokončení nebo provedení importu do ní (ISO 8601,
+  místní čas serveru, na sekundy; import zapisuje u nové akce i akce
+  s `_metadata.json`). Zapisuje jen server jménem z přihlášené relace
+  (stejné jako u zámku); hodnotu od klienta zahodí a vezme ji z uložené
+  verze. Starší akce pole nemají, vznikne prvním uložením. Nedědí se, do
+  sidecaru ani indexu nejde; slouží filtru „Moje rozpracované“, řazení
+  seznamu akcí a oprávnění k úpravě akce (viz Přihlášení).
 - Originály se nemění.
 
 ## Jména osob
@@ -731,13 +755,15 @@ popisovalo jen to, co se opravdu přenese.
   `.work/import/<id>/`, ne do archivu; zavření stránky archiv nezmění.
   Adresa `#/import/<id>` přežije reload. Limit 20 GB na soubor, server
   před nahráním kontroluje volné místo. Import patří jménu uživatele
-  (porovnání jako u návrhů jmen), ne záložce: seznam akcí ukazuje
+  (porovnání jako u návrhů jmen; s přihlášením z relace, jméno
+  v požadavku server ignoruje), ne záložce: seznam akcí ukazuje
   „Moje rozpracované importy“ (založeno, počet a velikost souborů,
   zamýšlený cíl, poslední aktivita) s tlačítky Pokračovat a Zahodit.
   Cizí import není vidět a jeho adresa hlásí „nenalezen“.
 
-  Místo nahrání jde zvolit **složku v `přetřídit`** („ze složky
-  přetřídit“, nebo ze stránky *Přetřídit*, viz níže). Nic se
+  Admin a archivář mohou místo nahrání zvolit **složku
+  v `přetřídit`** („ze složky přetřídit“, nebo ze stránky *Přetřídit*,
+  viz níže). Nic se
   nenahrává, průvodce rovnou ukáže přehled. Jednotkou je celá složka
   první úrovně; její podsložky se berou jako u nahrané složky
   (zploštění, skupiny podle podsložek, RAWy do `RAW.ignored/`),
@@ -993,7 +1019,10 @@ víc workerů ne). Do archivu se žádný soubor zámku nezapisuje.
 - „Kdo“ je kanonické jméno přihlášeného uživatele (jméno poslané
   klientem server ignoruje); jen bez přihlášení (`--bez-prihlaseni`)
   jméno zadané v prohlížeči.
-- Admin může zámek jiné relace vynuceně uvolnit (opuštěná rozdělaná
+- Bez oprávnění k úpravě (viz Přihlášení) klient zámek nežádá a server
+  ho odmítne; přijde-li uživatel o oprávnění během držení zámku, server
+  odmítne i jeho další změny.
+- Admin a archivář mohou zámek jiné relace vynuceně uvolnit (opuštěná rozdělaná
   práce, tlačítko u hlášky „Akci upravuje …“). Původní držitel při
   dalším heartbeatu přejde jen ke čtení s upozorněním, kdo zámek
   uvolnil; jeho neuložené změny server odmítne.

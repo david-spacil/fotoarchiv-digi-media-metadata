@@ -81,9 +81,15 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
   Klíč Immiche jen v `.work/immich.json`, nikdy v archivu ani
   v odpovědi API. MWG oblasti v exportu pro obnovu jsou vůči uloženému
   (neotočenému) obrázku, `oblast` v JSONu vůči otočenému.
-- **`upravili` zapisuje jen server** (`model.touch` v `akce_save`
-  a `akce_finish`) jménem z relace; hodnotu od klienta zahazuje. Do
-  sidecarů ani indexu nejde.
+- **`upravili` zapisuje jen server** (`model.touch` v `akce_save`,
+  `akce_finish` a ve `write_description` po importu) jménem z relace;
+  hodnotu od klienta zahazuje. Do sidecarů ani indexu nejde. Řídí
+  oprávnění k úpravě akce: jediné rozhodnutí je `model.can_edit`,
+  vynucené v `zamek_ziskat` a `require_lock`.
+- **Role** v `uzivatele.json` jako `"role": "admin" | "archivar"`
+  (`auth.rights`: admin ⊃ archivář). Nastavení jen admin
+  (`ADMIN_PREFIXES`), přetřídit a vynucené uvolnění zámku archivář.
+  Vlastník importu z relace (`owner()` v `app.py`), nikdy z požadavku.
 - **Hesla jen jako hash v `.work/hesla.json`** (píše jen aplikace,
   0600); `uzivatele.json` píše jen správce, aplikace ho nikdy
   nezapisuje. Heslo ani hash nikdy do archivu, logu ani odpovědi API.

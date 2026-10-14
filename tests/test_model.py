@@ -172,3 +172,27 @@ def test_touch_ignores_client_value():
     model.touch(doc, stored, "Kopáčová, Zuzana", "2026-10-14T11:00:00")
     assert doc["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02",
                                "Kopáčová, Zuzana": "2026-10-14T11:00:00"}
+
+
+USER = {"jmeno": "Kopáčová, Zuzana", "admin": False, "archivar": False}
+ARCHIVAR = {"jmeno": "Novák, Petr", "admin": False, "archivar": True}
+
+
+def test_can_edit_by_editors():
+    doc = {"upravili": {"Spáčil, David": "2026-10-14T10:15:02"}}
+    assert not model.can_edit(USER, doc)
+    doc["upravili"]["Kopáčová, Zuzana"] = "2026-10-14T10:16:00"
+    assert model.can_edit(USER, doc)
+
+
+def test_can_edit_name_without_diacritics():
+    doc = {"upravili": {"Kopacova, Zuzana": "2026-10-14T10:15:02"}}
+    assert model.can_edit(USER, doc)
+    doc = {"upravili": {"zuzana kopacova": "2026-10-14T10:15:02"}}
+    assert model.can_edit(USER, doc)
+
+
+def test_can_edit_without_editors_only_archivist():
+    for doc in (None, {}, {"upravili": None}):
+        assert not model.can_edit(USER, doc)
+        assert model.can_edit(ARCHIVAR, doc)

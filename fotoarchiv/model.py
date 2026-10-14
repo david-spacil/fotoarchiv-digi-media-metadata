@@ -6,6 +6,7 @@ se ověřují proti fixturám v `tests/fixtures/inheritance/`.
 
 import unicodedata
 
+from . import names
 from .archive import EVENT_RE, SCHEMA
 
 # Klíče, které patří jen své úrovni a nedědí se. `obliceje` (jen
@@ -138,6 +139,22 @@ def touch(doc, stored, jmeno, cas):
     upravili[jmeno] = cas
     doc["upravili"] = upravili
     return doc
+
+
+def can_edit(user, doc):
+    """Smí uživatel (`g.user`) upravit akci s dokumentem `doc`?
+
+    Admin a archivář vždy; ostatní, jen když je jejich jméno v `upravili`
+    (porovnání bez diakritiky, velikosti písmen a pořadí slov). Akce bez
+    `_metadata.json` (`doc` None) nebo bez `upravili` jen admin a archivář.
+    """
+    if user.get("archivar"):
+        return True
+    jmeno = user.get("jmeno")
+    if not jmeno:
+        return False
+    upravili = (doc or {}).get("upravili") or {}
+    return names.normalize(jmeno) in {names.normalize(k) for k in upravili}
 
 
 def technical(scanned):
