@@ -11,7 +11,10 @@ import {
   damagedFiles, damagedMap, damagedText, decisionChanges,
   odebranaPolohaFiles, toggleAllowed, unchecked,
 } from "./integrity.js";
-import { byDay, dayLabel, personIndex, stripeStops } from "./sections.js";
+import { icon } from "./icons.js";
+import {
+  byDay, dayLabel, personIndex, sectionInfo, stripeSegments, stripeStops,
+} from "./sections.js";
 
 // --- pomocné -------------------------------------------------------------
 
@@ -195,9 +198,13 @@ const state = {
   scan: {},          // název → technické údaje ze skenu
   mode: null,        // "wizard" | "workspace"
   sel: new Set(),    // vybrané soubory
-  group: null,       // vybraná hlavička skupiny
+  group: null,       // vybraná skupina (řádek navigátoru)
   anchor: null,
   order: [],         // pořadí souborů v mřížce (pro Shift)
+  secOf: new Map(),  // soubor → klíč oddílu
+  navSecs: [],       // oddíly v navigátoru (s chybějícími údaji)
+  navMissing: null,  // výsledek missing() pro řádek Akce
+  visible: new Set(), // klíče oddílů, které jsou v mřížce vidět
   view: "grid",      // "grid" | "loupe"
   // "skupiny" | "datum": oddíly plochy; volba prohlížeče, ne akce.
   layout: localStorage.getItem("zobrazeni") === "datum" ? "datum" : "skupiny",
@@ -805,6 +812,7 @@ function changed(opts = {}) {
     scheduleSave();
     renderBar();
     if (opts.grid) renderGrid();
+    else renderNav();
   }
 }
 
@@ -1081,20 +1089,30 @@ function dot(c) {
   return h("i", { class: "dot", style: `--c: ${c}` });
 }
 
+// Výsledná jména autorů souboru.
+function authorsOf(f) {
+  return (resolve(state.doc, f).autori?.hodnota || [])
+    .filter((n) => typeof n === "string" && n.trim());
+}
+
+// Barva osoby podle klíče jména (stejná pro všechny soubory akce).
+function personColors() {
+  const people = personIndex(
+    Object.keys(state.doc.soubory).flatMap(authorsOf), nameKey);
+  return (key) => color(people.get(key));
+}
+
 // Funkce soubor → značka (nebo null) pro aktuální zobrazení.
 function markFn() {
   if (state.mode !== "workspace") return () => null;
-  const authors = (f) => (resolve(state.doc, f).autori?.hodnota || [])
-    .filter((n) => typeof n === "string" && n.trim());
-  const files = Object.keys(state.doc.soubory);
-  const people = personIndex(files.flatMap(authors), nameKey);
+  const colorOf = personColors();
   return (f) => {
     if (discarded(f)) return null;
-    const names = authors(f);
+    const names = authorsOf(f);
     if (!names.length) {
       return { stops: null, title: "bez autorů", label: ["bez autorů"] };
     }
-    const colors = names.map((n) => color(people.get(nameKey(n))));
+    const colors = names.map((n) => colorOf(nameKey(n)));
     // Jména se zalamují jen mezi sebou, ne uvnitř.
     const label = names.slice(0, 3).flatMap((n, i) =>
       [i ? " " : "", h("span", { class: "an" }, dot(colors[i]), surname(n))]);
@@ -1113,8 +1131,25 @@ function markAttrs(mark, f) {
   };
 }
 
-// Oddíl: `key` jednoznačně v rámci zobrazení, `gid` jen u skupiny.
+// Oddíl: `key` jednoznačně v rámci zobrazení, `gid` jen u skupiny. Na
+// pracovní ploše navíc `info` (chybějící údaje a autoři, sectionInfo)
+// a `stripe` (úseky pruhu autorů) pro navigátor.
 function sections() {
+  const secs = baseSections();
+  if (state.mode !== "workspace") return secs;
+  const m = missing(state.doc, state.present);
+  const colorOf = personColors();
+  const opts = { authorsOf, keyOf: nameKey,
+    counted: (f) => state.present.has(f) && !discarded(f) };
+  for (const s of secs) {
+    s.info = sectionInfo(s, m, opts);
+    s.stripe = stripeSegments(s.info.autori, s.info.bezAutoru.length,
+      colorOf);
+  }
+  return secs;
+}
+
+function baseSections() {
   if (dateLayout()) {
     const dateOf = (f) => resolve(state.doc, f).datum?.hodnota;
     return byDay(Object.keys(state.doc.soubory), dateOf).map((s) => ({
@@ -1153,15 +1188,36 @@ function tile(f, markOf) {
         h("div", { class: "ph" }, info.video ? "▶ video" : "bez náhledu")),
     })
     : h("div", { class: "ph" }, "chybí v kořeni");
+  const ws = state.mode === "workspace";
+  const text = [h("span", { class: "fn" }, f),
+    h("span", { class: "dt" }, datum ? datum.replace("T", " ") : "bez data"),
+    mark && h("span", { class: "gn" }, mark.label)];
   return h("div", {
     class: `tile${present ? "" : " missing"}${info.video ? " video" : ""}` +
       `${state.sel.has(f) ? " selected" : ""}${discarded(f) ? " discard" : ""}` +
       d.cls + m.cls,
     dataset: { file: f }, title: d.title || m.title, style: m.style,
+    tabindex: ws ? 0 : null,
+    draggable: ws && !state.readonly ? "true" : null,
   }, thumb,
-  h("div", { class: "cap" }, h("span", { class: "fn" }, f),
-    h("span", { class: "dt" }, datum ? datum.replace("T", " ") : "bez data"),
-    mark && h("span", { class: "gn" }, mark.label)));
+  // Plocha: bez popisku, ikony v rohu a překryv při najetí či fokusu.
+  ws ? [tileFlags(f, datum), h("div", { class: "ov" }, text)]
+    : h("div", { class: "cap" }, text));
+}
+
+// Ikony v rohu dlaždice plochy: k vyřazení, jinak bez data a bez místa
+// (jen když má akce víc míst).
+function tileFlags(f, datum) {
+  const flag = (name, title) => h("span", { title }, icon(name));
+  let flags;
+  if (discarded(f)) flags = [flag("vyradit", "k vyřazení")];
+  else {
+    const viceMist = (state.doc.akce?.mista || []).length > 1;
+    flags = [!datum && flag("datum", "bez data"),
+      viceMist && isEmpty(resolve(state.doc, f).misto?.hodnota) &&
+        flag("misto", "bez místa")].filter(Boolean);
+  }
+  return flags.length ? h("span", { class: "flags" }, flags) : null;
 }
 
 function renderGrid() {
@@ -1170,16 +1226,71 @@ function renderGrid() {
   const secs = sections();
   const markOf = markFn();
   state.order = secs.flatMap((s) => s.files);
-  const nodes = secs.map((s) => h("section", {},
-    h("h3", {
-      class: `ghead${s.gid && state.group === s.gid ? " selected" : ""}`,
-      dataset: { group: s.gid || "", key: s.key },
-    }, s.title, h("span", { class: "count" }, ` ${s.files.length}`)),
-    h("div", { class: "tiles" }, s.files.map((f) => tile(f, markOf)))));
+  state.secOf = new Map(secs.flatMap((s) => s.files.map((f) => [f, s.key])));
+  const ws = state.mode === "workspace";
+  const tiles = (s) => h("div", { class: "tiles" },
+    s.files.map((f) => tile(f, markOf)));
+  // Plocha: oddíly jen s předělem, název a výběr oddílu nese navigátor;
+  // průvodce si hlavičky nechává.
+  const nodes = ws
+    ? secs.filter((s) => s.files.length).map((s) =>
+      h("section", { class: "section", dataset: { key: s.key } }, tiles(s)))
+    : secs.map((s) => h("section", {},
+      h("h3", {
+        class: `ghead${s.gid && state.group === s.gid ? " selected" : ""}`,
+        dataset: { group: s.gid || "", key: s.key },
+      }, s.title, h("span", { class: "count" }, ` ${s.files.length}`)),
+      tiles(s)));
   const scroll = grid.scrollTop;
   grid.replaceChildren(...nodes, h("div", { id: "band", hidden: true }));
   grid.scrollTop = scroll;
   renderFilm(secs);
+  if (ws) {
+    observeSections(grid);
+    renderNav(secs);
+  }
+}
+
+// Oddíly, které jsou v mřížce aspoň zčásti vidět (okraj v navigátoru).
+let sectionObserver = null;
+
+function observeSections(grid) {
+  sectionObserver?.disconnect();
+  state.visible = new Set();
+  sectionObserver = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) state.visible.add(e.target.dataset.key);
+      else state.visible.delete(e.target.dataset.key);
+    }
+    markVisible();
+  }, { root: grid });
+  for (const el of grid.querySelectorAll(".section")) {
+    sectionObserver.observe(el);
+  }
+}
+
+function scrollToSection(key) {
+  document.querySelector(`#grid .section[data-key="${CSS.escape(key)}"]`)
+    ?.scrollIntoView({ block: "start" });
+}
+
+// Vybere soubory (první aktuální) a v mřížce na ně posune.
+function selectFiles(list) {
+  state.anchor = list[0];
+  state.current = list[0];
+  select(new Set(list), null);
+  if (state.view === "grid") {
+    document.querySelector(`#grid .tile[data-file="${CSS.escape(list[0])}"]`)
+      ?.scrollIntoView({ block: "center" });
+  }
+}
+
+// Lupa: soubor aktuálním a jediným vybraným (pás ho ukáže).
+function jumpTo(f) {
+  if (!f) return;
+  state.current = f;
+  state.anchor = f;
+  select(new Set([f]), null);
 }
 
 function select(files, group, opts = {}) {
@@ -1194,6 +1305,7 @@ function select(files, group, opts = {}) {
   for (const el of document.querySelectorAll("#grid .ghead, #film .fhead")) {
     el.classList.toggle("selected", !!group && el.dataset.group === group);
   }
+  markNav();
   if (state.view === "loupe") renderBig();
   if (!opts.keepPanel) {
     state.placeOpen = opts.place ?? null;
@@ -1246,6 +1358,21 @@ function setupGrid(grid) {
     else if (!e.target.closest("details")) select(new Set(), null);
   });
 
+  // Přesun do skupiny: tažení dlaždice na řádek skupiny v navigátoru.
+  grid.addEventListener("dragstart", (e) => {
+    const t = e.target.closest?.(".tile");
+    if (!t || state.mode !== "workspace" || state.readonly) {
+      e.preventDefault();
+      return;
+    }
+    const f = t.dataset.file;
+    dragFiles = state.sel.has(f) ? [...state.sel] : [f];
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragFiles.join("\n"));
+    document.getElementById("nav")?.classList.add("dragging");
+  });
+  grid.addEventListener("dragend", endDrag);
+
   grid.addEventListener("dblclick", (e) => {
     const t = e.target.closest(".tile");
     if (!t || state.mode !== "workspace") return;
@@ -1295,6 +1422,190 @@ function setupGrid(grid) {
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
     e.preventDefault();
+  });
+}
+
+// --- navigátor akce ---------------------------------------------------------
+//
+// Řádek Akce a řádek pro každý oddíl mřížky (`sections()`): název,
+// počet, pruh autorů a chybějící údaje. Kreslí se z dat oddílů, takže
+// funguje i v lupě, kde je mřížka skrytá.
+
+const AKCE_POLE = { nazev: "název", datum_od: "datum od",
+  datum_do: "datum do" };
+// Chybějící údaje oddílu: klíč v `info` (sectionInfo), ikona, popis.
+const NAV_MISS = [
+  ["bezAutoru", "osoba", "bez autorů"],
+  ["bezData", "datum", "bez data"],
+  ["bezMista", "misto", "bez místa"],
+  ["bezSkupiny", "skupina", "bez skupiny"],
+];
+
+let dragFiles = null; // soubory tažené z mřížky
+
+function endDrag() {
+  dragFiles = null;
+  const nav = document.getElementById("nav");
+  nav?.classList.remove("dragging");
+  for (const r of nav?.querySelectorAll(".drop") || []) {
+    r.classList.remove("drop");
+  }
+}
+
+const nFiles = (n) => plural(n, "soubor", "soubory", "souborů");
+
+function renderNav(secs) {
+  const nav = document.getElementById("nav");
+  if (!nav || state.mode !== "workspace") return;
+  state.navSecs = secs ?? sections();
+  const m = state.navMissing = missing(state.doc, state.present);
+  const places = Object.keys(m.mistaBezSouradnic)
+    .sort((a, b) => a.localeCompare(b, "cs"));
+  const akceMiss = [
+    m.akce.length ? h("span", { class: "nm strong" },
+      `chybí ${m.akce.map((k) => AKCE_POLE[k]).join(", ")}`) : null,
+    ...places.map((misto) => h("button", { class: "nm",
+      dataset: { place: misto },
+      title: `${misto}: ${nFiles(m.mistaBezSouradnic[misto].length)} bez ` +
+        "GPS, souřadnice místa nejsou rozhodnuté",
+    }, icon("souradnice"), misto)),
+  ].filter(Boolean);
+  const scroll = nav.scrollTop;
+  nav.replaceChildren(
+    h("div", { class: "nrow akce" },
+      h("button", { class: "nmain", title: "Upravit akci (zrušit výběr)" },
+        h("span", { class: "nt" }, "Akce")),
+      akceMiss.length ? h("div", { class: "nmiss" }, akceMiss) : null),
+    ...state.navSecs.map(navRow));
+  nav.scrollTop = scroll;
+  markNav();
+}
+
+function navRow(s) {
+  const i = s.info;
+  const miss = [];
+  if (i.skupinaBezAutoru) {
+    miss.push(h("button", { class: "nm strong", dataset: { miss: "skupina" },
+      title: "Skupina nemá autory" }, icon("osoba"), "bez autorů"));
+  }
+  for (const [k, name, label] of NAV_MISS) {
+    const n = i[k].length;
+    if (!n || (k === "bezAutoru" && i.skupinaBezAutoru)) continue;
+    const text = `${nFiles(n)} ${label}`;
+    miss.push(h("button", { class: "nm", dataset: { miss: k }, title: text,
+      "aria-label": text }, icon(name), String(n)));
+  }
+  const who = [...i.autori.map((p) => `${p.name} ${p.count}`),
+    i.bezAutoru.length ? `bez autorů ${i.bezAutoru.length}` : null]
+    .filter(Boolean).join("; ");
+  return h("div", { class: "nrow sec",
+    dataset: s.gid ? { key: s.key, gid: s.gid } : { key: s.key } },
+  h("button", { class: "nmain", title: s.title },
+    h("span", { class: "nt" }, s.title),
+    h("span", { class: "nc" }, String(s.files.length)),
+    s.stripe.length ? h("span", { class: "nstripe", title: who },
+      s.stripe.map((x) => h("i", { class: x.color ? null : "noauth",
+        style: `flex-grow: ${x.count}` +
+          (x.color ? `; background: ${x.color}` : "") }))) : null),
+  miss.length ? h("div", { class: "nmiss" }, miss) : null);
+}
+
+// Vybraný oddíl: skupina podle `state.group`, den a „Bez …“ podle toho,
+// že výběr jsou právě soubory oddílu.
+function navSelected(s) {
+  if (s.gid) return state.group === s.gid;
+  return state.sel.size > 0 && s.files.length === state.sel.size &&
+    s.files.every((f) => state.sel.has(f));
+}
+
+function markNav() {
+  const nav = document.getElementById("nav");
+  if (!nav) return;
+  const secs = new Map(state.navSecs.map((s) => [s.key, s]));
+  nav.querySelector(".nrow.akce")?.classList.toggle("selected",
+    !state.sel.size && !state.group);
+  for (const row of nav.querySelectorAll(".nrow.sec")) {
+    const s = secs.get(row.dataset.key);
+    row.classList.toggle("selected", !!s && navSelected(s));
+  }
+  markVisible();
+}
+
+// Okraj u oddílů, které jsou v mřížce vidět; v lupě u oddílu aktuálního
+// souboru.
+function markVisible() {
+  const keys = state.view === "loupe"
+    ? new Set([state.secOf.get(state.current)]) : state.visible;
+  for (const row of document.querySelectorAll("#nav .nrow.sec")) {
+    row.classList.toggle("visible", keys.has(row.dataset.key));
+  }
+}
+
+function navSection(row) {
+  return state.navSecs.find((s) => s.key === row.dataset.key);
+}
+
+// Klik na řádek: Akce zruší výběr; v mřížce skupina vybere skupinu,
+// ostatní oddíly své soubory a mřížka na oddíl skočí; v lupě první
+// soubor oddílu aktuálním a jediným vybraným.
+function clickNavRow(row) {
+  const s = navSection(row);
+  if (!s) return select(new Set(), null);
+  if (state.view === "loupe") return jumpTo(s.files[0]);
+  if (s.gid) select(new Set(), s.gid);
+  else select(new Set(s.files), null);
+  scrollToSection(s.key);
+}
+
+// Klik na chybějící údaj: dotčené soubory; skupina bez autorů vybere
+// skupinu (v lupě jen skok na její první soubor).
+function clickMissing(row, kind) {
+  const s = navSection(row);
+  if (!s) return;
+  if (kind !== "skupina") return selectFiles(s.info[kind]);
+  if (state.view === "loupe") return jumpTo(s.files[0]);
+  select(new Set(), s.gid);
+  scrollToSection(s.key);
+}
+
+function setupNav(nav) {
+  nav.addEventListener("click", (e) => {
+    const row = e.target.closest(".nrow");
+    if (!row) return;
+    const place = e.target.closest("[data-place]")?.dataset.place;
+    const miss = e.target.closest("[data-miss]")?.dataset.miss;
+    if (place) openPlace(place, state.navMissing.mistaBezSouradnic[place]);
+    else if (miss) clickMissing(row, miss);
+    else clickNavRow(row);
+  });
+  // Tažení přijme jen řádek skutečné skupiny.
+  const target = (e) => {
+    const row = e.target.closest(".nrow");
+    return dragFiles && !state.readonly && row?.dataset.gid ? row : null;
+  };
+  nav.addEventListener("dragover", (e) => {
+    const row = target(e);
+    for (const r of nav.querySelectorAll(".drop")) {
+      if (r !== row) r.classList.remove("drop");
+    }
+    if (!row) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    row.classList.add("drop");
+  });
+  nav.addEventListener("drop", (e) => {
+    const row = target(e);
+    const moved = dragFiles;
+    endDrag();
+    if (!row) return;
+    e.preventDefault();
+    const gid = row.dataset.gid;
+    if (moved.every((f) => state.doc.soubory[f].skupina === gid)) return;
+    moveFiles(moved, gid);
+    dropEmptyGroups(() => {
+      changed({ grid: true });
+      renderPanel();
+    });
   });
 }
 
@@ -1626,6 +1937,7 @@ function setView(view) {
   for (const b of document.querySelectorAll(".views button[data-view]")) {
     b.classList.toggle("active", b.dataset.view === view);
   }
+  markVisible();
   if (loupe) {
     renderFilm();
     renderBig();
@@ -2465,11 +2777,12 @@ function renderWorkspace() {
       h("h1", {}, state.name),
       h("span", { class: "paths" }, d.pracovni_soubor),
       h("span", { class: "views" },
-        h("button", { dataset: { view: "grid" }, title: "Esc",
-          onclick: () => setView("grid") }, "Mřížka"),
-        h("button", { dataset: { view: "loupe" },
-          title: "Enter nebo dvojklik", onclick: () => setView("loupe") },
-        "Lupa")),
+        h("button", { dataset: { view: "grid" }, class: "ico",
+          title: "Mřížka (Esc)", "aria-label": "Mřížka",
+          onclick: () => setView("grid") }, icon("mrizka")),
+        h("button", { dataset: { view: "loupe" }, class: "ico",
+          title: "Lupa (Enter nebo dvojklik)", "aria-label": "Lupa",
+          onclick: () => setView("loupe") }, icon("lupa"))),
       h("span", { class: "views" },
         h("button", { dataset: { layout: "skupiny" },
           class: state.layout === "skupiny" ? "active" : "",
@@ -2483,7 +2796,7 @@ function renderWorkspace() {
         "Náhledy", h("input", { type: "range", min: TILE.min,
           max: TILE.max, step: 10, value: tileSize(),
           oninput: (e) => setTileSize(e.target.value) })),
-      // Chybějící údaje (renderBar): čipy se zalamují, akce vpravo ne.
+      // Nálezy a počty (renderBar): zalamují se, akce vpravo ne.
       h("div", { id: "bar", class: "bar" }),
       h("span", { class: "acts" },
         h("button", { disabled: !!state.readonly,
@@ -2497,6 +2810,7 @@ function renderWorkspace() {
             onclick: () => finishEvent() }, "Dokončit akci")))),
     lockNotice(),
     h("div", { class: `workspace${panelCollapsed() ? " panel-sbaleny" : ""}` },
+      h("nav", { id: "nav", class: "nav", "aria-label": "Navigátor akce" }),
       h("div", { id: "grid", class: "grid",
         style: `--tile: ${tileSize()}px` }),
       h("div", { id: "loupe", class: "loupe", hidden: true },
@@ -2506,6 +2820,7 @@ function renderWorkspace() {
         onclick: togglePanel }),
       h("aside", { id: "panel", class: "panel" })));
   setPanelToggle();
+  setupNav(document.getElementById("nav"));
   setupGrid(document.getElementById("grid"));
   setupFilm(document.getElementById("film"));
   renderGrid();
@@ -2519,7 +2834,9 @@ function renderWorkspace() {
 
 // Velikost dlaždic mřížky (`--tile`); volba prohlížeče, ne akce. Strop
 // 300 px: náhled ze serveru má 320 px.
-const TILE = { min: 100, max: 300, init: 150 };
+// Minimum 80 px: 8 dlaždic na řádek v okně 1280 px s navigátorem
+// a panelem.
+const TILE = { min: 80, max: 300, init: 150 };
 
 function tileSize() {
   const v = Number(localStorage.getItem("dlazdice"));
@@ -2546,8 +2863,9 @@ function setPanelToggle() {
   const b = document.getElementById("panel-toggle");
   if (!b) return;
   const collapsed = panelCollapsed();
-  b.textContent = collapsed ? "‹" : "›";
+  b.replaceChildren(icon("panel"));
   b.title = `${collapsed ? "Rozbalit" : "Sbalit"} panel (P)`;
+  b.setAttribute("aria-label", collapsed ? "Rozbalit panel" : "Sbalit panel");
   b.setAttribute("aria-expanded", String(!collapsed));
 }
 
@@ -2562,16 +2880,13 @@ function togglePanel() {
   if (state.view === "loupe") renderBig();
 }
 
-// Chybějící údaje jako [{text, onclick}] pro lištu i dokončení akce.
+// Chybějící údaje a nálezy jako [{text, onclick}] pro dokončení akce.
 function missingItems() {
   const m = missing(state.doc, state.present);
   const items = [];
   const item = (text, onclick) => items.push({ text, onclick });
   if (m.akce.length) {
-    const names = {
-      nazev: "název", datum_od: "datum od", datum_do: "datum do",
-    };
-    item(`Akce: chybí ${m.akce.map((k) => names[k]).join(", ")}`,
+    item(`Akce: chybí ${m.akce.map((k) => AKCE_POLE[k]).join(", ")}`,
       () => select(new Set(), null));
   }
   if (m.skupinyBezAutoru.length) {
@@ -2579,21 +2894,12 @@ function missingItems() {
       "skupin")} bez autorů`, () => {
       const g = m.skupinyBezAutoru[0];
       select(new Set(), g);
-      document.querySelector(`#grid .ghead[data-group="${CSS.escape(g)}"]`)
-        ?.scrollIntoView({ block: "start" });
+      scrollToSection(`g:${g}`);
     });
   }
   const files = (list, label) => {
-    if (!list.length) return;
-    item(`${plural(list.length, "soubor", "soubory", "souborů")} ${label}`,
-      () => {
-        state.anchor = list[0];
-        state.current = list[0];
-        select(new Set(list), null);
-        document.querySelector(
-          `#grid .tile[data-file="${CSS.escape(list[0])}"]`)
-          ?.scrollIntoView({ block: "center" });
-      });
+    if (list.length) item(`${nFiles(list.length)} ${label}`,
+      () => selectFiles(list));
   };
   files(m.souboryBezData, "bez data");
   files(m.souboryBezSkupiny, "bez skupiny");
@@ -2603,16 +2909,19 @@ function missingItems() {
     item(`${plural(places.length, "místo", "místa", "míst")} bez souřadnic`,
       () => openPlace(places[0], m.mistaBezSouradnic[places[0]]));
   }
-  // Nálezy kontroly kořene akce (issue #11): klik ukáže názvy.
+  return [...items, ...findingItems()];
+}
+
+// Nálezy kontroly kořene akce (issue #11) pro lištu akce i dokončení:
+// klik ukáže názvy.
+function findingItems() {
   const nalezy = state.detail?.kontrola || [];
-  for (const druh of Object.keys(NALEZY)) {
+  return Object.keys(NALEZY).flatMap((druh) => {
     const names = nalezy.filter((n) => n.druh === druh).map((n) => n.nazev);
-    if (names.length) {
-      const text = nalez(druh, names.length);
-      item(text, () => namesDialog(text, names, druh));
-    }
-  }
-  return items;
+    if (!names.length) return [];
+    const text = nalez(druh, names.length);
+    return [{ text, onclick: () => namesDialog(text, names, druh) }];
+  });
 }
 
 // Názvy souborů a složek jednoho druhu nálezu kontroly.
@@ -2649,8 +2958,8 @@ function damagedToRepair() {
 function renderBar() {
   const bar = document.getElementById("bar");
   if (!bar || !state.doc) return;
-  const items = missingItems().map(({ text, onclick }) =>
-    h("button", { class: "miss", onclick }, text));
+  const items = findingItems().map(({ text, onclick }) =>
+    h("button", { class: "nalez", onclick }, text));
   const vyradit = Object.keys(state.doc.soubory || {})
     .filter((f) => state.present.has(f) && discarded(f)).length;
   if (vyradit) {
@@ -2677,8 +2986,7 @@ function renderBar() {
       `${plural(nove.length, "nový soubor", "nové soubory",
         "nových souborů")} od posledního otevření`));
   }
-  bar.replaceChildren(...(items.length ? items
-    : [h("span", { class: "ok" }, "Nic nechybí.")]));
+  bar.replaceChildren(...items);
 }
 
 function renderPanel() {
@@ -2738,10 +3046,7 @@ function renderPanel() {
     const nameInput = h("input", { value: groupName(gid),
       oninput: (e) => {
         state.doc.skupiny[gid].nazev = e.target.value;
-        changed();
-        const head = document.querySelector(
-          `#grid .ghead[data-group="${CSS.escape(gid)}"]`);
-        if (head) head.firstChild.textContent = e.target.value;
+        changed(); // překreslí i řádek skupiny v navigátoru
       } });
     extra.push(h("fieldset", { class: "tools" },
       h("legend", {}, "Skupina"),

@@ -4,7 +4,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  byDay, dayLabel, personIndex, REST_COLOR, stripeStops,
+  byDay, dayLabel, personIndex, REST_COLOR, sectionInfo, stripeSegments,
+  stripeStops,
 } from "../../fotoarchiv/static/sections.js";
 
 const dates = {
@@ -71,4 +72,96 @@ test("pruh: jeden, dva a tři úseky", () => {
 test("pruh: víc než tři autoři → šedý úsek", () => {
   assert.equal(stripeStops(["a", "b", "c", "d", "e"]),
     `a 0% 25%, b 25% 50%, c 50% 75%, ${REST_COLOR} 75% 100%`);
+});
+
+// Navigátor akce (scénáře „Chybějící údaje v navigátoru“ a „Pruh autorů
+// oddílu“ ze specifikace metadata-workspace).
+const JANA = "Testová, Jana";
+const PETR = "Zkušební, Petr";
+const none = { akce: [], skupinyBezAutoru: [], souboryBezData: [],
+  souboryBezSkupiny: [], souboryBezMista: [], mistaBezSouradnic: {} };
+
+function info(sec, m, authors, discarded = []) {
+  return sectionInfo(sec, { ...none, ...m }, {
+    authorsOf: (f) => authors[f] || [], keyOf: key,
+    counted: (f) => !discarded.includes(f),
+  });
+}
+
+test("navigátor: soubory bez data ve skupině, v pořadí oddílu", () => {
+  const files = ["a.jpg", "b.jpg", "c.jpg"];
+  const r = info({ gid: "jana", key: "g:jana", files },
+    { souboryBezData: ["c.jpg", "a.jpg", "x.jpg"] },
+    { "a.jpg": [JANA], "b.jpg": [JANA], "c.jpg": [JANA] });
+  assert.deepEqual(r.bezData, ["a.jpg", "c.jpg"]);
+  assert.deepEqual(r.bezAutoru, []);
+  assert.equal(r.skupinaBezAutoru, false);
+});
+
+test("navigátor: skupina bez autorů a soubory bez autorů", () => {
+  const r = info({ gid: "g", key: "g:g", files: ["a.jpg", "b.jpg"] },
+    { skupinyBezAutoru: ["g"] }, { "b.jpg": [PETR] });
+  assert.equal(r.skupinaBezAutoru, true);
+  assert.deepEqual(r.bezAutoru, ["a.jpg"]);
+});
+
+test("navigátor: soubory bez místa jen z výsledku missing()", () => {
+  const r = info({ gid: "g", key: "g:g", files: ["a.jpg", "b.jpg"] },
+    { souboryBezMista: ["b.jpg"] }, {});
+  assert.deepEqual(r.bezMista, ["b.jpg"]);
+  assert.deepEqual(info({ gid: "g", key: "g:g", files: ["a.jpg"] }, {}, {})
+    .bezMista, []);
+});
+
+test("navigátor: označený soubor se nepočítá", () => {
+  const r = info({ gid: null, key: "d:2015-11-07", files: ["a.jpg", "b.jpg"] },
+    { souboryBezData: [] }, { "a.jpg": [JANA] }, ["b.jpg"]);
+  assert.deepEqual(r.bezAutoru, []);
+  assert.deepEqual(r.autori.map((p) => p.count), [1]);
+});
+
+test("navigátor: bez skupiny jen podle data, ne v oddílu Bez skupiny", () => {
+  const m = { souboryBezSkupiny: ["a.jpg", "b.jpg"],
+    souboryBezData: ["a.jpg", "b.jpg"] };
+  const files = ["a.jpg", "b.jpg"];
+  const day = info({ gid: null, key: "d:2015-11-07", files }, m, {});
+  assert.deepEqual(day.bezSkupiny, files);
+  const noDate = info({ gid: null, key: "d:", files }, m, {});
+  assert.deepEqual(noDate.bezData, []);
+  assert.deepEqual(noDate.bezSkupiny, files);
+  const noGroup = info({ gid: null, key: "g:", files }, m, {});
+  assert.deepEqual(noGroup.bezSkupiny, []);
+  assert.deepEqual(noGroup.bezData, files);
+});
+
+test("navigátor: autoři s počty, jiný zápis téže osoby", () => {
+  const r = info({ gid: "g", key: "g:g", files: ["a", "b", "c"] }, {},
+    { a: [PETR], b: [JANA, PETR], c: ["petr zkusebni"] });
+  assert.deepEqual(r.autori.map((p) => [p.name, p.count]),
+    [[PETR, 3], [JANA, 1]]);
+});
+
+test("pruh autorů oddílu: poměr 2 : 1", () => {
+  const files = Array.from({ length: 30 }, (_, i) => `f${i}.jpg`);
+  const authors = Object.fromEntries(files.map((f, i) =>
+    [f, [i < 20 ? JANA : PETR]]));
+  const r = info({ gid: "g", key: "g:g", files }, {}, authors);
+  const colors = { [key(JANA)]: "var(--p0)", [key(PETR)]: "var(--p1)" };
+  assert.deepEqual(stripeSegments(r.autori, r.bezAutoru.length,
+    (k) => colors[k]), [
+    { color: "var(--p0)", count: 20, names: [JANA] },
+    { color: "var(--p1)", count: 10, names: [PETR] },
+  ]);
+});
+
+test("pruh autorů oddílu: zbytek šedě, bez autorů šrafovaně", () => {
+  const autori = ["a", "b", "c", "d", "e"].map((k, i) =>
+    ({ key: k, name: k.toUpperCase(), count: 5 - i }));
+  assert.deepEqual(stripeSegments(autori, 4, (k) => k), [
+    { color: "a", count: 5, names: ["A"] },
+    { color: "b", count: 4, names: ["B"] },
+    { color: "c", count: 3, names: ["C"] },
+    { color: REST_COLOR, count: 3, names: ["D", "E"] },
+    { color: null, count: 4, names: [] },
+  ]);
 });
