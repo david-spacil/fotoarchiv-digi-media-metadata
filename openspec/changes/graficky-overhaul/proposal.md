@@ -13,13 +13,10 @@ a třemi lištami tísní. Issue #26.
 - **Design tokeny:** všechny barvy, odstupy, zaoblení a typografie
   jako proměnné na `:root`; žádný hex mimo definici tokenů. Jednotná
   tlačítka, štítky, čipy, formulářová pole, dialogy a kroky průvodce.
-  Tmavý režim podle systému.
-- **Varianty vzhledu k výběru (prototyp):** nad společnými tokeny dvě
-  sady hodnot: **B – Temná pracovna** (neutrálně tmavá mřížka i lupa,
-  ve stylu Lightroomu) a **C – Katalogová karta** (světlé teplé
-  pozadí, výraznější typografie, formulář jako archivní karta).
-  Přepíná je parametr `?vzhled=` a prohlížeč si volbu pamatuje.
-  Po výběru se nevybraná varianta odstraní (úkol na konci změny).
+  Výchozí tmavý režim (Temná pracovna: neutrálně tmavá mřížka, lišty
+  a formulář, ve stylu Lightroomu) a světlý režim, přepínač v hlavičce;
+  prohlížeč si volbu pamatuje. Lupa je tmavá v obou režimech. (Vybráno
+  z prototypu tří variant, viz design.md.)
 - **Jedna lišta akce:** řádek akce (zpět, název, přepínače, Importovat,
   Dokončit) a lišta chybějících údajů se sloučí do jedné lišty;
   chybějící údaje jsou v ní čipy, na úzkém okně se zalomí pod ni.
@@ -42,7 +39,7 @@ zkratek (kromě nové klávesy pro panel); build krok nebo CSS framework.
 
 ### New Capabilities
 - `app-appearance`: vizuální systém klienta — tokeny, tmavý režim,
-  varianty vzhledu a jejich přepínání, podporované šířky okna.
+  tmavý a světlý režim a jejich přepínání, podporované šířky okna.
 
 ### Modified Capabilities
 - `metadata-workspace`: sloučená lišta akce s chybějícími údaji,
@@ -51,11 +48,10 @@ zkratek (kromě nové klávesy pro panel); build krok nebo CSS framework.
 
 ## Impact
 
-- `fotoarchiv/static/style.css` — přepsání na tokeny a komponenty,
-  soubory variant.
+- `fotoarchiv/static/style.css` — přepsání na tokeny a komponenty.
 - `fotoarchiv/static/app.js` — rozvržení plochy (`renderWorkspace`,
   `header`, `renderBar`), formulář (pole s děděním), posuvník, panel,
-  přepínání vzhledu.
+  přepínač režimu.
 - `fotoarchiv/static/prihlaseni.html`, `heslo.html` — tytéž tokeny.
 - `README.md`, oddíl Aplikace.
 - Server, API, `_metadata.json`, XMP: beze změny. Bez nových závislostí.

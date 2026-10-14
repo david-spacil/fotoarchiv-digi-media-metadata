@@ -55,11 +55,13 @@ fotky potřebuje neutrální tmavé okolí. Mřížka bere `--stage`, takže
 v B je tmavá, v A a C světlá.
 
 **Velikost dlaždic proměnnou `--tile`.** `<input type="range">` v liště
-akce (120–300 px, krok 10, výchozí 150) nastaví `--tile` na `.grid`;
+akce (100–300 px, krok 10, výchozí 150) nastaví `--tile` na `.grid`;
 CSS dlaždic počítá z ní šířku i výšku náhledu (poměr 4 : 3). Uloží se
-do `localStorage` (`dlazdice`). Strop 300 px, protože náhled ze serveru
-má 320 px; větší by byl rozmazaný. Po změně se zavolá stávající
-`revealCurrent()`. Výběr tažením počítá s polohou dlaždic z DOM, takže
+do `localStorage` (`dlazdice`). Spodní mez 100 px: při 120 px se do
+okna 1280 px s panelem vejde jen 7 dlaždic, požadavek chce 8. Strop
+300 px, protože náhled ze serveru má 320 px; větší by byl rozmazaný.
+Po změně se aktuální soubor v mřížce posune do zorného pole
+(`revealCurrent()` hlídá jen filmový pás lupy). Výběr tažením počítá s polohou dlaždic z DOM, takže
 ho velikost neovlivní.
 
 **Jedna lišta akce.** `renderWorkspace` vloží `#bar` do `.eventbar`
@@ -108,8 +110,18 @@ kontrast dvojic (`--text`/`--bg`, `--text-muted`/`--surface`,
 v `localStorage` jsou nové klíče; staré (`zobrazeni`, `jmeno`) se
 nemění. Návrat = předchozí verze `static/`.
 
-## Open Questions
+## Výběr varianty (2026-10-14)
 
-- Která varianta zvítězí a zda se výchozí tmavý režim zachová i po
-  výběru B — rozhodne se po prohlídce prototypu, ovlivní jen poslední
-  skupinu úkolů.
+Uživatel po prohlídce prototypu zvolil **B – Temná pracovna** jako
+výchozí vzhled s přepínačem do světlého režimu. Dopad na úkoly 6.x:
+
+- Tokeny B jsou hodnoty `:root`; světlý režim je blok
+  `:root[data-rezim="svetly"]` se světlými hodnotami z A. Bloky A
+  (tmavý `@media`) a C se mažou.
+- Výchozí je tmavý režim bez ohledu na systém; `prefers-color-scheme`
+  se nepoužije (na světlém systému by se B jinak neukázala).
+- Přepínač světlý/tmavý v hlavičce aplikace. `vzhled.js` zůstává jen
+  pro režim: přečte `localStorage` (`rezim`) a nastaví `data-rezim`
+  na `<html>` dřív, než se načte CSS. Parametr `?vzhled=` a klíč
+  `vzhled` zanikají.
+- Lupa zůstává tmavá v obou režimech.

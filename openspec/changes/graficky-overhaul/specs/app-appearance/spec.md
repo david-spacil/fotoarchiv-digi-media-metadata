@@ -1,8 +1,8 @@
 ## Purpose
 
 Dát klientovi jednotný vizuální systém (barvy, typografie, komponenty)
-čitelný ve světlém i tmavém prostředí, na noteboocích i velkých
-monitorech, a umožnit porovnat varianty vzhledu v běžící aplikaci.
+s tmavým a světlým režimem, čitelný na noteboocích i velkých
+monitorech.
 
 ## ADDED Requirements
 
@@ -24,8 +24,8 @@ stejnou barvu.
 - **THEN** tlačítko, pole a upozornění vypadají stejně jako v aplikaci
 
 ### Requirement: Kontrast textu
-Text a ovládací prvky SHALL mít ve všech variantách vzhledu a v obou
-režimech (světlý, tmavý) kontrast vůči pozadí aspoň 4,5 : 1 (běžný
+Text a ovládací prvky SHALL mít v obou režimech (tmavý, světlý)
+kontrast vůči pozadí aspoň 4,5 : 1 (běžný
 text) a 3 : 1 (velký text, okraje polí, ikony). Barvy osob v pruhu
 autorů MUST zůstat navzájem rozlišitelné i na tmavém pozadí.
 
@@ -34,41 +34,27 @@ autorů MUST zůstat navzájem rozlišitelné i na tmavém pozadí.
   zástupný text
 - **THEN** text má vůči poli kontrast aspoň 4,5 : 1
 
-### Requirement: Tmavý režim podle systému
-Klient SHALL ve výchozím vzhledu respektovat nastavení světlého nebo
-tmavého režimu operačního systému. Náhledy fotek MUST se nebarvit ani
-neinvertovat.
+### Requirement: Tmavý a světlý režim
+Klient SHALL mít výchozí tmavý režim (neutrálně tmavé lišty, mřížka
+i formulář) a světlý režim. Přepínač v hlavičce aplikace SHALL režim
+přepnout hned, bez ztráty rozepsaných údajů, a prohlížeč si volbu SHALL
+pamatovat pro všechny stránky klienta i po obnovení. Lupa MUST zůstat
+tmavá v obou režimech. Náhledy fotek MUST se nebarvit ani neinvertovat.
+Režim MUST NOT měnit rozvržení, chování ani klávesové zkratky.
 
-#### Scenario: Systém v tmavém režimu
-- **WHEN** operační systém má zapnutý tmavý režim a uživatel otevře
-  seznam akcí
-- **THEN** stránka je tmavá a čitelná, náhledy fotek beze změny
+#### Scenario: Výchozí režim
+- **WHEN** uživatel otevře aplikaci poprvé
+- **THEN** seznam akcí je v tmavém režimu
 
-### Requirement: Varianty vzhledu k porovnání
-Klient SHALL nabízet kromě výchozího vzhledu varianty `b` (Temná
-pracovna: neutrálně tmavá mřížka, lupa i lišty) a `c` (Katalogová
-karta: světlé teplé pozadí, výraznější typografie). Parametr adresy
-`?vzhled=b` nebo `?vzhled=c` SHALL variantu zapnout a prohlížeč si ji
-SHALL pamatovat i pro další stránky a po obnovení; `?vzhled=a` SHALL
-vrátit výchozí vzhled. Neznámá hodnota MUST se ignorovat. Varianta
-MUST NOT měnit rozvržení, chování ani klávesové zkratky — jen vzhled.
-
-#### Scenario: Zapnutí varianty
-- **WHEN** uživatel otevře `/?vzhled=b` a pak přejde na plochu akce
-- **THEN** seznam akcí i plocha jsou ve variantě Temná pracovna
+#### Scenario: Přepnutí
+- **WHEN** uživatel na ploše akce klikne v hlavičce na přepínač
+- **THEN** plocha je ve světlém režimu, lupa zůstane tmavá a náhledy
+  fotek jsou beze změny
 
 #### Scenario: Volba přetrvá
-- **WHEN** uživatel zvolil variantu `c`, zavře prohlížeč a znovu otevře
-  aplikaci bez parametru
-- **THEN** aplikace je ve variantě Katalogová karta
-
-#### Scenario: Návrat na výchozí
-- **WHEN** uživatel otevře `/?vzhled=a`
-- **THEN** aplikace je ve výchozím vzhledu a zůstane v něm
-
-#### Scenario: Neznámá hodnota
-- **WHEN** uživatel otevře `/?vzhled=x`
-- **THEN** vzhled zůstane, jaký byl
+- **WHEN** uživatel přepnul do světlého režimu, zavře prohlížeč a znovu
+  otevře přihlášení
+- **THEN** stránka přihlášení je ve světlém režimu
 
 ### Requirement: Podporovaná šířka okna
 Pracovní plocha SHALL být použitelná bez vodorovného posouvání stránky
