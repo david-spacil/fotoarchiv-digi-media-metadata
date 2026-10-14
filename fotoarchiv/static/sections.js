@@ -56,3 +56,58 @@ export function dayLabel(day) {
   const weekday = DNY[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
   return `${weekday} ${d}. ${m}. ${y}`;
 }
+
+// Chybějící údaje a autoři oddílu pro navigátor: průnik výsledku
+// `missing()` (inherit.js) se soubory oddílu, v pořadí oddílu. Oddíl
+// `{ gid, key, files }` má klíč `g:<skupina>` (`g:` = bez skupiny)
+// v zobrazení po skupinách, `d:<den>` (`d:` = bez data) podle data.
+// `authorsOf(f)` = výslední autoři souboru, `keyOf` sjednotí zápisy
+// téže osoby, `counted(f)` = soubor se počítá (v kořeni, ne k vyřazení).
+// Bez skupiny jen podle data, bez data ne v oddílu „Bez data“.
+export function sectionInfo(sec, m, { authorsOf, keyOf, counted }) {
+  const files = sec.files.filter(counted);
+  const pick = (list) => {
+    const set = new Set(list);
+    return files.filter((f) => set.has(f));
+  };
+  const byDate = sec.key.startsWith("d:");
+  const people = new Map();
+  const bezAutoru = [];
+  for (const f of files) {
+    const names = authorsOf(f);
+    if (!names.length) bezAutoru.push(f);
+    for (const k of new Set(names.map(keyOf).filter(Boolean))) {
+      if (!people.has(k)) {
+        people.set(k, { key: k, name: names.find((n) => keyOf(n) === k),
+          count: 0 });
+      }
+      people.get(k).count++;
+    }
+  }
+  return {
+    bezAutoru,
+    bezData: sec.key === "d:" ? [] : pick(m.souboryBezData),
+    bezMista: pick(m.souboryBezMista),
+    bezSkupiny: byDate ? pick(m.souboryBezSkupiny) : [],
+    skupinaBezAutoru: !!sec.gid && m.skupinyBezAutoru.includes(sec.gid),
+    // Nejčastější první, při shodě podle klíče (stálé pořadí).
+    autori: [...people.values()].sort((a, b) =>
+      b.count - a.count || a.key.localeCompare(b.key)),
+  };
+}
+
+// Úseky pruhu autorů oddílu `{ color, count, names }` v poměru počtu
+// souborů: nejvýš `max` nejčastějších barevně, ostatní jedním šedým
+// úsekem, soubory bez autorů na konci s `color: null` (šrafování).
+export function stripeSegments(autori, noAuthors, colorOf, max = 3) {
+  const result = autori.slice(0, max).map((p) =>
+    ({ color: colorOf(p.key), count: p.count, names: [p.name] }));
+  const rest = autori.slice(max);
+  if (rest.length) {
+    result.push({ color: REST_COLOR,
+      count: rest.reduce((n, p) => n + p.count, 0),
+      names: rest.map((p) => p.name) });
+  }
+  if (noAuthors) result.push({ color: null, count: noAuthors, names: [] });
+  return result;
+}

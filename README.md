@@ -433,7 +433,7 @@ přístroje a vzoru názvu, uživatel je může upravit.
   datum z názvu souboru. Ruční údaje doplňuje uživatel.
 - `sha256` slouží k odhalení přejmenovaných nebo změněných souborů.
 - **`vyradit: true`** označuje soubor k vyřazení (jen u souboru, nedědí
-  se). Do XMP exportu takový soubor nejde, do lišty chybějících údajů se
+  se). Do XMP exportu takový soubor nejde, do chybějících údajů se
   nepočítá; úklid ho přesune do `k_odstraneni.ignored` a záznam smaže.
 - **`overeno: true`** je ruční potvrzení, že soubor je i přes výsledek
   kontroly integrity v pořádku (jen u souboru, nedědí se, do sidecaru
@@ -567,9 +567,10 @@ po široké monitory.
    uvádí, a autory celé akce z návrhu; ostatní soubory dostanou
    automatický návrh. Prvním uložením `_metadata.json` se návrh smaže.
    Akce založená importem `_metadata.json` má, průvodce ji přeskočí.
-3. **Pak pracovní plocha** (i při každém dalším otevření): vlevo mřížka
-   náhledů po skupinách, vpravo formulář podle výběru — nic vybráno =
-   akce, hlavička skupiny = skupina, vybrané soubory = soubory. Zděděné
+3. **Pak pracovní plocha** (i při každém dalším otevření): vlevo
+   navigátor akce, uprostřed mřížka náhledů po skupinách, vpravo
+   formulář podle výběru — nic vybráno = akce, skupina vybraná
+   v navigátoru = skupina, vybrané soubory = soubory. Zděděné
    hodnoty jsou ve formuláři vidět a jdou přepsat. Každé pole má
    barevný proužek a štítek zdroje hodnoty: „z akce“, „ze skupiny“,
    „z místa“, „rozdílné“ (různé hodnoty ve výběru) nebo „zadáno“.
@@ -577,12 +578,31 @@ po široké monitory.
    zděděné“; to hodnotu z dané úrovně smaže, stejně jako vyprázdnění
    pole.
 
-   Lišta akce pod hlavičkou nese název akce, přepínače zobrazení,
-   velikost náhledů, Importovat a Dokončit akci a mezi nimi čipy toho,
-   co chybí („2 skupiny bez autorů“, „14 souborů bez data“); klik na
-   čip vybere dotčené soubory nebo skupinu. Nevejdou-li se, zalomí se
-   na další řádek lišty. Posuvník **Náhledy** mění velikost dlaždic
-   mřížky (100–300 px, pamatuje si ho prohlížeč). Panel formuláře jde
+   **Navigátor akce** (sloupec vlevo, posouvá se sám) má nahoře řádek
+   Akce a pod ním řádek pro každý oddíl mřížky (skupinu, nebo den)
+   v pořadí mřížky; soubory bez skupiny jsou posledním oddílem „Bez
+   skupiny“, soubory bez data „Bez data“. Řádek oddílu ukazuje název,
+   počet souborů, pruh autorů v poměru jejich souborů (nejvýš tři
+   barevně, ostatní šedě, bez autorů šrafovaně; titulek uvádí jména
+   a počty) a ikonky chybějících údajů s počtem: soubory bez autorů,
+   bez data, bez místa (jen má-li akce víc míst) a podle data i bez
+   skupiny; skupina bez autorů má místo počtu zvýrazněné „bez autorů“.
+   Řádek Akce ukazuje chybějící název či data akce a místa, o jejichž
+   souřadnicích není rozhodnuto. Soubory k vyřazení se nepočítají.
+   Klik na řádek Akce zruší výběr, na skupinu vybere skupinu, na den
+   („Bez data“, „Bez skupiny“) jeho soubory, a mřížka na oddíl skočí
+   i s předělem nad ním. Klik na chybějící údaj vybere dotčené soubory
+   (u místa navíc otevře volbu souřadnic), funguje i jen ke čtení.
+   Oddíly, které jsou v mřížce vidět, mají v navigátoru okraj.
+   Dlaždici (nebo celý výběr, je-li dlaždice vybraná) jde **přetáhnout
+   na řádek skupiny** a přesunout tak do skupiny; ostatní řádky tažení
+   nepřijmou, bez zámku akce tažení nejde.
+
+   Lišta akce pod hlavičkou nese název akce, přepínače mřížka/lupa
+   (ikony) a zobrazení, velikost náhledů, Importovat a Dokončit akci,
+   nálezy kontroly akce a počet souborů k vyřazení. Nevejdou-li se,
+   zalomí se na další řádek lišty. Posuvník **Náhledy** mění velikost
+   dlaždic mřížky (80–300 px, pamatuje si ho prohlížeč). Panel formuláře jde
    **sbalit** úchytem na jeho levém okraji nebo klávesou `P` (mimo
    textové pole); mřížka nebo lupa pak zabere celou šířku, stav si
    pamatuje prohlížeč. Na širokém monitoru má panel nejvýš 420 px
@@ -591,12 +611,15 @@ po široké monitory.
    Přepínač **Po skupinách / Podle data** (pamatuje si ho prohlížeč,
    platí pro mřížku i lupu) ukáže místo skupin všechny soubory akce
    v jednom pořadí podle data pořízení, s předěly po dnech
-   („út 28. 4. 2026“) a soubory bez data na konci; klik na hlavičku
-   dne vybere jeho soubory. V obou zobrazeních nese dlaždice pruh podle
-   výsledných autorů: každá osoba akce má svou barvu, pruh se dělí na
-   úseky v barvách autorů (nejvýš tři, další jako šedý úsek,
-   v popisku „+N“), soubor bez autorů má šrafovaný pruh a soubor
-   k vyřazení žádný. Průvodce je vždy po skupinách a bez značek.
+   („út 28. 4. 2026“ v navigátoru) a soubory bez data na konci.
+   Mřížka plochy nemá hlavičky oddílů, jen předěly. Dlaždice nemá
+   popisek: dole nese pruh podle výsledných autorů (každá osoba akce
+   má svou barvu, pruh se dělí na úseky v barvách autorů, nejvýš tři,
+   další jako šedý úsek; bez autorů šrafovaný, k vyřazení žádný),
+   v rohu ikonu bez data, bez místa, nebo k vyřazení, a název, datum
+   a příjmení autorů (u víc než tří „+N“) ukáže překryv při najetí myší
+   nebo fokusu z klávesnice. Průvodce je vždy po skupinách, s hlavičkami
+   a popisky a bez značek.
 
    Datum pořízení má dva vstupy s nativním výběrem prohlížeče: den
    a čas (se sekundami). Prázdný čas = hodnota jen s datem (WhatsApp);
@@ -610,7 +633,9 @@ po široké monitory.
    filmový pás celé akce s oddíly (skupinami, nebo dny) oddělenými
    předělem. Šipky přepínají aktuální soubor a vyberou jen jej,
    Shift+šipky výběr rozšiřují; klik do pásu vybírá jako v mřížce.
-   Výběr i formulář jsou s mřížkou společné.
+   Výběr i formulář jsou s mřížkou společné. Navigátor v lupě slouží
+   ke skoku: klik na oddíl udělá jeho první soubor aktuálním a jediným
+   vybraným; okraj má oddíl aktuálního souboru.
 
    **Vyřazení:** klávesa Del nebo tlačítko „Vyřadit“ v panelu označí
    vybrané soubory k vyřazení (jsou-li už všechny označené, označení

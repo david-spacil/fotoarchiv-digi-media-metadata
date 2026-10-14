@@ -166,6 +166,8 @@ button.primary { background: var(--accent); color: var(--accent-text);
   font-weight: 600; }
 button.primary:hover:not(:disabled) { background: var(--accent);
   filter: brightness(1.08); }
+button.ico { display: inline-flex; align-items: center; padding: 2px 8px; }
+.icon { width: 16px; height: 16px; flex: none; vertical-align: middle; }
 button.link { border: 0; background: none; color: var(--link); padding: 0;
   text-decoration: underline; }
 button.link:hover:not(:disabled) { background: none; }
@@ -236,20 +238,19 @@ header .rezim:hover:not(:disabled) { background: none;
   background: var(--accent); color: var(--accent-text);
   border-color: var(--accent); }
 
-/* Chybějící údaje: čipy; v liště akce se zalamují, akce vpravo ne. */
+/* Nálezy a počty: v liště akce se zalamují, akce vpravo ne. */
 .bar { display: flex; gap: var(--space-2) var(--space-3); flex-wrap: wrap;
   align-items: center; padding: 6px var(--space-4);
   border-bottom: 1px solid var(--border); background: var(--surface); }
 .eventbar .bar { flex: 1 1 240px; min-width: 240px; padding: 0;
   border: 0; background: none; }
-.bar .miss { border: 1px solid var(--warn); background: var(--warn-bg);
+.bar .nalez { border: 1px solid var(--warn); background: var(--warn-bg);
   color: var(--warn); border-radius: var(--radius-pill);
   padding: 0 10px; font-size: 13px; }
-.bar .miss:hover:not(:disabled) { background: var(--warn-bg);
+.bar .nalez:hover:not(:disabled) { background: var(--warn-bg);
   filter: brightness(0.97); }
 .bar .info { color: var(--text-muted); font-size: 12px; }
 .bar .info.discard, .bar .info.damaged { color: var(--danger); }
-.bar .ok { color: var(--ok); font-size: 13px; }
 
 /* --- seznam akcí a stránky ------------------------------------------- */
 
@@ -321,12 +322,57 @@ dialog.sample p { margin: 6px 0 0; }
 .panel h2 { font-size: 16px; margin: 4px 0 8px; word-break: break-all; }
 
 /* Úchyt panelu: úzký pruh; ve sbaleném stavu jediné, co z panelu zbývá. */
-.panel-toggle { flex: none; width: 14px; padding: 0; border: 0;
+.panel-toggle { flex: none; width: 18px; padding: 0; border: 0;
   border-left: 1px solid var(--border); border-radius: 0;
   background: var(--surface-2); color: var(--text-muted); font-size: 11px; }
 .panel-toggle:hover:not(:disabled) { background: var(--selected);
   color: var(--text); }
 .workspace.panel-sbaleny .panel { display: none; }
+.panel-toggle .icon { width: 13px; height: 13px; }
+
+/* Navigátor akce: řádek Akce a řádky oddílů; okraj = oddíl je v mřížce
+   vidět, pozadí = vybraný oddíl. */
+.nav { flex: none; width: 200px; overflow: auto; padding: var(--space-2) 0;
+  background: var(--surface); border-right: 1px solid var(--border); }
+.nrow { border-left: 3px solid transparent; padding: var(--space-2)
+  var(--space-3) var(--space-2) 6px; }
+.nrow:hover { background: var(--surface-2); }
+.nrow.visible { border-left-color: var(--border-strong); }
+.nrow.selected, .nrow.selected:hover { background: var(--selected); }
+.nrow.selected.visible { border-left-color: var(--accent); }
+.nrow .nmain { display: grid; grid-template-columns: 1fr auto;
+  gap: 3px 6px; align-items: baseline; width: 100%; padding: 0; border: 0;
+  background: none; text-align: left; }
+.nrow .nmain:hover:not(:disabled) { background: none; }
+.nt { font-size: 13px; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+.nrow.akce .nt { font-weight: 600; }
+.nc { font-size: 12px; color: var(--text-muted); }
+.nstripe { grid-column: 1 / -1; display: flex; gap: 1px; height: 4px;
+  border-radius: 2px; overflow: hidden; }
+.nstripe i { min-width: 2px; }
+.nstripe i.noauth { background: var(--noauth); }
+.nmiss { display: flex; flex-wrap: wrap; gap: 3px 4px; margin-top: 3px; }
+.nm { display: inline-flex; align-items: center; gap: 2px; font-size: 11px;
+  line-height: 16px; padding: 0 5px; border: 1px solid var(--warn);
+  border-radius: var(--radius-pill); background: var(--warn-bg);
+  color: var(--warn); }
+.nm:hover:not(:disabled) { background: var(--warn-bg);
+  filter: brightness(1.1); }
+.nm.strong { border-color: var(--danger); background: var(--danger-bg);
+  color: var(--danger); font-weight: 600; }
+.nm .icon { width: 12px; height: 12px; }
+/* Tažení dlaždice: řádky, které ho nepřijmou, jsou potlačené. */
+.nav.dragging .nrow:not([data-gid]) { opacity: 0.4; }
+.nrow.drop { background: var(--selected); outline: 2px dashed
+  var(--accent); outline-offset: -2px; }
+
+/* Oddíly plochy: předěl místo hlavičky; skok z navigátoru nechá předěl
+   vidět. */
+.grid .section { scroll-margin-top: var(--space-3); }
+.grid .section + .section { margin-top: var(--space-3);
+  padding-top: var(--space-3); border-top: 1px solid var(--border-strong); }
+.section .tiles { gap: 4px; }
 
 .ghead { font-size: 14px; margin: 12px 0 6px; padding: 3px 8px;
   cursor: pointer; border-radius: var(--radius); background:
@@ -359,21 +405,36 @@ dialog.sample p { margin: 6px 0 0; }
 .tile .gn { color: var(--text-muted); white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; }
 
+/* Dlaždice plochy: bez popisku; pruh autorů pod náhledem, ikony v rohu
+   a překryv s názvem, datem a autory při najetí či fokusu (tmavý
+   v obou režimech jako lupa). */
+.section .tile { position: relative; padding-bottom: 4px; }
+.tile .ov { position: absolute; left: 0; right: 0; bottom: 4px;
+  display: none; flex-direction: column; padding: 2px 4px; font-size: 11px;
+  background: color-mix(in srgb, var(--loupe-bg) 82%, transparent);
+  color: var(--loupe-text); }
+.tile:hover .ov, .tile:focus-visible .ov { display: flex; }
+.tile .ov .dt, .tile .ov .gn { color: var(--loupe-muted); }
+.tile.noauth .ov .gn, .tile.discard .ov .fn { color: var(--header-danger); }
+.tile .flags { position: absolute; top: 4px; right: 4px; display: flex;
+  gap: 2px; }
+.tile .flags span { display: flex; padding: 2px; border-radius:
+  var(--radius); background: color-mix(in srgb, var(--loupe-bg) 75%,
+  transparent); color: var(--header-warn); }
+.tile.discard .flags span { color: var(--header-danger); }
+.tile .flags .icon { width: 13px; height: 13px; }
+
 /* Značka dlaždice: pruh z barev autorů. Barvy z palety `--p0…--p7`
    podle pořadí osoby v akci; zarážky gradientu nese inline `--stops`,
    `noauth` = bez autorů. */
-.tile.mark { position: relative; border-left: 6px solid transparent; }
-.tile.mark.selected { border-color: var(--accent);
-  border-left-color: transparent; }
-.tile.mark img, .tile.mark .ph { width: calc(var(--tile) - 8px); }
-.tile.mark::before { content: ""; position: absolute; left: -6px; top: 0;
-  bottom: 0; width: 6px; background: linear-gradient(to bottom,
+.tile.mark::after { content: ""; position: absolute; left: 0; right: 0;
+  bottom: 0; height: 4px; background: linear-gradient(to right,
   var(--stops)); }
 .ftile.mark { position: relative; }
 .ftile.mark::after { content: ""; position: absolute; left: -2px;
   right: -2px; bottom: -6px; height: 4px;
   background: linear-gradient(to right, var(--stops)); }
-.tile.noauth::before, .ftile.noauth::after { background: var(--noauth); }
+.tile.noauth::after, .ftile.noauth::after { background: var(--noauth); }
 .tile.noauth .gn { color: var(--danger); }
 .tile.mark:not(.noauth) .gn { white-space: normal; }
 .tile .gn .an { white-space: nowrap; }
