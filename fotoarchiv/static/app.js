@@ -11,6 +11,10 @@ import {
   damagedFiles, damagedMap, damagedText, decisionChanges,
   odebranaPolohaFiles, toggleAllowed, unchecked,
 } from "./integrity.js";
+import {
+  FILTRY, POLE, RAZENI, filterCounts, lastEdit, listHash, parseListHash,
+  ratio, visibleEvents,
+} from "./fronta.js";
 import { icon } from "./icons.js";
 import {
   byDay, dayLabel, personIndex, sectionInfo, stripeSegments, stripeStops,
@@ -210,6 +214,7 @@ const state = {
   layout: localStorage.getItem("zobrazeni") === "datum" ? "datum" : "skupiny",
   current: null,     // aktuální soubor (lupa)
   preload: [],
+  listHash: null,    // adresa seznamu akcí s filtrem (návrat z plochy)
   sessionNames: new Set(),
   keptEmpty: new Set(), // prázdné skupiny, které uživatel chtěl ponechat
   dirty: false,
@@ -224,6 +229,9 @@ const state = {
   exportNote: "",    // stav exportu u tlačítka
   exportStale: true, // sidecary nejsou ověřeně aktuální
   exportErrors: [],  // chyby posledního exportu po souborech
+  finishResult: null, // odpověď dokončení pro kontrolní stránku
+  finishError: null, // chyba požadavku dokončení
+  pendingFix: null,  // náprava z kontrolní stránky, provede se na ploše
 };
 
 // --- uživatel a zámek akce ---------------------------------------------------
@@ -393,6 +401,7 @@ function lostLock() {
   if (!state.readonly) state.readonly = { jmeno: "jiný uživatel" };
   state.dirty = false;
   if (state.mode === "workspace") renderWorkspace();
+  else if (state.mode === "finish") renderFinish();
   else if (state.mode === "wizard") renderReadonlyWizard();
 }
 
@@ -441,7 +450,7 @@ document.addEventListener("keydown", (e) => {
 
 async function route() {
   if (state.dirty && state.mode === "workspace") await save();
-  const m = location.hash.match(/^#\/akce\/(.+)$/);
+  const m = location.hash.match(/^#\/akce\/([^/]+)(\/dokonceni)?$/);
   const im = location.hash.match(/^#\/import(?:\/([^?]*))?(?:\?(.*))?$/);
   const name = m ? decodeURIComponent(m[1]) : null;
   if (state.locked && state.locked !== name) releaseLock();
@@ -452,7 +461,7 @@ async function route() {
   } else if (im) {
     await openImport(im[1] ? decodeURIComponent(im[1]) : null,
       new URLSearchParams(im[2] || ""));
-  } else if (name) await openEvent(name);
+  } else if (name) await openEvent(name, !!m[2]);
   else await showList();
 }
 
@@ -521,42 +530,170 @@ async function showList() {
   state.mode = null;
   state.name = null;
   app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
-  const [events, pending] = await Promise.all([api("/api/akce"),
+  const [events, pending] = await Promise.all([
+    api(`/api/akce?relace=${session()}`),
     userName() ? api(`/api/import?jmeno=${encodeURIComponent(userName())}`)
       .then((r) => r.importy).catch(() => []) : []]);
   state.events = events;
-  const rows = state.events.map((e) =>
-    h("tr", { class: `stav-${e.stav}` },
-      h("td", {}, e.datum),
-      h("td", {}, h("a", { href: `#/akce/${encodeURIComponent(e.nazev)}` },
-        e.nazev.slice(11))),
-      h("td", { class: "num" }, e.souboru),
-      h("td", {}, h("span", { class: "badge",
-        title: e.stav === "kolize" ? KOLIZE : null }, STAV[e.stav]),
-        e.chybi.length ? h("span", { class: "badge nekompletni",
-          title: "Chybí: " + e.chybi.map((k) => CHYBI[k]).join(", ") },
-          "nekompletní") : null,
-        Object.keys(e.kontrola || {}).length
-          ? [h("span", { class: "badge vyresit" }, "k vyřešení"),
-            h("span", { class: "vyresit-detail" },
-              ` ${nalezyText(e.kontrola)}`)] : null,
-        e.poskozene
-          ? h("span", { class: "badge poskozene",
-            title: "Poškozené soubory z kontroly integrity" },
-            plural(e.poskozene, "poškozený", "poškozené", "poškozených"))
-          : null,
-        e.zmeneno_po_exportu
-          ? h("span", { class: "warn" }, " změněno po exportu") : null)));
+  // Filtr, hledání a řazení v adrese seznamu (přežijí návrat z plochy).
+  const view = parseListHash(location.hash);
+  const filters = h("div", { class: "seg", role: "group",
+    "aria-label": "Filtr" });
+  const search = h("input", { type: "search", value: view.hledat,
+    placeholder: "Hledat v názvu…", "aria-label": "Hledat v názvu",
+    oninput: () => { view.hledat = search.value; update(); } });
+  const sort = h("select", { "aria-label": "Řazení",
+    onchange: () => { view.razeni = sort.value; update(); } },
+  RAZENI.map(([id, label]) => h("option", { value: id,
+    selected: id === view.razeni }, label)));
+  const layouts = h("div", { class: "seg", role: "group",
+    "aria-label": "Podoba karet" });
+  const list = h("div");
+  const update = () => {
+    state.listHash = listHash(view);
+    history.replaceState(null, "", state.listHash);
+    const me = userName();
+    const counts = filterCounts(events, view, me);
+    filters.replaceChildren(...FILTRY.map(([id, label]) =>
+      h("button", { "aria-pressed": String(view.filtr === id),
+        onclick: () => { view.filtr = id; update(); } },
+      label, h("span", { class: "n" }, counts[id]))));
+    const layout = cardLayout();
+    layouts.replaceChildren(...[["dlazdice", "mrizka", "Dlaždice"],
+      ["radky", "radky", "Řádky"]].map(([id, ic, label]) =>
+      h("button", { "aria-pressed": String(layout === id), title: label,
+        onclick: () => { localStorage.setItem("karty", id); update(); } },
+      icon(ic), label)));
+    const shown = visibleEvents(events, view, me);
+    list.className = `karty ${layout}`;
+    list.replaceChildren(...(shown.length
+      ? shown.map(layout === "radky" ? eventRow : eventTile)
+      : [h("p", { class: "meta" }, "Žádná akce neodpovídá filtru.")]));
+  };
+  update();
   app.replaceChildren(header(), h("main", { class: "list" },
     h("div", { class: "row" }, h("h1", {}, "Akce"),
       h("button", { onclick: () => { location.hash = "#/import"; } },
         "Importovat fotky a videa…"),
       h("a", { href: "#/pretridit" }, "Přetřídit")),
     pendingImports(pending),
-    h("table", {},
-      h("thead", {}, h("tr", {}, h("th", {}, "Datum"), h("th", {}, "Akce"),
-        h("th", {}, "Souborů"), h("th", {}, "Stav"))),
-      h("tbody", {}, rows))));
+    h("div", { class: "fronta-lista" }, filters, search, sort, layouts),
+    list));
+}
+
+// Podoba karet seznamu akcí: "dlazdice" (výchozí) | "radky"; volba
+// prohlížeče.
+function cardLayout() {
+  return localStorage.getItem("karty") === "radky" ? "radky" : "dlazdice";
+}
+
+// Odkaz zpět na seznam se zvoleným filtrem, hledáním a řazením.
+function listLink() {
+  return state.listHash || "#/";
+}
+
+function eventLink(e) {
+  return h("a", { href: `#/akce/${encodeURIComponent(e.nazev)}`,
+    class: "nazev" }, e.nazev.slice(11));
+}
+
+function eventMeta(e) {
+  return h("span", { class: "meta" },
+    `${e.datum} · ${plural(e.souboru, "soubor", "soubory", "souborů")}`);
+}
+
+// Až 4 ukázky rovnoměrně z celé akce; načtou se až u viditelné karty.
+function eventThumbs(e) {
+  if (!e.ukazky?.length) return null;
+  const ph = (f) => h("span", { class: "ph", title: f }, "bez náhledu");
+  return h("div", { class: `nahledy n${e.ukazky.length}` },
+    e.ukazky.map((f) => h("img", { alt: "", title: f, loading: "lazy",
+      src: eventUrl(e.nazev, `/nahled/${encodeURIComponent(f)}`),
+      onerror: (ev) => ev.target.replaceWith(ph(f)) })));
+}
+
+function eventBadges(e) {
+  return [
+    h("span", { class: "badge stav",
+      title: e.stav === "kolize" ? KOLIZE : null }, STAV[e.stav]),
+    e.zmeneno_po_exportu
+      ? h("span", { class: "badge zmeneno" }, "změněno po exportu") : null,
+    e.chybi.length ? h("span", { class: "badge nekompletni",
+      title: "Chybí: " + e.chybi.map((k) => CHYBI[k]).join(", ") },
+    "nekompletní") : null,
+    Object.keys(e.kontrola || {}).length
+      ? h("span", { class: "badge vyresit", title: nalezyText(e.kontrola) },
+        "k vyřešení") : null,
+    e.poskozene
+      ? h("span", { class: "badge poskozene",
+        title: "Poškozené soubory z kontroly integrity" },
+      plural(e.poskozene, "poškozený", "poškozené", "poškozených"))
+      : null,
+  ];
+}
+
+// Kdo akci drží (zámek) a kdo ji naposledy upravoval.
+function eventPeople(e) {
+  const holder = !e.drzitel ? null : e.drzitel.vase
+    ? h("span", { class: "drzitel vase" }, "otevřeno u vás")
+    : h("span", { class: "drzitel" }, `upravuje ${e.drzitel.jmeno}`);
+  const last = lastEdit(e);
+  const edited = last ? h("span", { class: "meta" }, "upraveno ",
+    new Date(last).toLocaleString("cs", { day: "numeric",
+      month: "numeric", hour: "2-digit", minute: "2-digit" }), " · ",
+    Object.entries(e.upravili).sort((a, b) => (a[1] < b[1] ? 1 : -1))
+      .map(([jmeno]) => jmeno.split(",")[0]).join(", ")) : null;
+  return holder || edited
+    ? h("div", { class: "lide" }, holder, edited) : null;
+}
+
+const POLE_POPISKY = { autori: "autoři", datum: "datum", misto: "místo" };
+
+function progress(vyplneno, celkem) {
+  const part = vyplneno < celkem;
+  return h("span", { class: `pruh${part ? " castecne" : ""}` },
+    h("i", { style: `width: ${celkem ? 100 * vyplneno / celkem : 100}%` }));
+}
+
+// Akce bez metadat hotovost nemá; nabídne zahájení zpracování.
+function startLink(e) {
+  return e.stav === "nezpracovano" ? h("a", { class: "zahajit",
+    href: `#/akce/${encodeURIComponent(e.nazev)}` },
+  "Zahájit zpracování…") : null;
+}
+
+// Dlaždice: náhledy 2 × 2, souhrnný pruh hotovosti a zlomky polí.
+function eventTile(e) {
+  let done = startLink(e);
+  if (e.hotovost) {
+    const r = ratio(e);
+    done = h("div", { class: "hotovost" },
+      progress(Math.round(r * 1000), 1000),
+      h("span", { class: "meta" }, POLE.map((k) =>
+        `${POLE_POPISKY[k]} ${e.hotovost[k].join("/")}`).join(" · ")));
+  }
+  return h("article", { class: `karta stav-${e.stav}` },
+    eventThumbs(e) || h("div", { class: "nahledy prazdne" }),
+    h("div", { class: "telo" }, eventMeta(e), eventLink(e),
+      h("div", { class: "stitky" }, eventBadges(e)), done, eventPeople(e)));
+}
+
+// Řádek: pruh náhledů, název a štítky, pruh hotovosti pro každé pole.
+function eventRow(e) {
+  const done = e.hotovost
+    ? h("div", { class: "hotovost pole" }, POLE.map((k) => {
+      const [vyplneno, celkem] = e.hotovost[k];
+      return h("div", { class: vyplneno < celkem ? "castecne" : null },
+        h("span", {}, POLE_POPISKY[k]), progress(vyplneno, celkem),
+        h("span", { class: "zlomek" }, `${vyplneno}/${celkem}`));
+    }))
+    : h("div", { class: "hotovost" }, startLink(e));
+  return h("article", { class: `karta stav-${e.stav}` },
+    eventThumbs(e) || h("div", { class: "nahledy prazdne" }),
+    h("div", { class: "telo" }, eventLink(e),
+      h("div", { class: "stitky" }, eventMeta(e), eventBadges(e)),
+      eventPeople(e)),
+    done);
 }
 
 function fmtTime(seconds) {
@@ -658,7 +795,7 @@ async function showUnsorted() {
   const tbody = h("tbody");
   const rows = new Map();
   app.replaceChildren(header(), h("main", { class: "list" },
-    h("div", { class: "row" }, h("a", { href: "#/" }, "← Akce"),
+    h("div", { class: "row" }, h("a", { href: listLink() }, "← Akce"),
       h("h1", {}, "Přetřídit")),
     h("p", { class: "notice" }, `Složky první úrovně ${UNSORTED} v kořeni ` +
       "archivu. Import složky soubory do akce přesune; duplicity, " +
@@ -729,13 +866,21 @@ async function showUnsorted() {
 
 // --- otevření akce --------------------------------------------------------
 
-async function openEvent(name) {
+// `finish`: kontrolní stránka dokončení (`#/akce/<název>/dokonceni`).
+async function openEvent(name, finish = false) {
+  // Plocha ↔ kontrolní stránka: stav akce, zámek i heartbeat zůstávají.
+  if (name === state.name && state.doc && !state.detail?.novy &&
+      (state.mode === "workspace" || state.mode === "finish")) {
+    if (finish) renderFinish();
+    else showWorkspace();
+    return;
+  }
   Object.assign(state, {
     name, detail: null, doc: null, version: null, mode: null,
     sel: new Set(), group: null, anchor: null, dirty: false,
     conflict: false, view: "grid", current: null, readonly: null,
     placeOpen: null, exporting: false, exportVersion: null, exportNote: "",
-    exportStale: true, exportErrors: [],
+    exportStale: true, exportErrors: [], finishResult: null,
   });
   // Stav akce se mohl změnit u jiného uživatele.
   const events = state.events = await api("/api/akce");
@@ -755,15 +900,18 @@ async function openEvent(name) {
     await loadDetail();
     state.dirty = false;
     if (state.detail.novy) {
+      toWorkspaceUrl(finish);
       state.mode = "wizard";
       renderReadonlyWizard();
+    } else if (finish) {
+      renderFinish();
     } else {
-      state.mode = "workspace";
-      renderWorkspace();
+      showWorkspace();
     }
     return;
   }
   if (entry.stav === "nezpracovano") {
+    toWorkspaceUrl(finish);
     state.mode = "wizard";
     wizard.step = 0;
     wizard.volby = {};
@@ -773,14 +921,35 @@ async function openEvent(name) {
   } else {
     await loadDetail();
     if (state.doc && state.detail.novy) {
+      toWorkspaceUrl(finish);
       state.mode = "wizard";
       wizard.step = 1;
       renderWizard();
+    } else if (finish) {
+      renderFinish();
     } else {
-      state.mode = "workspace";
-      renderWorkspace();
+      showWorkspace();
     }
   }
+}
+
+// Kontrolní stránka nezpracované akce = plocha s průvodcem (bez
+// záznamu v historii, zpět vede tam, odkud uživatel přišel).
+function toWorkspaceUrl(finish) {
+  if (finish) history.replaceState(null, "", eventHash(state.name));
+}
+
+function eventHash(name, finish = false) {
+  return `#/akce/${encodeURIComponent(name)}${finish ? "/dokonceni" : ""}`;
+}
+
+// Plocha akce; provede nápravu vybranou na kontrolní stránce.
+function showWorkspace() {
+  state.mode = "workspace";
+  renderWorkspace();
+  const fix = state.pendingFix;
+  state.pendingFix = null;
+  if (fix) fix();
 }
 
 async function loadDetail() {
@@ -2721,18 +2890,17 @@ async function flushSave() {
 async function finishEvent() {
   if (state.exporting || state.readonly) return;
   if (!(await flushSave())) return;
-  const lines = missingItems().map((i) => i.text);
-  if (lines.length && !(await confirmDialog("Akci něco chybí nebo je " +
-    "k vyřešení", lines, "Přesto dokončit"))) return;
   const name = state.name;
   state.exporting = true;
   state.exportErrors = [];
-  renderExportStatus();
+  state.finishResult = state.finishError = null;
+  refreshFinish();
   try {
     const r = await api(eventUrl(name, "/dokoncit"), {
       method: "POST", body: { relace: session(), version: state.version },
     });
     if (name !== state.name) return;
+    state.finishResult = r;
     state.exportErrors = r.chyby;
     state.exportStale = r.chyby.length > 0;
     state.version = r.version;
@@ -2759,18 +2927,108 @@ async function finishEvent() {
     }
     state.exportStale = true;
     state.exportNote = `Export selhal: ${err.message}`;
+    state.finishError = err.message;
   } finally {
     state.exporting = false;
   }
-  renderExportStatus();
+  refreshFinish();
   if (state.dirty && !state.conflict) scheduleSave();
+}
+
+// Po dokončení: kontrolní stránka, nebo stav u tlačítka, pokud uživatel
+// mezitím přešel na plochu.
+function refreshFinish() {
+  if (state.mode === "finish") renderFinish();
+  else renderExportStatus();
+}
+
+// --- kontrolní stránka dokončení -------------------------------------------
+
+// Seznam kontrol s odkazy nápravy, tlačítko Dokončit a výsledek. Sdílí
+// stav akce s plochou; bez zámku jen ke čtení.
+function renderFinish() {
+  state.mode = "finish";
+  const name = state.name;
+  const items = missingItems();
+  const fix = (onclick) => {
+    state.pendingFix = onclick;
+    location.hash = eventHash(name);
+  };
+  const checks = CHECKS.map(([key, label, okText]) => {
+    const own = items.filter((i) => i.skupina === key);
+    return h("li", { class: own.length ? "vyresit" : "ok" },
+      h("span", { class: "znacka", "aria-hidden": "true" },
+        own.length ? "!" : "✓"),
+      h("div", {}, h("strong", {}, label),
+        own.length ? h("ul", {}, own.map((i) => h("li", {}, i.text, " ",
+          h("button", { class: "link", onclick: () => fix(i.onclick) },
+            "Opravit na ploše")))) : h("span", { class: "meta" },
+          ` – ${okText}`)));
+  });
+  const exp = exportCheck();
+  checks.push(h("li", { class: exp.ok ? "ok" : "info" },
+    h("span", { class: "znacka", "aria-hidden": "true" },
+      exp.ok ? "✓" : "↻"),
+    h("div", {}, h("strong", {}, "Stav exportu"), ` – ${exp.text}`,
+      h("p", { class: "meta" }, exportTarget()))));
+  const done = state.doc.dokonceno;
+  const button = h("button", { class: "primary",
+    disabled: !!state.readonly || state.exporting ||
+      (!!done && !exportPending()),
+    title: exportTarget(), onclick: () => finishEvent() },
+  state.exporting ? "Dokončuji…" : items.length ? "Přesto dokončit"
+    : "Dokončit");
+  app.replaceChildren(
+    header(h("span", { id: "save-status", class: "status" })),
+    h("div", { class: "eventbar" },
+      h("a", { href: eventHash(name) }, "← Plocha akce"),
+      h("h1", {}, name)),
+    lockNotice(),
+    h("main", { class: "dokonceni" },
+      h("h2", {}, "Kontrola před dokončením"),
+      h("ul", { class: "kontroly" }, checks),
+      h("div", { class: "row" }, button,
+        done ? h("span", { class: "meta" }, `Dokončeno ${done}`) : null,
+        items.length ? h("span", { class: "meta" },
+          "Kontroly k vyřešení dokončení nebrání.") : null),
+      finishResultView()));
+  setStatus();
+}
+
+// Výsledek posledního dokončení: počty sidecarů, chyby, zveřejnění.
+function finishResultView() {
+  const r = state.finishResult;
+  if (state.finishError) {
+    return h("section", { class: "vysledek" },
+      h("p", { class: "error" }, `Dokončení selhalo: ${state.finishError}`));
+  }
+  if (!r) return null;
+  const failed = r.chyby.length || r.zverejneni;
+  return h("section", { class: "vysledek" },
+    h("h2", {}, failed ? (r.dokonceno ? "Dokončeno s chybami"
+      : "Akci nešlo dokončit") : "Akce je dokončená"),
+    h("p", {}, `Sidecary: ${exportResult(r)}.`),
+    r.zverejneni ? h("p", { class: "error" },
+      "Akci nešlo zveřejnit pro Immich (přejmenovat složku): ",
+      r.zverejneni === "kolize_pripony" ? KOLIZE : r.zverejneni) : null,
+    r.chyby.length ? h("ul", { class: "error" }, r.chyby.map((e) =>
+      h("li", {}, h("code", {}, e.soubor), `: ${e.chyba}`))) : null,
+    r.index?.length ? h("p", { class: "meta" },
+      `Index: ${r.index.join("; ")}`) : null,
+    h("p", {}, h("a", { href: listLink() }, "← Seznam akcí")));
+}
+
+// Tlačítko Dokončit akci na ploše: uloží a otevře kontrolní stránku.
+async function openFinish() {
+  if (state.readonly || !(await flushSave())) return;
+  location.hash = eventHash(state.name, true);
 }
 
 // --- pracovní plocha -------------------------------------------------------
 
 function renderWorkspace() {
   const d = state.detail;
-  const back = h("a", { href: "#/" }, "← Akce");
+  const back = h("a", { href: listLink() }, "← Akce");
   app.replaceChildren(
     header(h("span", { id: "save-status", class: "status" })),
     h("div", { class: "eventbar" }, back,
@@ -2807,7 +3065,7 @@ function renderWorkspace() {
           h("span", { id: "export-status" }),
           h("button", { id: "finish", class: "primary",
             disabled: !!state.readonly, title: exportTarget(),
-            onclick: () => finishEvent() }, "Dokončit akci")))),
+            onclick: () => openFinish() }, "Dokončit akci")))),
     lockNotice(),
     h("div", { class: `workspace${panelCollapsed() ? " panel-sbaleny" : ""}` },
       h("nav", { id: "nav", class: "nav", "aria-label": "Navigátor akce" }),
@@ -2880,36 +3138,82 @@ function togglePanel() {
   if (state.view === "loupe") renderBig();
 }
 
-// Chybějící údaje a nálezy jako [{text, onclick}] pro dokončení akce.
+// Kontroly dokončení po skupinách (CHECKS): [{skupina, text, n, onclick}];
+// `onclick` je náprava na ploše. Stav exportu je zvlášť (exportCheck).
 function missingItems() {
   const m = missing(state.doc, state.present);
   const items = [];
-  const item = (text, onclick) => items.push({ text, onclick });
+  const item = (skupina, text, n, onclick) =>
+    items.push({ skupina, text, n, onclick });
   if (m.akce.length) {
-    item(`Akce: chybí ${m.akce.map((k) => AKCE_POLE[k]).join(", ")}`,
-      () => select(new Set(), null));
+    item("akce", `Akce: chybí ${m.akce.map((k) => AKCE_POLE[k])
+      .join(", ")}`, m.akce.length, () => select(new Set(), null));
   }
   if (m.skupinyBezAutoru.length) {
-    item(`${plural(m.skupinyBezAutoru.length, "skupina", "skupiny",
-      "skupin")} bez autorů`, () => {
+    item("soubory", `${plural(m.skupinyBezAutoru.length, "skupina",
+      "skupiny", "skupin")} bez autorů`, m.skupinyBezAutoru.length, () => {
       const g = m.skupinyBezAutoru[0];
       select(new Set(), g);
       scrollToSection(`g:${g}`);
     });
   }
+  const counted = Object.keys(state.doc.soubory || {}).filter((f) =>
+    state.present.has(f) && !discarded(f));
   const files = (list, label) => {
-    if (list.length) item(`${nFiles(list.length)} ${label}`,
-      () => selectFiles(list));
+    if (list.length) item("soubory", `${nFiles(list.length)} ${label}`,
+      list.length, () => selectFiles(list));
   };
+  files(counted.filter((f) => !authorsOf(f).length), "bez autorů");
   files(m.souboryBezData, "bez data");
   files(m.souboryBezSkupiny, "bez skupiny");
   files(m.souboryBezMista, "bez místa");
   const places = Object.keys(m.mistaBezSouradnic);
   if (places.length) {
-    item(`${plural(places.length, "místo", "místa", "míst")} bez souřadnic`,
-      () => openPlace(places[0], m.mistaBezSouradnic[places[0]]));
+    item("soubory", `${plural(places.length, "místo", "místa", "míst")} ` +
+      "bez souřadnic", places.length,
+    () => openPlace(places[0], m.mistaBezSouradnic[places[0]]));
   }
-  return [...items, ...findingItems()];
+  for (const f of findingItems()) {
+    item("nalezy", f.text, f.n, NALEZY_UKLID.includes(f.druh)
+      ? workspaceCleanup : f.onclick);
+  }
+  const damaged = damagedToRepair();
+  if (damaged.length) {
+    item("poskozene", `${plural(damaged.length, "poškozený soubor",
+      "poškozené soubory", "poškozených souborů")} bez rozhodnutí`,
+    damaged.length, () => selectFiles(damaged));
+  }
+  const vyradit = Object.keys(state.doc.soubory || {})
+    .filter((f) => state.present.has(f) && discarded(f));
+  if (vyradit.length) {
+    item("vyradit", `${nFiles(vyradit.length)} k vyřazení ještě ` +
+      "v kořeni", vyradit.length, workspaceCleanup);
+  }
+  return items;
+}
+
+// Skupiny kontrol kontrolní stránky: [klíč, název, text bez nálezu].
+const CHECKS = [
+  ["akce", "Údaje akce", "název a data akce vyplněná"],
+  ["soubory", "Chybějící údaje souborů", "všem souborům nic nechybí"],
+  ["nalezy", "Nálezy kontroly akce", "žádné nálezy"],
+  ["poskozene", "Poškozené soubory", "žádné bez rozhodnutí"],
+  ["vyradit", "Soubory k vyřazení", "žádné nezůstaly v kořeni"],
+];
+
+// Stav exportu pro kontrolní stránku: {ok, text}.
+function exportCheck() {
+  if (state.exportErrors.length) {
+    return { ok: false, text: `poslední export selhal u ${
+      nFiles(state.exportErrors.length)}` };
+  }
+  if (state.dirty || state.saving) {
+    return { ok: false, text: "neuložené změny" };
+  }
+  if (state.exportStale) {
+    return { ok: false, text: state.exportNote || "neexportované změny" };
+  }
+  return { ok: true, text: "sidecary aktuální" };
 }
 
 // Nálezy kontroly kořene akce (issue #11) pro lištu akce i dokončení:
@@ -2920,7 +3224,8 @@ function findingItems() {
     const names = nalezy.filter((n) => n.druh === druh).map((n) => n.nazev);
     if (!names.length) return [];
     const text = nalez(druh, names.length);
-    return [{ text, onclick: () => namesDialog(text, names, druh) }];
+    return [{ text, druh, n: names.length,
+      onclick: () => namesDialog(text, names, druh) }];
   });
 }
 
@@ -3079,7 +3384,7 @@ const STEPS = ["Úklid", "Údaje akce", "Skupiny a autoři"];
 function wizardFrame(body, nav) {
   return [
     header(),
-    h("div", { class: "eventbar" }, h("a", { href: "#/" }, "← Akce"),
+    h("div", { class: "eventbar" }, h("a", { href: listLink() }, "← Akce"),
       h("h1", {}, state.name)),
     h("ol", { class: "steps" }, STEPS.map((s, i) => h("li", {
       class: i === wizard.step ? "current" : i < wizard.step ? "done" : "",
@@ -3118,7 +3423,7 @@ function navButtons({ back = true, next = "Pokračovat", onNext,
 // Akci bez metadat prochází průvodcem někdo jiný.
 function renderReadonlyWizard() {
   app.replaceChildren(header(),
-    h("div", { class: "eventbar" }, h("a", { href: "#/" }, "← Akce"),
+    h("div", { class: "eventbar" }, h("a", { href: listLink() }, "← Akce"),
       h("h1", {}, state.name)),
     lockNotice(),
     h("main", { class: "wizard" }, h("p", {}, "Akce zatím nemá uložená " +
@@ -3526,7 +3831,7 @@ async function openImport(id, params) {
       if (err.status !== 404) throw err;
       app.replaceChildren(header(), h("main", { class: "wizard" },
         h("p", {}, "Import nenalezen: je zahozený, už proběhl, nebo patří " +
-          "jinému uživateli."), h("a", { href: "#/" }, "← Akce")));
+          "jinému uživateli."), h("a", { href: listLink() }, "← Akce")));
       return;
     }
     if (imp.overview.soubory.length || imp.overview.zdroj) imp.step = 1;
@@ -3596,7 +3901,7 @@ function importFrame(body, nav) {
   if (notice) body.prepend(notice);
   return [
     header(),
-    h("div", { class: "eventbar" }, h("a", { href: "#/" }, "← Akce"),
+    h("div", { class: "eventbar" }, h("a", { href: listLink() }, "← Akce"),
       h("h1", {}, "Import fotek a videí"),
       imp.cil ? h("span", { class: "paths" }, `cíl: ${imp.cil}`) : null),
     h("ol", { class: "steps" }, IMPORT_STEPS.map((s, i) => h("li", {

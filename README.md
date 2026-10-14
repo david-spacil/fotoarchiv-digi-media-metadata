@@ -278,9 +278,10 @@ Nehlásí `Thumbs.db`, `_metadata.json`, sidecary se souborem, dočasné
 soubory aplikace ani obsah podsložek. Názvy porovnává bez ohledu na
 velikost písmen a NFC/NFD (`a.JPG.xmp` patří k `a.jpg`).
 
-Seznam akcí ukáže u akce s nálezy štítek „k vyřešení“ s počty, lišta
-pracovní plochy nálezy po druzích (klik vypíše názvy) a dokončení akce
-je zahrne do potvrzení — dokončit jde i s nimi. Všechno kromě záznamu
+Seznam akcí ukáže u akce s nálezy štítek „k vyřešení“ (počty
+v popisku), lišta pracovní plochy nálezy po druzích (klik vypíše názvy)
+a kontrolní stránka dokončení je uvede mezi kontrolami k vyřešení —
+dokončit jde i s nimi. Všechno kromě záznamu
 bez souboru napraví **Uklidit…** (viz Tok práce); záznam bez souboru
 zůstává i s ručními údaji, vrácený soubor se k němu znovu připojí.
 
@@ -397,7 +398,8 @@ přístroje a vzoru názvu, uživatel je může upravit.
       "sha256": "…"
     },
     "P1503713.JPG": {"skupina": "g9", "vyradit": true}
-  }
+  },
+  "upravili": {"Spáčil, David": "2026-10-14T10:15:02"}
 }
 ```
 
@@ -438,6 +440,12 @@ přístroje a vzoru názvu, uživatel je může upravit.
 - **`overeno: true`** je ruční potvrzení, že soubor je i přes výsledek
   kontroly integrity v pořádku (jen u souboru, nedědí se, do sidecaru
   ani indexu nejde). Takový soubor se nepočítá do odznaku poškozených.
+- **`upravili`** = kdo akci ukládal: jméno uživatele → čas jeho
+  posledního uložení nebo dokončení (ISO 8601, místní čas serveru, na
+  sekundy). Zapisuje jen server jménem z přihlášené relace (stejné jako
+  u zámku); hodnotu od klienta zahodí a vezme ji z uložené verze. Starší
+  akce pole nemají, vznikne prvním uložením. Nedědí se, do sidecaru ani
+  indexu nejde; slouží filtru „Moje rozpracované“ a řazení seznamu akcí.
 - Originály se nemění.
 
 ## Jména osob
@@ -546,12 +554,32 @@ po široké monitory.
 
 ### Tok práce
 
-1. **Seznam akcí** se stavem (nezpracováno / rozpracováno / hotovo)
-   a chybějícími údaji. Dokončená akce, jejímž souborům v kořeni (kromě
-   označených k vyřazení) po zdědění chybí autoři, datum nebo místo,
-   má navíc štítek „nekompletní“. Akce s nálezem kontroly (viz
-   Kontrola akce) má štítek „k vyřešení“ s počty nálezů. Nové fotky
-   a videa se do archivu dostanou
+1. **Seznam akcí** je fronta práce: karta akce nese datum, název
+   (odkaz na plochu), počet souborů, stav (nezpracováno / rozpracováno
+   / hotovo) a štítky, pruh až 4 náhledů rovnoměrně z celé akce (bez
+   souborů k vyřazení; načítají se líně, až je karta vidět), hotovost
+   a kdo akci drží („upravuje …“, vlastní zámek „otevřeno u vás“)
+   a naposledy upravoval (`upravili`). **Hotovost** = u každého pole
+   autoři, datum, místo počet souborů kořene (bez označených
+   k vyřazení), které ho mají po zdědění vyplněné, z jejich počtu;
+   počítá ji server při výpisu z `_metadata.json` a výpisu složky.
+   Nezpracovaná akce místo hotovosti nabízí zahájení zpracování.
+   Dokončená akce, jejímž souborům chybí autoři, datum nebo místo, má
+   štítek „nekompletní“, upravená po exportu „změněno po exportu“;
+   akce s nálezem kontroly (viz Kontrola akce) „k vyřešení“.
+   Karty jsou **dlaždice** (náhledy 2 × 2, souhrnný pruh hotovosti)
+   nebo **řádky** (pruh hotovosti pro každé pole); přepínač si pamatuje
+   prohlížeč. **Filtry** s počty: Vše, Moje rozpracované (rozpracovaná,
+   nebo dokončená se změnami po exportu, kterou uživatel ukládal nebo
+   drží jeho zámek), K dokončení (rozpracovaná bez chybějících údajů
+   a dokončená se změnami po exportu), Nezpracované. **Hledání**
+   v názvu ignoruje diakritiku, velikost písmen a koncové samohlásky
+   slov („stezky drahanska“ najde „Stezky Drahanskou“). **Řazení**
+   podle data akce (výchozí, sestupně), hotovosti (nejméně hotové
+   nahoře, nezpracované na konci) nebo poslední úpravy (bez záznamu na
+   konci). Filtr, hledání a řazení jsou v adrese seznamu
+   (`#/?filtr=…&hledat=…&razeni=…`), takže přežijí návrat z plochy
+   a jdou poslat odkazem. Nové fotky a videa se do archivu dostanou
    **importem** (viz Import) do nové nebo stávající akce.
 2. **Při prvním otevření akce bez `_metadata.json` průvodce:** úklid
    (podsložky, RAW; potvrzení načte soubory kořene) → údaje akce
@@ -656,17 +684,32 @@ po široké monitory.
    režimu je sloupec Vyřadit vypnutý.
    V produkčním režimu plán po potvrzení provede (viz Podsložky a RAW),
    ve vývojovém ho jen ukáže.
-4. **Dokončení akce** uloží změny, zkontroluje úplnost a nálezy
-   kontroly akce (co chybí nebo je k vyřešení, ukáže a dokončí až po
-   potvrzení), zapíše sidecary, v produkčním
+4. **Dokončení akce:** tlačítko Dokončit akci na ploše uloží změny
+   a otevře **kontrolní stránku** (`#/akce/<název>/dokonceni`, jde
+   otevřít i odkazem). Ta ukáže kontroly se stavem v pořádku /
+   k vyřešení: údaje akce, chybějící údaje souborů (skupiny a soubory
+   bez autorů, soubory bez data, bez skupiny, bez místa, místa bez
+   souřadnic), nálezy kontroly akce, poškozené soubory bez rozhodnutí,
+   soubory k vyřazení ještě v kořeni a stav exportu (kontrola
+   nanečisto; ve vývojovém režimu i kam jdou sidecary). Každá kontrola
+   k vyřešení má odkaz „Opravit na ploše“: otevře plochu a vybere
+   dotčené soubory nebo skupinu, otevře volbu souřadnic, výpis názvů
+   nebo Uklidit…; zpět vede tlačítko Dokončit akci. Při kontrolách
+   k vyřešení nese tlačítko stránky text „Přesto dokončit“ (to je
+   výslovné potvrzení), jinak „Dokončit“. Stránka sdílí s plochou
+   stav akce i zámek (přechod zámek neuvolní); bez zámku je jen ke
+   čtení s uvedeným držitelem a tlačítko je neaktivní. Nezpracovanou
+   akci přesměruje na průvodce. Dokončení zapíše sidecary, v produkčním
    režimu odebere složce akce příponu `.ignored` (zveřejní ji pro
    Immich, který ji tak poprvé uvidí rovnou se sidecary) a nastaví
    `dokonceno`. Selže-li zápis některého sidecaru nebo přejmenování
    složky (např. soubor v ní drží jiný počítač), akce dokončená
-   není a plocha chybu ukáže. Dokončit akci je jediný zápis sidecarů
+   není a kontrolní stránka chybu ukáže. Po dokončení stránka ukáže
+   počty zapsaných, nezměněných a selhaných sidecarů, chyby po souborech
+   a odkaz zpět na seznam akcí. Dokončit akci je jediný zápis sidecarů
    z plochy: po úpravě dokončené akce se dokončí znovu. `dokonceno` je
    datum prvního dokončení, opakované dokončení ho nemění; selže-li
-   přitom export, akce zůstane dokončená a plocha chybu ukáže. U
+   přitom export, akce zůstane dokončená a stránka chybu ukáže. U
    tlačítka plocha ukazuje, kolik sidecarů je neaktuálních, a po úpravě
    „neexportované změny“; seznam akcí u dokončené akce upravené po
    exportu uvede „změněno po exportu“. U dokončené akce je Dokončit

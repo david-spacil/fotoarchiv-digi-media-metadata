@@ -194,3 +194,15 @@ def test_write_failure_is_warning(tmp_path, monkeypatch):
     warnings = index.write(ws)
     assert len(warnings) == 1 and "_INDEX.html" in warnings[0]
     assert (tmp_path / "work" / "index" / "_INDEX.md").exists()
+
+
+def test_editors_not_in_index(tmp_path):
+    ws = make_ws(tmp_path)
+    doc, version = ws.load(KONF)
+    doc["upravili"] = {"Upravil, Jiný": "2026-10-14T10:15:02"}
+    ws.save(KONF, doc, version)
+    records = index.collect(ws)
+    md = index.render_md(records)
+    html = index.render_html(records, index.link(ws))
+    for text in (md, html, repr(records)):
+        assert "Upravil" not in text and "10:15:02" not in text

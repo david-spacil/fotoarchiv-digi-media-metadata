@@ -291,3 +291,37 @@ def test_cli_hide(ws_prod, capsys):
         "2025-01-02 starší.ignored", HIDDEN]
     # Metadata jdou se složkou.
     assert ws_prod.load("2025-01-02 starší")[0] == {"dokonceno": None}
+
+
+# --- data karty v seznamu akcí (fronta-akci) --------------------------------
+
+def test_list_events_card_data_unprocessed(ws):
+    event = ws.list_events()[0]
+    assert event["hotovost"] is None
+    assert event["ukazky"] == ["a.jpg", "b.mp4"]
+    assert event["upravili"] == {}
+
+
+def test_list_events_card_data(ws):
+    doc = {"schema": "x", "dokonceno": None,
+           "akce": {"mista": ["Brno"]},
+           "soubory": {"a.jpg": {"datum": "2026-04-28T10:00:00"},
+                       "b.mp4": {"vyradit": True}},
+           "upravili": {"Spáčil, David": "2026-10-14T10:15:02"}}
+    ws.save(EVENT, doc, None)
+    event = ws.list_events()[0]
+    assert event["hotovost"] == {"autori": [0, 1], "datum": [1, 1],
+                                 "misto": [1, 1]}
+    assert event["ukazky"] == ["a.jpg"]
+    assert event["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02"}
+    # `chybi` dál jen u hotovo.
+    assert event["chybi"] == []
+
+
+def test_samples_spread_over_large_event():
+    from fotoarchiv.archive import samples
+    present = {f"{i:03}.jpg" for i in range(200)}
+    assert samples(present, None) == ["025.jpg", "075.jpg", "125.jpg",
+                                      "175.jpg"]
+    assert samples({"b.jpg", "a.jpg"}, None) == ["a.jpg", "b.jpg"]
+    assert samples(set(), None) == []

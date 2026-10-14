@@ -277,6 +277,97 @@ main.list, main.loading, main.wizard { padding: var(--space-4)
 .badge.poskozene { background: var(--danger-bg); color: var(--danger);
   margin-left: 4px; }
 
+.badge.zmeneno { background: var(--warn-bg); color: var(--warn);
+  margin-left: 4px; }
+.stav-nezpracovano .badge.stav { background: var(--todo-bg);
+  color: var(--todo); }
+
+/* seznam akcí jako fronta: lišta filtrů, dlaždice a řádky */
+.fronta-lista { display: flex; flex-wrap: wrap; gap: var(--space-3);
+  align-items: center; margin: var(--space-4) 0; }
+.fronta-lista input[type="search"] { flex: 1 1 200px; min-width: 0;
+  max-width: 360px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid
+  var(--border); border-radius: var(--radius); overflow: hidden; }
+.seg button { border: 0; border-radius: 0; border-right: 1px solid
+  var(--border); display: inline-flex; gap: var(--space-2);
+  align-items: center; }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--accent);
+  color: var(--accent-text); }
+.seg .n { opacity: 0.8; font-variant-numeric: tabular-nums; }
+.seg .icon { width: 14px; height: 14px; }
+.karty { display: grid; gap: var(--space-4); }
+.karta { background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden; min-width: 0; }
+.karta .telo { display: grid; gap: var(--space-2); align-content: start;
+  min-width: 0; }
+.karta .nazev { font-weight: 600; font-size: 15px; text-wrap: balance; }
+.karta .meta { color: var(--text-muted); font-variant-numeric: tabular-nums;
+  font-size: 12px; }
+.karta .stitky { display: flex; flex-wrap: wrap; gap: var(--space-2);
+  align-items: center; }
+.karta .stitky .badge { margin-left: 0; }
+.karta .lide { display: flex; flex-wrap: wrap; gap: var(--space-3);
+  font-size: 12px; }
+.karta .drzitel { color: var(--text-muted); }
+.karta .drzitel.vase { color: var(--warn); }
+.karta .drzitel::before { content: "● "; }
+.nahledy { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+  background: var(--thumb-bg); }
+.nahledy img, .nahledy .ph { width: 100%; aspect-ratio: 1; object-fit: cover;
+  display: block; background: var(--thumb-bg); }
+.nahledy .ph { display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); font-size: 11px; text-align: center; }
+.pruh { display: block; height: 6px; border-radius: var(--radius-pill);
+  background: var(--surface-2); overflow: hidden; }
+.pruh i { display: block; height: 100%; background: var(--ok); }
+.pruh.castecne i { background: var(--warn); }
+.hotovost { display: grid; gap: var(--space-2); }
+.karty.dlazdice { grid-template-columns: repeat(auto-fill,
+  minmax(250px, 1fr)); }
+.karty.dlazdice .nahledy { grid-template-columns: repeat(2, 1fr);
+  aspect-ratio: 2 / 1.1; overflow: hidden; }
+.karty.dlazdice .nahledy img, .karty.dlazdice .nahledy .ph {
+  aspect-ratio: auto; height: 100%; }
+.karty.dlazdice .telo { padding: var(--space-4); }
+.karty.radky .karta { display: grid; gap: var(--space-5);
+  grid-template-columns: 220px minmax(0, 1fr) 220px; align-items: center;
+  padding: var(--space-3); }
+.karty.radky .nahledy.prazdne { background: none; }
+.hotovost.pole { font-size: 12px; font-variant-numeric: tabular-nums; }
+.hotovost.pole > div { display: grid; align-items: center;
+  grid-template-columns: 4.2em 1fr 4.8em; gap: var(--space-3); }
+.hotovost.pole .zlomek { text-align: right; color: var(--text-muted); }
+.hotovost.pole .castecne .zlomek { color: var(--warn); }
+@media (max-width: 760px) {
+  .karty.radky .karta { grid-template-columns: 1fr; }
+  /* kontrolní stránka na telefonu: hlavička se stavem uložení se zalomí */
+  header { flex-wrap: wrap; }
+  #save-status { min-width: 0; }
+}
+
+/* kontrolní stránka dokončení */
+main.dokonceni { padding: var(--space-4) var(--space-5); max-width: 860px;
+  display: grid; gap: var(--space-4); align-content: start; }
+main.dokonceni h2 { font-size: 16px; margin: 0; }
+.kontroly { list-style: none; margin: 0; padding: 0; display: grid;
+  gap: var(--space-2); }
+.kontroly > li { display: grid; grid-template-columns: 1.6em minmax(0, 1fr);
+  gap: var(--space-3); padding: var(--space-3) var(--space-4);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); }
+.kontroly ul { margin: var(--space-2) 0 0; padding-left: 1.2em; }
+.kontroly .znacka { font-weight: 700; text-align: center; }
+.kontroly .ok .znacka { color: var(--ok); }
+.kontroly .vyresit { background: var(--warn-bg); }
+.kontroly .vyresit .znacka { color: var(--warn); }
+.kontroly .info .znacka { color: var(--link); }
+.kontroly p.meta { margin: var(--space-2) 0 0; }
+.vysledek { display: grid; gap: var(--space-2); }
+.vysledek p, .vysledek ul { margin: 0; }
+.vysledek .error { color: var(--danger); }
+
 /* upozornění */
 .notice { background: var(--info-bg); border-left: 4px solid var(--accent);
   padding: 6px 10px; border-radius: 0 var(--radius) var(--radius) 0; }
