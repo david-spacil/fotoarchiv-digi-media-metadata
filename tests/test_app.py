@@ -632,16 +632,17 @@ def test_discard_execute_requires_lock(prod):
 
 # --- přihlášení ------------------------------------------------------------
 
-USERS = {"spacil": {"jmeno": "Spáčil, David", "admin": True,
+USERS = {"spacil": {"jmeno": "Spáčil, David", "role": "admin",
                     "email": "spacil@example.cz"},
-         "kopacova": {"jmeno": "Kopáčová, Jana"}}
+         "kopacova": {"jmeno": "Kopáčová, Jana"},
+         "novak": {"jmeno": "Novák, Petr", "role": "archivar"}}
 HESLO = "tajne-heslo-1"
 
 
 @pytest.fixture
 def login_app(tmp_path, monkeypatch):
-    """(app, archiv) s přihlášením v produkčním režimu; oba uživatelé mají
-    heslo HESLO."""
+    """(app, archiv) s přihlášením v produkčním režimu; admin `spacil`,
+    běžná `kopacova`, archivář `novak`, všichni s heslem HESLO."""
     from fotoarchiv import auth
     work = tmp_path / "work"
     work.mkdir()
@@ -692,11 +693,22 @@ def test_login_cookie_and_me(login_app):
     assert HESLO not in r.get_data(as_text=True)
     assert c.get("/api/ja").json == {
         "prihlaseni": True, "login": "spacil", "jmeno": "Spáčil, David",
-        "admin": True, "zmenit_heslo": False}
+        "role": "admin", "admin": True, "archivar": True,
+        "zmenit_heslo": False}
     assert c.get("/api/akce").status_code == 200
     assert c.get("/").status_code == 200
     c.post("/api/odhlaseni")
     assert c.get("/api/akce").status_code == 401
+
+
+def test_me_roles(login_app):
+    app, _ = login_app
+    for login, role, admin, archivar in (("spacil", "admin", True, True),
+                                         ("novak", "archivar", False, True),
+                                         ("kopacova", None, False, False)):
+        me = logged_in(app, login).get("/api/ja").json
+        assert (me["role"], me["admin"], me["archivar"]) == \
+            (role, admin, archivar)
 
 
 def test_https_cookie_secure(tmp_path):
@@ -772,8 +784,25 @@ def test_removed_user_401(login_app, tmp_path):
     assert c.get("/api/akce").status_code == 401
 
 
+def own(app, jmeno, nazev=EVENT):
+    """Akce s `_metadata.json`, v jehož `upravili` je `jmeno`."""
+    from fotoarchiv.archive import SCHEMA
+    ws = app.config["WORKSPACE"]
+    _, version = ws.load(nazev)
+    ws.save(nazev, {"schema": SCHEMA, "akce": {}, "skupiny": {},
+                    "soubory": {}, "upravili": {jmeno: "2026-10-14T10:15:02"}},
+            version)
+
+
+def set_users(tmp_path, users):
+    path = tmp_path / "work" / "uzivatele.json"
+    path.write_text(json.dumps(users), encoding="utf-8")
+    os.utime(path, ns=(1, 1))  # jiný mtime i při rychlém přepisu
+
+
 def test_lock_name_from_login_and_logout_releases(login_app):
     app, _ = login_app
+    own(app, "Kopáčová, Jana")
     c = logged_in(app, "kopacova")
     r = c.post(f"/api/akce/{EVENT}/zamek",
                json={"relace": "r1", "jmeno": "Podvržené, Jméno"})
@@ -787,23 +816,170 @@ def test_lock_name_from_login_and_logout_releases(login_app):
                       json={"relace": "r2"}).status_code == 200
 
 
-def test_force_release_admin_only(login_app):
+def test_force_release_admin_and_archivist(login_app):
     app, _ = login_app
+    own(app, "Kopáčová, Jana")
     user = logged_in(app, "kopacova")
     doc = user.get(f"/api/akce/{EVENT}").json["metadata"]
     user.post(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
     r = user.post(f"/api/akce/{EVENT}/zamek/vynutit")
     assert r.status_code == 403
-    admin = logged_in(app, "spacil")
-    r = admin.post(f"/api/akce/{EVENT}/zamek/vynutit")
+    archivar = logged_in(app, "novak")
+    r = archivar.post(f"/api/akce/{EVENT}/zamek/vynutit")
     assert r.json["uvolneno"]["jmeno"] == "Kopáčová, Jana"
-    assert admin.post(f"/api/akce/{EVENT}/zamek",
-                      json={"relace": "r2"}).status_code == 200
+    assert archivar.post(f"/api/akce/{EVENT}/zamek",
+                         json={"relace": "r2"}).status_code == 200
     r = user.put(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
-    assert r.status_code == 409 and r.json["uvolnil"] == "Spáčil, David"
+    assert r.status_code == 409 and r.json["uvolnil"] == "Novák, Petr"
     r = user.put(f"/api/akce/{EVENT}/metadata",
                  json={"metadata": doc, "version": None, "relace": "r1"})
     assert r.status_code == 423
+    admin = logged_in(app, "spacil")
+    r = admin.post(f"/api/akce/{EVENT}/zamek/vynutit")
+    assert r.json["uvolneno"]["jmeno"] == "Novák, Petr"
+
+
+def test_edit_permission(login_app):
+    app, _ = login_app
+    user = logged_in(app, "kopacova")
+    archivar = logged_in(app, "novak")
+    # Akce bez _metadata.json: jen admin a archivář.
+    assert user.get("/api/akce").json[0]["upravit"] is False
+    assert archivar.get("/api/akce").json[0]["upravit"] is True
+    r = user.post(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
+    assert r.status_code == 403 and r.json["chyba"] == "jen_cteni"
+    assert app.config["LOCKS"].holder(EVENT) is None
+    # Prohlížet smí.
+    assert user.get(f"/api/akce/{EVENT}").status_code == 200
+    # Cizí akce (jiné jméno v upravili).
+    own(app, "Spáčil, David")
+    assert user.get("/api/akce").json[0]["upravit"] is False
+    assert user.post(f"/api/akce/{EVENT}/zamek",
+                     json={"relace": "r1"}).status_code == 403
+    # Archivář u cizí akce zámek dostane a smí uložit i dokončit.
+    assert archivar.post(f"/api/akce/{EVENT}/zamek",
+                         json={"relace": "r2"}).status_code == 200
+    doc, version = app.config["WORKSPACE"].load(EVENT)
+    r = archivar.put(f"/api/akce/{EVENT}/metadata",
+                     json={"metadata": doc, "version": version,
+                           "relace": "r2"})
+    assert r.status_code == 200
+    archivar.delete(f"/api/akce/{EVENT}/zamek", json={"relace": "r2"})
+    # Vlastní akce (jméno bez diakritiky v upravili).
+    own(app, "Kopacova, Jana")
+    assert user.get("/api/akce").json[0]["upravit"] is True
+    assert user.post(f"/api/akce/{EVENT}/zamek",
+                     json={"relace": "r1"}).status_code == 200
+
+
+def test_role_removed_while_holding_lock(login_app, tmp_path):
+    app, _ = login_app
+    archivar = logged_in(app, "novak")
+    assert archivar.post(f"/api/akce/{EVENT}/zamek",
+                         json={"relace": "r1"}).status_code == 200
+    doc = archivar.get(f"/api/akce/{EVENT}").json["metadata"]
+    set_users(tmp_path, dict(USERS, novak={"jmeno": "Novák, Petr"}))
+    r = archivar.put(f"/api/akce/{EVENT}/metadata",
+                     json={"metadata": doc, "version": None, "relace": "r1"})
+    assert r.status_code == 403 and r.json["chyba"] == "jen_cteni"
+    assert not (app.config["WORKSPACE"].metadata_path(EVENT)).exists()
+
+
+def test_unsorted_admin_and_archivist(login_app):
+    app, archiv = login_app
+    unsorted_tree(archiv)
+    user = logged_in(app, "kopacova")
+    r = user.get("/api/pretridit")
+    assert r.status_code == 403 and r.json["chyba"] == "jen_archivar"
+    r = user.post("/api/import", json={"zdroj": "DOD 2019"})
+    assert r.status_code == 403
+    assert user.get("/api/import").json["importy"] == []
+    assert not (app.config["IMPORTS"].root).exists() or \
+        not any(app.config["IMPORTS"].root.iterdir())
+    archivar = logged_in(app, "novak")
+    assert ndjson(archivar.get("/api/pretridit?exif=0"))[0]["slozky"]
+    assert archivar.post("/api/import",
+                         json={"zdroj": "DOD 2019"}).status_code == 200
+    assert archivar.put("/api/nominatim",
+                        json={"kontakt": "x@example.cz"}).status_code == 403
+    admin = logged_in(app, "spacil")
+    assert admin.get("/api/pretridit?exif=0").status_code == 200
+
+
+def test_unsorted_execute_without_role(login_app, tmp_path):
+    app, archiv = login_app
+    unsorted_tree(archiv)
+    archivar = logged_in(app, "novak")
+    id = archivar.post("/api/import", json={"zdroj": "DOD 2019"}).json["id"]
+    nova = "2019-05-01 DOD 2019"
+    ndjson(archivar.post(f"/api/import/{id}/plan", json={"nova": nova}))
+    set_users(tmp_path, dict(USERS, novak={"jmeno": "Novák, Petr"}))
+    r = archivar.post(f"/api/import/{id}/provest",
+                      json={"relace": "r1", "nova": nova})
+    assert r.status_code == 403 and r.json["chyba"] == "jen_archivar"
+    assert not (archiv / (nova + ".ignored")).exists()
+
+
+def test_import_owner_from_login(login_app):
+    app, _ = login_app
+    admin = logged_in(app, "spacil")
+    id = admin.post("/api/import", json={"jmeno": "Podvržené, Jméno"}) \
+        .json["id"]
+    admin.post(f"/api/import/{id}/soubor", data=b"a",
+               query_string={"cesta": "a.jpg", "mtime": 1})
+    [item] = admin.get("/api/import").json["importy"]
+    assert item["id"] == id
+    user = logged_in(app, "kopacova")
+    cizi = {"jmeno": "Spáčil, David"}
+    assert user.get("/api/import", query_string=cizi).json["importy"] == []
+    assert user.get(f"/api/import/{id}",
+                    query_string=cizi).status_code == 404
+    assert user.post(f"/api/import/{id}/plan", json=dict(
+        cizi, nova="2026-04-28 nová")).status_code == 404
+    assert user.post(f"/api/import/{id}/provest", json=dict(
+        cizi, relace="r1", nova="2026-04-28 nová")).status_code == 404
+    assert user.delete(f"/api/import/{id}", json=cizi).status_code == 404
+    assert admin.get(f"/api/import/{id}").json["pocty"] == {"foto": 1}
+
+
+def test_import_new_event_writes_editors(login_app):
+    app, archiv = login_app
+    user = logged_in(app, "kopacova")
+    id = user.post("/api/import", json={}).json["id"]
+    data = io.BytesIO()
+    Image.new("RGB", (10, 10)).save(data, "JPEG")
+    user.post(f"/api/import/{id}/soubor", data=data.getvalue(),
+              query_string={"cesta": "a.jpg", "mtime": 1})
+    nova = "2026-04-29 workshop"
+    ndjson(user.post(f"/api/import/{id}/plan", json={"nova": nova}))
+    events = ndjson(user.post(f"/api/import/{id}/provest",
+                              json={"relace": "r1", "nova": nova}))
+    assert events[-1]["typ"] == "vysledek"
+    assert events[-1]["skupiny"]["zapsano"] is True
+    doc, _ = app.config["WORKSPACE"].load(nova)
+    assert list(doc["upravili"]) == ["Kopáčová, Jana"]
+    [event] = [e for e in user.get("/api/akce").json if e["nazev"] == nova]
+    assert event["upravit"] is True
+    user.delete(f"/api/akce/{nova}/zamek", json={"relace": "r1"})
+    assert user.post(f"/api/akce/{nova}/zamek",
+                     json={"relace": "r2"}).status_code == 200
+
+
+def test_import_into_foreign_event_refused(login_app):
+    app, archiv = login_app
+    own(app, "Spáčil, David")
+    user = logged_in(app, "kopacova")
+    id = user.post("/api/import", json={}).json["id"]
+    user.post(f"/api/import/{id}/soubor", data=b"n",
+              query_string={"cesta": "n.jpg", "mtime": 1})
+    ndjson(user.post(f"/api/import/{id}/plan", json={"cil": EVENT}))
+    # Zámek cizí akce nedostane, bez něj provedení neprojde.
+    r = user.post(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
+    assert r.status_code == 403
+    r = user.post(f"/api/import/{id}/provest",
+                  json={"relace": "r1", "cil": EVENT})
+    assert r.status_code == 423
+    assert not (archiv / EVENT / "n.jpg").exists()
 
 
 def test_nominatim_contact_admin_only(login_app, tmp_path):
@@ -830,8 +1006,8 @@ def test_nominatim_contact_admin_only(login_app, tmp_path):
 def test_without_login_everyone_admin(client):
     c, _ = client
     assert c.get("/api/ja").json == {
-        "prihlaseni": False, "login": None, "jmeno": None, "admin": True,
-        "zmenit_heslo": False}
+        "prihlaseni": False, "login": None, "jmeno": None, "role": "admin",
+        "admin": True, "archivar": True, "zmenit_heslo": False}
     assert c.get("/prihlaseni").status_code == 302
     r = c.post(f"/api/akce/{EVENT}/zamek", json=R1)
     assert r.json["zamek"]["jmeno"] == "Spáčil, David"
@@ -861,6 +1037,29 @@ def test_password_command(tmp_path, capsys):
     assert a.passwords.must_change("kopacova")
     assert a.login("kopacova", heslo)[1] is None
     assert heslo not in (work / "hesla.json").read_text()
+
+
+OLD_USERS = {"spacil": {"jmeno": "Spáčil, David", "admin": True}}
+
+
+def test_old_users_file_refused(tmp_path, monkeypatch):
+    monkeypatch.setattr("fotoarchiv.__main__.serve", lambda *a, **k: None)
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "uzivatele.json").write_text(json.dumps(OLD_USERS))
+    (tmp_path / "archiv").mkdir()
+    for argv in (["heslo", "spacil", "--work", str(work)],
+                 ["--archiv", str(tmp_path / "archiv"), "--work",
+                  str(work)]):
+        with pytest.raises(SystemExit) as e:
+            main(argv)
+        assert e.value.code not in (0, None)
+        assert "spacil" in str(e.value)
+        assert '"role": "admin"' in str(e.value)
+    assert not (work / "hesla.json").exists()
+    # Bez přihlášení se soubor nečte.
+    main(["--archiv", str(tmp_path / "archiv"), "--work", str(work),
+          "--bez-prihlaseni"])
 
 
 def test_contact_option_migrated(tmp_path, monkeypatch, capsys):

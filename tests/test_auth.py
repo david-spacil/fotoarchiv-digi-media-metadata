@@ -11,7 +11,7 @@ def users(work, data):
     return path
 
 
-SPACIL = {"spacil": {"jmeno": "Spáčil, David", "admin": True}}
+SPACIL = {"spacil": {"jmeno": "Spáčil, David", "role": "admin"}}
 
 
 class Clock:
@@ -32,7 +32,7 @@ def test_hash_not_password_in_file(tmp_path):
     user, err = a.login("Spacil ", "tajne-heslo-1")
     assert err is None
     assert user == {"login": "spacil", "jmeno": "Spáčil, David",
-                    "email": None, "admin": True}
+                    "email": None, "role": "admin"}
 
 
 def test_removed_user_loses_access(tmp_path):
@@ -44,6 +44,49 @@ def test_removed_user_loses_access(tmp_path):
     os.utime(path, ns=(1, 1))  # jiný mtime i při rychlém přepisu
     assert a.users.get("spacil") is None
     assert a.login("spacil", "tajne-heslo-1") == (None, "neplatne")
+
+
+def test_roles(tmp_path):
+    users(tmp_path, {"a": {"jmeno": "A, A", "role": "admin"},
+                     "b": {"jmeno": "B, B", "role": "archivar"},
+                     "c": {"jmeno": "C, C"}})
+    u = auth.Users(tmp_path)
+    assert [u.get(x)["role"] for x in "abc"] == ["admin", "archivar", None]
+    assert u.problems() == []
+    assert auth.rights("admin") == {"admin": True, "archivar": True}
+    assert auth.rights("archivar") == {"admin": False, "archivar": True}
+    assert auth.rights(None) == {"admin": False, "archivar": False}
+
+
+def test_old_admin_key_and_unknown_role_refused(tmp_path):
+    users(tmp_path, {"spacil": {"jmeno": "Spáčil, David", "admin": True},
+                     "kopacova": {"jmeno": "Kopáčová, Jana",
+                                  "role": "spravce"},
+                     "novak": {"jmeno": "Novák, Petr"}})
+    u = auth.Users(tmp_path)
+    assert u.problems() == [
+        ("spacil", 'klíč "admin" (dřívější zápis role)'),
+        ("kopacova", 'neznámá role "spravce"')]
+    assert u.get("spacil") is None and u.get("kopacova") is None
+    assert u.get("novak")["role"] is None
+    text = auth.problems_message(u)
+    assert "spacil" in text and '"role": "admin"' in text
+
+
+def test_bad_record_at_runtime(tmp_path, caplog):
+    path = users(tmp_path, dict(SPACIL, novak={"jmeno": "Novák, Petr"}))
+    a = auth.Auth(tmp_path)
+    a.passwords.set("novak", "tajne-heslo-1")
+    a.passwords.set("spacil", "tajne-heslo-1")
+    assert a.users.get("novak")
+    path.write_text(json.dumps(dict(
+        SPACIL, novak={"jmeno": "Novák, Petr", "role": "spravce"})),
+        encoding="utf-8")
+    os.utime(path, ns=(1, 1))
+    with caplog.at_level("WARNING"):
+        assert a.login("novak", "tajne-heslo-1") == (None, "neplatne")
+    assert "novak" in caplog.text
+    assert a.login("spacil", "tajne-heslo-1")[1] is None
 
 
 def test_change_password_changes_fingerprint(tmp_path):

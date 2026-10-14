@@ -151,6 +151,14 @@ def skryt(argv):
         sys.exit(1)
 
 
+def check_users(work):
+    """Chybný `uzivatele.json` (dřívější `admin`, neznámá role) zastaví
+    start: tiché ignorování by z admina udělalo běžného uživatele."""
+    message = auth.problems_message(auth.Users(work))
+    if message:
+        sys.exit(message)
+
+
 def heslo(argv):
     parser = argparse.ArgumentParser(
         prog="python -m fotoarchiv heslo",
@@ -164,6 +172,7 @@ def heslo(argv):
     work = Path(args.work)
     if not (work / "uzivatele.json").is_file():
         sys.exit(f"Chybí {work / 'uzivatele.json'}.")
+    check_users(work)
     password = auth.Auth(work).issue(args.login)
     if password is None:
         sys.exit(f"Login {args.login} není v {work / 'uzivatele.json'}.")
@@ -447,6 +456,8 @@ def main(argv=None):
                  "nejde spustit.")
 
     archiv, work = paths(args)
+    if not args.bez_prihlaseni:
+        check_users(work)
     work.mkdir(parents=True, exist_ok=True)
     migrate_contact(work, args.kontakt)
     # Provedené operace úklidu jdou do logu serveru.

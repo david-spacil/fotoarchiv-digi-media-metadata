@@ -28,10 +28,12 @@ STATIC = Path(__file__).parent / "static"
 # Bez relace dostupné; s povinnou změnou hesla navíc jen PASSWORD_PATHS.
 OPEN_PATHS = {"/prihlaseni", "/api/prihlaseni", "/api/odhlaseni"}
 PASSWORD_PATHS = {"/heslo", "/api/heslo", "/api/ja"}
+# Nastavení serveru; správu archivu (přetřídit, uvolnění zámku) hlídají
+# endpointy podle role archivář.
 ADMIN_PREFIXES = ("/api/immich", "/api/nominatim")
 # Bez přihlášení (jen vývojový režim) je každý admin.
-NOBODY = {"login": None, "jmeno": None, "email": None, "admin": True,
-          "zmenit_heslo": False}
+NOBODY = dict({"login": None, "jmeno": None, "email": None, "role": "admin",
+               "zmenit_heslo": False}, **auth.rights("admin"))
 
 
 def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
@@ -83,7 +85,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 session.get("otisk") != accounts.passwords.fingerprint(login):
             return None
         return dict(user, login=login,
-                    zmenit_heslo=accounts.passwords.must_change(login))
+                    zmenit_heslo=accounts.passwords.must_change(login),
+                    **auth.rights(user["role"]))
 
     @app.before_request
     def check_login():
@@ -111,8 +114,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     def me():
         u = g.user
         return {"prihlaseni": prihlaseni, "login": u["login"],
-                "jmeno": u["jmeno"], "admin": u["admin"],
-                "zmenit_heslo": u["zmenit_heslo"]}
+                "jmeno": u["jmeno"], "role": u["role"], "admin": u["admin"],
+                "archivar": u["archivar"], "zmenit_heslo": u["zmenit_heslo"]}
 
     @app.get("/prihlaseni")
     def login_page():
@@ -193,10 +196,12 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     @app.get("/api/akce")
     def akce_list():
         """Výpis akcí; `drzitel` je jméno z platného zámku a `vase`, zda
-        ho drží relace z `?relace=` (relace sama se nevrací)."""
+        ho drží relace z `?relace=` (relace sama se nevrací). `upravit`
+        = smí ji přihlášený uživatel upravit (`model.can_edit`)."""
         relace = request.args.get("relace")
         events = ws.list_events()
         for event in events:
+            event["upravit"] = model.can_edit(g.user, event)
             holder = locks.holder(event["nazev"])
             event["drzitel"] = holder and {
                 "jmeno": holder["jmeno"],
@@ -254,17 +259,36 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             abort(400)
         return value
 
-    def require_lock(nazev, body):
+    def may_edit(nazev):
+        """Smí přihlášený uživatel akci upravit? Admin a archivář bez
+        čtení dokumentu."""
+        if g.user["archivar"]:
+            return True
+        return model.can_edit(g.user, ws.load(nazev)[0])
+
+    def lock_denied(nazev, body):
         """Odpověď 423, když relace z těla požadavku nedrží zámek akce."""
         if not locks.holds(nazev, body.get("relace")):
             return {"chyba": "bez_zamku",
                     "drzitel": locks.holder(nazev)}, 423
         return None
 
+    def require_lock(nazev, body):
+        """423 bez zámku; 403, když uživatel o oprávnění k úpravě přišel
+        během držení zámku (role, `upravili`)."""
+        denied = lock_denied(nazev, body)
+        if denied:
+            return denied
+        if not may_edit(nazev):
+            return {"chyba": "jen_cteni"}, 403
+        return None
+
     @app.post("/api/akce/<nazev>/zamek")
     def zamek_ziskat(nazev):
         event_dir(nazev)
         body = request.get_json(force=True)
+        if not may_edit(nazev):
+            return {"chyba": "jen_cteni"}, 403
         # Přihlášený: jméno z relace, poslané se ignoruje.
         jmeno = g.user["jmeno"] or body_field(body, "jmeno").strip()
         ok, info = locks.acquire(nazev, body_field(body, "relace"), jmeno,
@@ -285,10 +309,11 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     @app.post("/api/akce/<nazev>/zamek/vynutit")
     def zamek_vynutit(nazev):
-        """Admin uvolní zámek jiné relace (opuštěná rozdělaná práce)."""
+        """Admin nebo archivář uvolní zámek jiné relace (opuštěná
+        rozdělaná práce)."""
         event_dir(nazev)
-        if not g.user["admin"]:
-            return {"chyba": "jen_admin"}, 403
+        if not g.user["archivar"]:
+            return {"chyba": "jen_archivar"}, 403
         return {"uvolneno": locks.force_release(
             nazev, g.user["jmeno"] or "admin")}
 
@@ -501,6 +526,13 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     def refused(e, status=409):
         return dict({"chyba": e.code}, **e.detail), status
 
+    def owner(source=None):
+        """Vlastník importu: jméno z relace; bez přihlášení (vývojový
+        režim) `jmeno` z těla (`source`), jinak z `?jmeno=`."""
+        if prihlaseni:
+            return g.user["jmeno"]
+        return (request.args if source is None else source).get("jmeno")
+
     def check_import(id, jmeno):
         """Import patří jménu, pod kterým vznikl; jiní ho nevidí."""
         try:
@@ -540,12 +572,16 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             doc = imports.proposal(nazev) or {}
         return doc.get("skupiny") or {}, (doc.get("akce") or {}).get("autori")
 
-    def write_description(nazev, path, created, had_doc, record, done):
+    def write_description(nazev, path, created, had_doc, record, done,
+                          jmeno):
         """Zapíše popis importu (`record["popis"]`) pro přenesená média
         `done`: nové akci založí `_metadata.json`, akci s ním doplní nové
         skupiny a přiřazení, akci bez něj návrh skupin. Autory celé akce
-        u stávající akce jen při změně proti cíli v době plánu. Vrátí
-        výsledek `importer.describe` se {"zapsano", "navrh", "chyba"?}."""
+        u stávající akce jen při změně proti cíli v době plánu. Do
+        `upravili` zapíše `jmeno` (kdo import provedl; volá se ze streamu,
+        mimo kontext požadavku). Vrátí výsledek `importer.describe`
+        se {"zapsano", "navrh", "chyba"?}."""
+        cas = datetime.now().isoformat(timespec="seconds")
         popis = record.get("popis") or {}
         akce = popis.get("akce") or {}
         autori = akce.get("autori") or []
@@ -557,6 +593,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 files, _ = scan.scan(path, cache_dir)
                 doc = model.new_document(nazev, files, groups)
                 doc["akce"].update(importer.event_fields(akce))
+                model.touch(doc, None, jmeno, cas)
                 ws.save(nazev, model.clean(doc), None)
                 return dict(groups, zapsano=True, navrh=False)
             if not had_doc:
@@ -584,6 +621,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                     doc.setdefault("akce", {})["autori"] = autori
                 else:
                     doc.get("akce", {}).pop("autori", None)
+            model.touch(doc, doc, jmeno, cas)
             ws.save(nazev, doc, version)
         except Conflict:
             return dict(groups, zapsano=False, navrh=False, chyba="konflikt")
@@ -595,14 +633,17 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     @app.get("/api/pretridit")
     def pretridit():
         """Stream NDJSON přehledu `přetřídit`: `vypis`, pak `slozka` po
-        složkách (údaje z EXIF). `exif=0` = jen výpis."""
+        složkách (údaje z EXIF). `exif=0` = jen výpis. Jen admin
+        a archivář."""
+        if not g.user["archivar"]:
+            return {"chyba": "jen_archivar"}, 403
         exif = request.args.get("exif") != "0"
         events = unsorted.iter_overview(unsorted_root, cache_dir, exif=exif)
         return ndjson(events)
 
     @app.get("/api/import")
     def import_list():
-        return {"importy": imports.owned(request.args.get("jmeno"))}
+        return {"importy": imports.owned(owner())}
 
     @app.post("/api/import")
     def import_create():
@@ -615,8 +656,13 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         zdroj, cil = body.get("zdroj"), body.get("cil")
         if cil is not None and not isinstance(cil, str):
             abort(400)
+        if zdroj is not None and not g.user["archivar"]:
+            return {"chyba": "jen_archivar"}, 403
+        jmeno = owner(body)
+        if not isinstance(jmeno, str) or not jmeno.strip():
+            abort(400)
         try:
-            id = imports.create(body_field(body, "jmeno").strip(), celkem,
+            id = imports.create(jmeno.strip(), celkem,
                                 zdroj=zdroj, cil=cil,
                                 nova=bool(body.get("nova")))
         except importer.Refused as e:
@@ -626,7 +672,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     @app.post("/api/import/<id>/soubor")
     def import_file(id):
         """Tělo = obsah souboru (bez multipartu), čte se po blocích."""
-        jmeno = request.args.get("jmeno")
+        jmeno = owner()
         check_import(id, jmeno)
         mtime = request.args.get("mtime")
         try:
@@ -647,7 +693,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     @app.get("/api/import/<id>")
     def import_overview(id):
-        jmeno = request.args.get("jmeno")
+        jmeno = owner()
         check_import(id, jmeno)
         return imports.overview(id, jmeno,
                                 relace=request.args.get("relace"))
@@ -658,7 +704,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         `kontrola_prubeh`), nakonec `kontrola_hotovo` s `vysledky`
         {cesta: výsledek}; hotové z cache přijdou hned."""
         body = request.get_json(force=True)
-        jmeno = body.get("jmeno")
+        jmeno = owner(body)
         record = check_import(id, jmeno)
 
         def events():
@@ -670,7 +716,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     def import_allowed(id):
         """Podezřelé soubory, které uživatel povolil importovat."""
         body = request.get_json(force=True)
-        jmeno = body.get("jmeno")
+        jmeno = owner(body)
         check_import(id, jmeno)
         try:
             povolene = imports.set_allowed(id, jmeno, body.get("povolene"))
@@ -684,7 +730,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         U zdroje v `přetřídit` jen v produkčním režimu a pod zámkem
         zdroje (jako provedení)."""
         body = request.get_json(force=True, silent=True) or {}
-        jmeno = body.get("jmeno")
+        jmeno = owner(body)
         record = check_import(id, jmeno)
         cesta = body.get("cesta")
         if not isinstance(cesta, str):
@@ -721,7 +767,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     def import_plan(id):
         """Stream průběhu porovnání s cílovou akcí, nakonec `plan`."""
         body = request.get_json(force=True)
-        jmeno = body.get("jmeno")
+        jmeno = owner(body)
         check_import(id, jmeno)
         try:
             nazev, path = import_target(body)
@@ -743,7 +789,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         volby `skupiny` (`Imports.defaults`), se skupinami cíle
         (`existujici`) a jeho autory (`akce_autori`)."""
         body = request.get_json(force=True)
-        jmeno = body.get("jmeno")
+        jmeno = owner(body)
         record = check_import(id, jmeno)
         if not record.get("cil"):
             return {"chyba": "bez_planu"}, 409
@@ -763,7 +809,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     def import_description(id):
         """Rozpracovaný popis importu (údaje akce, skupiny, autoři)."""
         body = request.get_json(force=True)
-        jmeno = body.get("jmeno")
+        jmeno = owner(body)
         check_import(id, jmeno)
         try:
             imports.set_description(id, jmeno, body.get("popis"))
@@ -774,7 +820,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     @app.get("/api/import/<id>/nahled/<path:cesta>")
     def import_thumb(id, cesta):
         """Náhled souboru importu (nahraného i ve zdroji); nic nezapíše."""
-        jmeno = request.args.get("jmeno")
+        jmeno = owner()
         check_import(id, jmeno)
         src = imports.file_path(id, jmeno, cesta)
         if src is None or importer.kind(src.name) not in ("foto", "video") \
@@ -792,10 +838,12 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         relaci: jedna relace drží nejvýš jeden zámek a ta drží cílovou
         akci."""
         body = request.get_json(force=True)
-        jmeno = body.get("jmeno")
+        jmeno = owner(body)
         record = check_import(id, jmeno)
         if not ws.zapis:
             return {"chyba": "vyvojovy_rezim"}, 403
+        if record.get("zdroj") and not g.user["archivar"]:
+            return {"chyba": "jen_archivar"}, 403
         relace = body_field(body, "relace")
         source_key = f"{UNSORTED}/{record['zdroj']}" \
             if record.get("zdroj") else None
@@ -826,7 +874,9 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         except importer.Refused as e:
             release_source()
             return refused(e)
-        denied = require_lock(nazev, body)
+        # Novou akci zakládá tento import, oprávnění se u ní neověřuje.
+        denied = lock_denied(nazev, body) if created \
+            else require_lock(nazev, body)
         if denied:
             release_source()
             return denied
@@ -869,7 +919,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                             if o["stav"] == cleanup.DONE and importer.kind(
                                 o["do"]) in ("foto", "video")]
                     groups = event["skupiny"] = write_description(
-                        nazev, path, created, had_doc, record, done)
+                        nazev, path, created, had_doc, record, done, jmeno)
                     for o in event["operace"]:
                         o["skupina"] = groups["prirazeni"].get(o["do"]) \
                             if o["stav"] == cleanup.DONE else None
@@ -885,7 +935,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     @app.delete("/api/import/<id>")
     def import_discard(id):
         body = request.get_json(force=True, silent=True) or {}
-        jmeno = body.get("jmeno")
+        jmeno = owner(body)
         check_import(id, jmeno)
         try:
             imports.discard(id, jmeno)

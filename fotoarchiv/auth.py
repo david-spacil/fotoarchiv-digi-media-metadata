@@ -1,7 +1,7 @@
 """Přihlášení lokálními účty.
 
 `<work>/uzivatele.json` píše ručně správce, aplikace ho jen čte:
-login → {jmeno, email?, admin?}. `<work>/hesla.json` píše jen aplikace:
+login → {jmeno, email?, role?}. `<work>/hesla.json` píše jen aplikace:
 login → {hash, zmenit}. Oddělené, aby zápis aplikace nekolidoval
 s ruční editací a hash nebyl v souboru, který se kopíruje a upravuje.
 
@@ -11,6 +11,7 @@ správce) tak zneplatní ostatní relace uživatele.
 
 import hashlib
 import json
+import logging
 import os
 import secrets
 import tempfile
@@ -23,6 +24,11 @@ from werkzeug.security import check_password_hash, generate_password_hash
 MIN_LENGTH = 10
 FREE_ATTEMPTS = 5  # chybné pokusy na login bez zdržení
 MAX_DELAY = 300
+
+# Role v `uzivatele.json`; bez role běžný uživatel.
+ROLES = ("admin", "archivar")
+
+log = logging.getLogger(__name__)
 
 # Ověření neexistujícího loginu trvá stejně dlouho jako existujícího.
 _DUMMY_HASH = generate_password_hash("neexistujici-login")
@@ -66,6 +72,40 @@ def one_time_password():
     return secrets.token_urlsafe(9)  # 12 znaků
 
 
+def rights(role):
+    """Odvozená oprávnění role: admin ⊃ archivář (správa archivu),
+    Nastavení jen admin."""
+    return {"admin": role == "admin", "archivar": role in ROLES}
+
+
+def _problem(user):
+    """Důvod, proč je záznam chybný, nebo None."""
+    if "admin" in user:
+        return 'klíč "admin" (dřívější zápis role)'
+    role = user.get("role")
+    if role is not None and role not in ROLES:
+        return f"neznámá role {json.dumps(role, ensure_ascii=False)}"
+    return None
+
+
+def _parse(data):
+    """({login: záznam}, [(login, důvod)]); chybné záznamy nejsou mezi
+    platnými."""
+    users, problems = {}, []
+    if not isinstance(data, dict):
+        return users, problems
+    for login, user in data.items():
+        if not isinstance(user, dict) or not user.get("jmeno"):
+            continue
+        login = str(login).strip().lower()
+        reason = _problem(user)
+        if reason:
+            problems.append((login, reason))
+        else:
+            users[login] = user
+    return users, problems
+
+
 class Users:
     """`uzivatele.json`, čte se znovu při změně mtime."""
 
@@ -75,6 +115,12 @@ class Users:
         self._users = {}
         self._mutex = threading.Lock()
 
+    def _read(self):
+        try:
+            return json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}  # rozepsaný soubor: nikdo, než ho správce opraví
+
     def _current(self):
         with self._mutex:
             try:
@@ -83,24 +129,40 @@ class Users:
                 self._mtime, self._users = None, {}
                 return self._users
             if mtime != self._mtime:
-                try:
-                    data = json.loads(self.path.read_text(encoding="utf-8"))
-                except (OSError, ValueError):
-                    data = {}  # rozepsaný soubor: nikdo, než ho správce opraví
-                self._users = {
-                    str(login).strip().lower(): user
-                    for login, user in data.items()
-                    if isinstance(user, dict) and user.get("jmeno")}
+                self._users, problems = _parse(self._read())
+                for login, reason in problems:
+                    # Za běhu nepadat: chybný login nemá přístup, ostatní
+                    # pracují dál.
+                    log.warning("%s: login %s nemá přístup: %s",
+                                self.path, login, reason)
                 self._mtime = mtime
             return self._users
 
+    def problems(self):
+        """[(login, důvod)] chybných záznamů (dřívější `admin`, neznámá
+        `role`); kontrola při startu, nic nezapisuje do logu."""
+        return _parse(self._read())[1]
+
     def get(self, login):
-        """{jmeno, email, admin}, nebo None."""
+        """{jmeno, email, role}, nebo None; role None = běžný uživatel."""
         user = self._current().get(login)
         if user is None:
             return None
         return {"jmeno": user["jmeno"], "email": user.get("email"),
-                "admin": user.get("admin") is True}
+                "role": user.get("role")}
+
+
+def problems_message(users):
+    """Text chyby pro CLI, nebo None, když je `uzivatele.json` v pořádku."""
+    problems = users.problems()
+    if not problems:
+        return None
+    lines = [f"Chybné záznamy v {users.path}:"]
+    lines += [f"  {login}: {reason}" for login, reason in problems]
+    lines.append('Roli zapište jako "role": "admin" nebo "role": "archivar" '
+                 '(místo "admin": true → "role": "admin"); bez role je '
+                 "uživatel běžný.")
+    return "\n".join(lines)
 
 
 class Passwords:

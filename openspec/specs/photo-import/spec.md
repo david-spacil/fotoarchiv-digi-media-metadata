@@ -131,7 +131,9 @@ server odmítnout.
 - **THEN** server požadavek odmítne a soubor zůstane
 
 ### Requirement: Volba cíle
-Uživatel SHALL zvolit jako cíl stávající akci, nebo novou akci. U nové
+Uživatel SHALL zvolit jako cíl stávající akci, kterou smí upravit (viz
+`user-login`), nebo novou akci. Akci, kterou upravit nesmí, MUST
+průvodce nenabídnout a server MUST import do ní odmítnout s 403. U nové
 akce SHALL průvodce předvyplnit datum nejstarším dnem z nahraných
 souborů a vyžádat název. Název složky nové akce MUST odpovídat vzoru
 `YYYY-MM-DD název`, MUST NOT obsahovat `/` ani `\`, MUST NOT končit na
@@ -161,6 +163,11 @@ a Immich je uvidí hned.
 - **WHEN** uživatel v produkčním režimu importuje do nové akce
   `2026-04-28 kontrola Stezky`
 - **THEN** soubory leží ve složce `2026-04-28 kontrola Stezky.ignored`
+
+#### Scenario: Cizí akce jako cíl
+- **WHEN** uživatel bez role vybírá stávající akci a akce
+  `2026-04-28 kontrola Stezky` jeho jméno v `upravili` nemá
+- **THEN** průvodce ji mezi cíli nenabídne
 
 ### Requirement: Údaje nové akce v cíli
 U nové akce SHALL krok cíl kromě data a názvu složky nabídnout údaje
@@ -295,14 +302,15 @@ otevřít cílovou akci.
 
 ### Requirement: Rozpracované importy
 Import SHALL patřit uživateli (jménu), pod kterým vznikl, ne záložce
-prohlížeče. Seznam akcí SHALL ukázat rozpracované importy uživatele
-(kdy vznikly, počet a velikost souborů, zamýšlený cíl, poslední
-aktivita) s možností pokračovat nebo import zahodit. Import jiného
-uživatele MUST NOT být vidět ani dostupný. Zvolený cíl SHALL průvodce
-po návratu předvyplnit. Během provedení importu MUST server odmítnout
-nahrávání, zahození i další provedení téhož importu. Nahrává-li se
-nebo kopíruje-li se import v jiné záložce, průvodce SHALL na to
-upozornit (u nahrávání se jménem souboru a přijatým objemem).
+prohlížeče. Jméno vlastníka SHALL server brát z přihlášení, ne z
+požadavku; jen bez přihlášení (vývojový režim) z požadavku. Seznam akcí
+SHALL ukázat rozpracované importy uživatele (kdy vznikly, počet a velikost
+souborů, zamýšlený cíl, poslední aktivita) s možností pokračovat nebo
+import zahodit. Import jiného uživatele MUST NOT být vidět ani dostupný.
+Zvolený cíl SHALL průvodce po návratu předvyplnit. Během provedení importu
+MUST server odmítnout nahrávání, zahození i další provedení téhož importu.
+Nahrává-li se nebo kopíruje-li se import v jiné záložce, průvodce SHALL na
+to upozornit (u nahrávání se jménem souboru a přijatým objemem).
 
 #### Scenario: Pokračování ze zavřené záložky
 - **WHEN** uživatel nahraje soubory, zavře záložku a v nové záložce
@@ -325,6 +333,11 @@ upozornit (u nahrávání se jménem souboru a přijatým objemem).
   provést nebo zahodit znovu
 - **THEN** druhá záložka dostane odmítnutí a archiv obsahuje každý
   soubor nejvýš jednou
+
+#### Scenario: Podvržené jméno
+- **WHEN** přihlášený uživatel Kopáčová, Zuzana pošle požadavek na
+  import uživatele Spáčil, David se jménem `Spáčil, David` v požadavku
+- **THEN** server vrátí 404 a import zůstane beze změny
 
 ### Requirement: Zahození importu
 Uživatel SHALL moci rozpracovaný import zahodit; server MUST pak
@@ -506,6 +519,9 @@ po provedení nezůstal žádný přenesený soubor, MUST NOT vzniknout.
   autory celé akce) do pracovního adresáře k akci (další import do
   téže akce návrh doplní).
 
+Zápis do `_metadata.json` (nová akce i akce s ním) SHALL do `upravili`
+doplnit jméno uživatele, který import provedl (viz `metadata-model`).
+
 Nepodaří-li se popis zapsat, přenesené soubory MUST zůstat v archivu
 a výsledek SHALL uvést, že soubory jsou bez skupiny a autorů.
 
@@ -525,8 +541,9 @@ a výsledek SHALL uvést, že soubory jsou bez skupiny a autorů.
 #### Scenario: Import do nové akce
 - **WHEN** uživatel v produkčním režimu importuje složku `DOD 2015`
   s podsložkami do nové akce a zadá údaje akce a autory skupin
-- **THEN** akce má `_metadata.json` s těmito údaji, je v seznamu jako
-  *rozpracováno* a její otevření vede rovnou na pracovní plochu
+- **THEN** akce má `_metadata.json` s těmito údaji a jménem uživatele
+  v `upravili`, je v seznamu jako *rozpracováno* a její otevření vede
+  rovnou na pracovní plochu
 
 #### Scenario: Druhý import do neotevřené akce
 - **WHEN** uživatel importuje do akce bez `_metadata.json`, ke které už
