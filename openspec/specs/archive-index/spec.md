@@ -95,8 +95,8 @@ selhání exportu ani importu; aplikace ho SHALL ohlásit jako varování.
 #### Scenario: Import do nové akce
 - **WHEN** import vytvoří akci `2026-10-06 nová akce` a zkopíruje do ní
   fotky
-- **THEN** oba indexy obsahují akci `nová akce` jako *nezpracováno*
-  s počtem fotek z importu
+- **THEN** oba indexy obsahují akci `nová akce` jako *rozpracováno*
+  s údaji akce a autory z importu a s počtem fotek z importu
 
 #### Scenario: Bez změny se nezapisuje
 - **WHEN** se export spustí znovu bez změny metadat a souborů
