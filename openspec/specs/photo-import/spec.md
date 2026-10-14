@@ -514,7 +514,7 @@ a výsledek SHALL uvést, že soubory jsou bez skupiny a autorů.
   novou skupinu `Workshop` s autorem `Kopáčová, Zuzana` do akce ve
   stavu *rozpracováno*
 - **THEN** po otevření akce je na ploše skupina `Workshop` se 30
-  fotkami a autorkou `Kopáčová, Zuzana` a lišta je neuvádí jako soubory
+  fotkami a autorkou `Kopáčová, Zuzana` a navigátor je neuvádí jako soubory
   bez skupiny ani skupinu bez autorů
 
 #### Scenario: Blokovaný soubor bez skupiny

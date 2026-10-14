@@ -96,10 +96,12 @@ z data v názvu složky, pokud soubory datum nemají.
 
 ### Requirement: Mřížka a výběr
 Pracovní plocha SHALL zobrazit náhledy rozdělené podle skupin, nebo
-podle dnů (viz Zobrazení podle data). Uživatel SHALL moci vybrat jeden
-soubor kliknutím, přidat do výběru s modifikátorem, vybrat rozsah se
-Shiftem, vybrat tažením myši a v zobrazení po skupinách vybrat celou
-skupinu kliknutím na její hlavičku.
+podle dnů (viz Zobrazení podle data). Oddíly SHALL být v mřížce
+oddělené předělem bez hlavičky; název a počet oddílu nese navigátor
+(viz Navigátor akce). Uživatel SHALL moci vybrat jeden soubor
+kliknutím, přidat do výběru s modifikátorem, vybrat rozsah se Shiftem,
+vybrat tažením myši z místa mimo dlaždice a celý oddíl kliknutím na
+jeho řádek v navigátoru.
 
 #### Scenario: Výběr rozsahu
 - **WHEN** uživatel klikne na první soubor a se Shiftem na pátý
@@ -110,10 +112,15 @@ skupinu kliknutím na její hlavičku.
   Shiftem na pátý a soubory patří do dvou různých skupin
 - **THEN** je vybráno pět souborů, které jsou v mřížce mezi nimi
 
+#### Scenario: Předěl místo hlavičky
+- **WHEN** akce má skupiny `DOD 2015_Jana` a `DOD 2015_Pavla`
+- **THEN** v mřížce jsou soubory obou skupin oddělené předělem a název
+  skupiny je jen v navigátoru
+
 ### Requirement: Formulář podle výběru
 Formulář vedle mřížky SHALL upravovat akci, když není nic vybráno,
-skupinu, když je vybrána hlavička skupiny, a vybrané soubory, když je
-vybrán jeden nebo více souborů. Zděděné hodnoty SHALL být viditelně
+skupinu, když je v navigátoru vybrána skupina, a vybrané soubory, když
+je vybrán jeden nebo více souborů. Zděděné hodnoty SHALL být viditelně
 odlišené od zadaných a MUST jít přepsat i vrátit na zděděné. Vyprázdnění
 pole SHALL znamenat vrácení na zděděné (pole se smaže); přepsání na
 prázdnou hodnotu aplikace nepodporuje.
@@ -155,64 +162,12 @@ NOT jít tlačítko použít.
   „vrátit na zděděné“
 - **THEN** žádný z 5 souborů nemá místo zadané u sebe
 
-### Requirement: Lišta chybějících údajů
-Pracovní plocha SHALL průběžně ukazovat, co chybí: akce bez názvu nebo
-data, skupiny bez autorů, soubory bez data, soubory bez skupiny
-a soubory bez místa, pokud má akce víc míst. Kliknutí na položku SHALL vybrat dotčené soubory nebo skupiny.
-Soubory označené k vyřazení MUST NOT být v lištu započítány; skupina,
-jejíž všechny soubory jsou označené, se nepočítá mezi skupiny bez
-autorů.
-
-Chybějící údaje, počet souborů k vyřazení a nálezy kontroly SHALL být
-ve stejné liště jako název akce, přepínače zobrazení a tlačítka
-Importovat a Dokončit akci (jedna lišta akce pod hlavičkou aplikace).
-Nevejdou-li se na řádek, SHALL se zalomit na další řádek lišty;
-ovládací prvky lišty MUST zůstat vidět.
-
-#### Scenario: Skupina bez autorů
-- **WHEN** skupina nemá autory a žádný její soubor je nepřepisuje
-- **THEN** lišta ukáže „1 skupina bez autorů“
-
-#### Scenario: Soubory bez místa
-- **WHEN** akce má dvě místa a 30 souborů nemá místo zadané u sebe ani
-  u skupiny
-- **THEN** lišta ukáže „30 souborů bez místa“
-
-#### Scenario: Označený soubor bez data
-- **WHEN** soubor bez data je označený k vyřazení
-- **THEN** lišta ho mezi soubory bez data nepočítá
-
-#### Scenario: Jedna lišta
-- **WHEN** uživatel otevře plochu akce, které chybí autoři dvou skupin
-- **THEN** „2 skupiny bez autorů“ je v téže liště jako název akce
-  a tlačítko Dokončit akci
-
-#### Scenario: Mnoho položek na úzkém okně
-- **WHEN** v okně 1280 px šířky chybí pět druhů údajů
-- **THEN** položky se zalomí na další řádek lišty a tlačítko Dokončit
-  akci zůstane vidět
-
-### Requirement: Místa bez souřadnic v liště
-Lišta chybějících údajů SHALL ukázat názvy míst, o jejichž souřadnicích
-není rozhodnuto a které jsou výsledným místem aspoň jednoho souboru bez
-GPS. Kliknutí SHALL vybrat dotčené soubory a otevřít volbu souřadnic.
-
-#### Scenario: Nerozhodnuté místo
-- **WHEN** 12 souborů bez GPS má místo `Vysočany` a `souradnice_mist`
-  ho neobsahuje
-- **THEN** lišta ukáže „1 místo bez souřadnic“ a kliknutí vybere
-  12 souborů
-
-#### Scenario: Všechny soubory mají GPS
-- **WHEN** všechny soubory s místem `Holštejn` mají GPS z EXIF
-- **THEN** lišta `Holštejn` neukazuje
-
 ### Requirement: Dokončení akce
 Pracovní plocha SHALL nabídnout tlačítko Dokončit akci; je to jediné
 tlačítko plochy, které zapisuje sidecary. Dokončení SHALL
-uložit neuložené změny a zkontrolovat úplnost podle lišty chybějících
-údajů a nálezy kontroly akce (viz `event-consistency`); chybí-li něco
-nebo je-li nález, MUST ukázat co a dokončit jen po dalším potvrzení.
+uložit neuložené změny a zkontrolovat úplnost podle chybějících údajů
+(viz Chybějící údaje v navigátoru) a nálezy kontroly akce (viz
+`event-consistency`); chybí-li něco nebo je-li nález, MUST ukázat co a dokončit jen po dalším potvrzení.
 Pak SHALL akci exportovat, v produkčním režimu odebrat ze
 složky akce příponu `.ignored` (viz `event-visibility`) a nastavit
 `dokonceno` na datum dokončení. Má-li akce `dokonceno` už nastavené,
@@ -436,7 +391,7 @@ Formulář souboru SHALL ukázat jména z jeho `obliceje` jako pole jen pro
 U výběru více souborů SHALL ukázat jména všech vybraných. Formulář
 skupiny ani akce pole osob MUST NOT nabízet. Není-li Immich nastaven,
 pole SHALL místo osob uvést, že Immich není napojen. Chybějící osoby
-MUST NOT být v liště chybějících údajů.
+MUST NOT být mezi chybějícími údaji v navigátoru.
 
 #### Scenario: Soubor s obličeji
 - **WHEN** uživatel vybere soubor s obličejem `Lečbychová, Olga`
@@ -444,7 +399,7 @@ MUST NOT být v liště chybějících údajů.
   „z Immiche“ a pole nejde upravit
 
 #### Scenario: Formulář skupiny
-- **WHEN** uživatel vybere hlavičku skupiny
+- **WHEN** uživatel vybere skupinu v navigátoru
 - **THEN** formulář pole osob nemá
 
 ### Requirement: Autoři akce v průvodci
@@ -502,15 +457,15 @@ zobrazovat soubory vždy po skupinách.
 ### Requirement: Zobrazení podle data
 V zobrazení podle data SHALL plocha ukázat všechny soubory akce v jednom
 pořadí podle zděděného data pořízení, při shodě podle názvu souboru,
-rozdělené předěly po kalendářních dnech. Hlavička dne SHALL ukázat den
-v týdnu, datum a počet souborů. Soubory bez data SHALL být na konci
-v oddílu „Bez data“. Klik na hlavičku dne nebo „Bez data“ SHALL vybrat
-soubory oddílu.
+rozdělené předěly po kalendářních dnech. Řádek dne v navigátoru SHALL
+ukázat den v týdnu, datum a počet souborů. Soubory bez data SHALL být
+na konci v oddílu „Bez data“. Klik na řádek dne nebo „Bez data“
+v navigátoru SHALL vybrat soubory oddílu.
 
 #### Scenario: Dva přístroje téhož dne
 - **WHEN** akce má skupiny `Panasonic DC-G9` a `samsung SM-A528B`
   a obě obsahují fotky z 28. 4. 2026
-- **THEN** pod hlavičkou `út 28. 4. 2026` jsou fotky obou skupin
+- **THEN** v oddílu `út 28. 4. 2026` jsou fotky obou skupin
   promíchané podle času pořízení
 
 #### Scenario: Vícedenní akce
@@ -527,7 +482,7 @@ soubory oddílu.
 - **THEN** je v oddílu 28. 4. 2026 před soubory téhož dne s časem
 
 #### Scenario: Výběr dne
-- **WHEN** uživatel klikne na hlavičku `út 28. 4. 2026`
+- **WHEN** uživatel klikne v navigátoru na řádek `út 28. 4. 2026`
 - **THEN** jsou vybrané všechny soubory toho dne a formulář upravuje
   soubory
 
@@ -536,14 +491,19 @@ Na pracovní ploše SHALL dlaždice v mřížce i v pásu nést pruh
 podle výsledných autorů souboru. Každá osoba akce MUST mít jednu barvu;
 pruh se dělí na stejné úseky v barvách autorů, nejvýš tři, další autoři
 SHALL tvořit jeden šedý úsek. Soubor bez autorů SHALL mít šrafovaný
-pruh. Popisek dlaždice v mřížce SHALL uvést příjmení autorů. Soubor
-k vyřazení a průvodce značku nemají.
+pruh. Soubor k vyřazení a průvodce značku nemají.
+
+Dlaždice v mřížce SHALL nemít popisek pod náhledem. Název souboru,
+datum pořízení a příjmení autorů SHALL ukázat překryv při najetí myší;
+titulek dlaždice SHALL uvést všechna jména autorů. Soubor bez data
+a soubor bez místa (jen pokud má akce víc míst) SHALL mít v rohu
+náhledu ikonu, soubor k vyřazení ikonu vyřazení místo nich.
 
 #### Scenario: Autor ze skupiny
 - **WHEN** skupina `Panasonic DC-G9` má autora `Testová, Jana`
   a soubory skupiny autory nepřepisují
 - **THEN** všechny dlaždice skupiny mají jednobarevný pruh téže barvy
-  a v popisku `Testová`
+  a překryv při najetí uvede `Testová`
 
 #### Scenario: Dva autoři
 - **WHEN** soubor má autory `Testová, Jana` a `Zkušební, Petr`
@@ -552,12 +512,12 @@ k vyřazení a průvodce značku nemají.
 
 #### Scenario: Víc než tři autoři
 - **WHEN** soubor má pět autorů
-- **THEN** pruh má tři barevné úseky a jeden šedý, popisek uvede tři
+- **THEN** pruh má tři barevné úseky a jeden šedý, překryv uvede tři
   příjmení a `+2` a titulek dlaždice všech pět jmen
 
 #### Scenario: Soubor bez autorů
 - **WHEN** soubor nemá autory ani zděděné od skupiny či akce
-- **THEN** jeho pruh je šrafovaný a v popisku je `bez autorů`
+- **THEN** jeho pruh je šrafovaný a v překryvu je `bez autorů`
 
 #### Scenario: Jiný zápis téže osoby
 - **WHEN** jeden soubor má autora `Spáčil, David` a jiný `spacil, david`
@@ -565,17 +525,21 @@ k vyřazení a průvodce značku nemají.
 
 #### Scenario: Změna autorů skupiny
 - **WHEN** uživatel u skupiny přidá autora
-- **THEN** pruhy souborů skupiny, které autory nepřepisují, se hned
-  překreslí
+- **THEN** pruhy souborů skupiny, které autory nepřepisují, i pruh
+  v řádku skupiny v navigátoru se hned překreslí
 
 #### Scenario: Soubor k vyřazení
 - **WHEN** soubor je označený k vyřazení
-- **THEN** jeho dlaždice nemá pruh autorů
+- **THEN** jeho dlaždice nemá pruh autorů a má v rohu ikonu vyřazení
+
+#### Scenario: Soubor bez data
+- **WHEN** soubor nemá datum ani zděděné
+- **THEN** jeho dlaždice má v rohu ikonu data
 
 #### Scenario: Autoři v zobrazení podle data
 - **WHEN** v zobrazení podle data leží pod jedním dnem soubory dvou
   skupin s různými autory
-- **THEN** jejich dlaždice mají pruhy v barvách svých autorů a popisek
+- **THEN** jejich dlaždice mají pruhy v barvách svých autorů a překryv
   neuvádí název skupiny
 
 ### Requirement: Verze aplikace v hlavičce
@@ -643,3 +607,190 @@ V průvodci se panel nesbaluje.
 #### Scenario: Rozbalení
 - **WHEN** je panel sbalený a uživatel klikne na tlačítko rozbalení
 - **THEN** panel ukáže formulář pro aktuální výběr
+
+### Requirement: Navigátor akce
+Pracovní plocha SHALL mít vlevo od mřížky navigátor akce: nahoře řádek
+Akce, pod ním řádek pro každý oddíl mřížky (skupiny, nebo dny podle
+přepínače zobrazení) ve stejném pořadí jako mřížka. V zobrazení po
+skupinách SHALL být soubory bez skupiny posledním oddílem „Bez
+skupiny“, v zobrazení podle data soubory bez data oddílem „Bez data“
+(viz Zobrazení podle data). Navigátor SHALL se posouvat nezávisle na
+mřížce.
+
+Řádek oddílu SHALL ukázat název oddílu, počet jeho souborů, pruh
+autorů a chybějící údaje oddílu (viz Chybějící údaje v navigátoru).
+Pruh autorů SHALL být rozdělený v poměru počtu souborů jednotlivých
+výsledných autorů v oddílu, v barvách osob z Značky autorů na dlaždici;
+nejvýš tři nejčastější autoři barevně, ostatní jedním šedým úsekem,
+soubory bez autorů šrafovaným úsekem. Titulek pruhu SHALL uvést jména
+a počty. Soubory k vyřazení se do pruhu nepočítají.
+
+Klik na řádek Akce SHALL zrušit výběr (formulář upravuje akci). Klik na
+řádek skupiny SHALL vybrat skupinu, klik na řádek dne, „Bez data“ nebo
+„Bez skupiny“ SHALL vybrat soubory oddílu. Klik na řádek oddílu SHALL
+posunout mřížku na začátek oddílu tak, aby byl vidět i předěl nad ním.
+Vybraný oddíl SHALL být v navigátoru odlišený. Každý oddíl, který je
+v mřížce aspoň zčásti vidět, SHALL mít v navigátoru vyznačený okraj,
+průběžně při posouvání mřížky.
+
+#### Scenario: Oddíly po skupinách
+- **WHEN** akce má skupiny `DOD 2015_Jana` (21 souborů)
+  a `DOD 2015_Pavla` (66 souborů) a je zvoleno Po skupinách
+- **THEN** navigátor pod řádkem Akce ukáže řádky obou skupin s počty
+  21 a 66
+
+#### Scenario: Oddíly podle data
+- **WHEN** je zvoleno Podle data a soubory akce jsou z 6. a 7. 11. 2015
+  a 10 souborů nemá datum
+- **THEN** navigátor ukáže řádky `pá 6. 11. 2015`, `so 7. 11. 2015`
+  a „Bez data“
+
+#### Scenario: Pruh autorů oddílu
+- **WHEN** skupina má 30 souborů, 20 s autorem `Testová, Jana`
+  a 10 s autorem `Zkušební, Petr`
+- **THEN** pruh v řádku skupiny má dva úseky v barvách obou osob
+  v poměru 2 : 1
+
+#### Scenario: Výběr skupiny z navigátoru
+- **WHEN** uživatel klikne na řádek skupiny `DOD 2015_Pavla`
+- **THEN** skupina je vybraná, formulář upravuje skupinu a mřížka je
+  posunutá na její první soubory s předělem nad nimi
+
+#### Scenario: Výběr dne z navigátoru
+- **WHEN** v zobrazení podle data uživatel klikne na řádek
+  `so 7. 11. 2015`
+- **THEN** jsou vybrané všechny soubory toho dne a formulář upravuje
+  soubory
+
+#### Scenario: Řádek Akce
+- **WHEN** je vybraná skupina a uživatel klikne na řádek Akce
+- **THEN** výběr je prázdný a formulář upravuje akci
+
+#### Scenario: Viditelné oddíly
+- **WHEN** mřížka ukazuje konec skupiny `DOD 2015_Jana` a celou
+  skupinu `DOD 2015_Pavla`
+- **THEN** oba řádky mají v navigátoru vyznačený okraj, ostatní ne
+
+### Requirement: Chybějící údaje v navigátoru
+Navigátor SHALL průběžně ukazovat, co chybí (soubory označené
+k vyřazení MUST NOT být započítány):
+
+- **Řádek Akce:** chybějící název nebo data akce a místa bez souřadnic
+  (viz Místa bez souřadnic v navigátoru).
+- **Řádek oddílu:** počet souborů bez autorů, bez data a bez místa
+  (bez místa jen pokud má akce víc míst); v zobrazení podle data
+  i počet souborů bez skupiny. Oddíl „Bez data“ neukazuje „bez data“
+  a oddíl „Bez skupiny“ neukazuje „bez skupiny“.
+- **Skupina bez autorů:** skupina, která nemá výsledné autory a aspoň
+  jeden její soubor je nepřepisuje, SHALL mít místo počtu souborů bez
+  autorů zvýrazněné „bez autorů“. Skupina, jejíž všechny soubory jsou
+  označené k vyřazení, mezi ně nepatří.
+
+Každý chybějící údaj SHALL být ikona s počtem a titulkem slovy
+(„30 souborů bez místa“). Klik na údaj SHALL vybrat dotčené soubory
+a posunout na ně mřížku; u skupiny bez autorů SHALL vybrat skupinu.
+Bez zámku akce (jen ke čtení) SHALL údaje zůstat vidět a klik vybírat.
+
+#### Scenario: Skupina bez autorů
+- **WHEN** skupina nemá autory a žádný její soubor je nepřepisuje
+- **THEN** její řádek ukáže zvýrazněné „bez autorů“ a klik na ně
+  vybere skupinu
+
+#### Scenario: Soubory bez data ve skupině
+- **WHEN** 10 souborů skupiny `DOD 2015_Jana` nemá datum ani zděděné
+- **THEN** řádek skupiny ukáže ikonu data s počtem 10 a klik na ni
+  vybere těch 10 souborů
+
+#### Scenario: Soubory bez místa
+- **WHEN** akce má dvě místa a 30 souborů skupiny nemá místo zadané
+  u sebe ani u skupiny
+- **THEN** řádek skupiny ukáže ikonu místa s počtem 30
+
+#### Scenario: Jedno místo akce
+- **WHEN** akce má jedno místo
+- **THEN** žádný řádek neukazuje soubory bez místa
+
+#### Scenario: Označený soubor bez data
+- **WHEN** soubor bez data je označený k vyřazení
+- **THEN** řádek jeho oddílu ho mezi soubory bez data nepočítá
+
+#### Scenario: Chybějící datum akce
+- **WHEN** akce nemá vyplněné datum do
+- **THEN** řádek Akce ukáže, že chybí datum do, a klik na řádek
+  zruší výběr
+
+#### Scenario: Bez skupiny podle data
+- **WHEN** v zobrazení podle data leží pod jedním dnem 6 souborů bez
+  skupiny
+- **THEN** řádek dne ukáže ikonu skupiny s počtem 6
+
+### Requirement: Místa bez souřadnic v navigátoru
+Řádek Akce v navigátoru SHALL ukázat názvy míst, o jejichž souřadnicích
+není rozhodnuto a které jsou výsledným místem aspoň jednoho souboru bez
+GPS. Kliknutí na místo SHALL vybrat dotčené soubory a otevřít volbu
+souřadnic.
+
+#### Scenario: Nerozhodnuté místo
+- **WHEN** 12 souborů bez GPS má místo `Vysočany` a `souradnice_mist`
+  ho neobsahuje
+- **THEN** řádek Akce ukáže `Vysočany` bez souřadnic a kliknutí vybere
+  12 souborů a otevře volbu souřadnic
+
+#### Scenario: Všechny soubory mají GPS
+- **WHEN** všechny soubory s místem `Holštejn` mají GPS z EXIF
+- **THEN** řádek Akce `Holštejn` neukazuje
+
+### Requirement: Lišta akce
+Pracovní plocha SHALL mít pod hlavičkou aplikace jednu lištu akce
+s názvem akce, přepínači zobrazení, tlačítky Importovat a Dokončit
+akci, počtem souborů k vyřazení a nálezy kontroly akce. Chybějící
+údaje v liště nejsou (viz Chybějící údaje v navigátoru). Nevejdou-li
+se položky na řádek, SHALL se zalomit na další řádek lišty; ovládací
+prvky lišty MUST zůstat vidět.
+
+#### Scenario: Nálezy v liště
+- **WHEN** kořen akce obsahuje podsložku `RAW` a 2 soubory jsou
+  označené k vyřazení
+- **THEN** lišta akce ukáže nález podsložky a „2 soubory k vyřazení“
+  vedle tlačítka Dokončit akci
+
+#### Scenario: Chybějící údaje mimo lištu
+- **WHEN** akci chybí autoři dvou skupin
+- **THEN** lišta akce je neuvádí, ukazují je řádky obou skupin
+  v navigátoru
+
+#### Scenario: Mnoho položek na úzkém okně
+- **WHEN** v okně 1280 px šířky má lišta nálezy tří druhů a počet
+  k vyřazení
+- **THEN** položky se zalomí na další řádek lišty a tlačítko Dokončit
+  akci zůstane vidět
+
+### Requirement: Přesun do skupiny tažením
+Na pracovní ploše SHALL jít soubory přesunout do skupiny tažením
+dlaždice z mřížky na řádek skupiny v navigátoru. Táhne-li uživatel
+vybranou dlaždici, SHALL se přesunout celý výběr, jinak jen tažený
+soubor. Cílem MUST být jen řádek skutečné skupiny; řádky dnů, „Bez
+data“, „Bez skupiny“ a Akce MUST NOT tažení přijmout a během tažení
+SHALL být odlišené jako nepřijímající. Přesun SHALL se uložit jako
+ostatní změny a pro skupinu, která zůstane prázdná, platí totéž co
+v Úpravě skupin. Bez zámku akce MUST NOT jít tažením nic přesunout.
+
+#### Scenario: Přesun výběru
+- **WHEN** jsou vybrané 3 soubory skupiny A a uživatel táhne jeden
+  z nich na řádek skupiny B
+- **THEN** všechny 3 soubory patří do skupiny B a počty v řádcích obou
+  skupin se hned změní
+
+#### Scenario: Přesun nevybraného souboru
+- **WHEN** jsou vybrané 3 soubory a uživatel táhne jiný, nevybraný
+  soubor na řádek skupiny B
+- **THEN** do skupiny B se přesune jen tažený soubor
+
+#### Scenario: Tažení na den
+- **WHEN** v zobrazení podle data uživatel táhne soubor na řádek dne
+- **THEN** řádek tažení nepřijme a soubor se nezmění
+
+#### Scenario: Bez zámku
+- **WHEN** akci drží jiný uživatel a uživatel táhne dlaždici na řádek
+  skupiny
+- **THEN** nic se nepřesune
