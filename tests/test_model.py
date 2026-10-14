@@ -114,3 +114,61 @@ def test_incomplete_authors_only_on_event():
                        "IMG-20260428-WA0001.jpg": {}}}
     present = {"P1503712.JPG", "IMG-20260428-WA0001.jpg"}
     assert "autori" not in model.incomplete(doc, present)
+
+
+def test_completeness_counts_per_field():
+    # Scénář Rozpracovaná akce s mezerami: 40 souborů, 2 k vyřazení.
+    soubory = {}
+    for i in range(40):
+        record = {"skupina": "g"}
+        if i < 30:
+            record["datum"] = "2026-04-28T10:00:00"
+        if i < 10:
+            record["misto"] = "Brno"
+        soubory[f"{i:02}.jpg"] = record
+    soubory["38.jpg"]["vyradit"] = True
+    soubory["39.jpg"]["vyradit"] = True
+    doc = {"akce": {"mista": ["Brno", "Praha"]},
+           "skupiny": {"g": {"autori": ["Novák, Jan"]}},
+           "soubory": soubory}
+    hotovost = model.completeness(doc, set(soubory))
+    assert hotovost == {"autori": [38, 38], "datum": [30, 38],
+                        "misto": [10, 38]}
+    assert model.incomplete(doc, set(soubory)) == ["datum", "misto"]
+
+
+def test_completeness_place_inherited_from_event():
+    soubory = {f"{i}.jpg": {} for i in range(20)}
+    doc = {"akce": {"mista": ["Brno"]}, "soubory": soubory}
+    assert model.completeness(doc, set(soubory))["misto"] == [20, 20]
+
+
+def test_completeness_only_present_files():
+    doc = {"soubory": {"a.jpg": {"datum": "x"}, "zmizel.jpg": {}}}
+    assert model.completeness(doc, {"a.jpg", "jen_na_disku.jpg"}) == {
+        "autori": [0, 1], "datum": [1, 1], "misto": [0, 1]}
+
+
+def test_touch_first_save():
+    doc = {"akce": {}}
+    model.touch(doc, None, "Spáčil, David", "2026-10-14T10:15:02")
+    assert doc["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02"}
+
+
+def test_touch_second_user_keeps_first():
+    stored = {"upravili": {"Spáčil, David": "2026-10-14T10:15:02"}}
+    doc = {}
+    model.touch(doc, stored, "Kopáčová, Zuzana", "2026-10-14T11:00:00")
+    assert doc["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02",
+                               "Kopáčová, Zuzana": "2026-10-14T11:00:00"}
+    # Uložená verze se nemění.
+    assert stored["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02"}
+
+
+def test_touch_ignores_client_value():
+    stored = {"upravili": {"Spáčil, David": "2026-10-14T10:15:02"}}
+    doc = {"upravili": {"Podvržený, Pán": "2030-01-01T00:00:00",
+                        "Spáčil, David": "2030-01-01T00:00:00"}}
+    model.touch(doc, stored, "Kopáčová, Zuzana", "2026-10-14T11:00:00")
+    assert doc["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02",
+                               "Kopáčová, Zuzana": "2026-10-14T11:00:00"}

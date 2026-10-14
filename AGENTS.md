@@ -81,6 +81,9 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
   Klíč Immiche jen v `.work/immich.json`, nikdy v archivu ani
   v odpovědi API. MWG oblasti v exportu pro obnovu jsou vůči uloženému
   (neotočenému) obrázku, `oblast` v JSONu vůči otočenému.
+- **`upravili` zapisuje jen server** (`model.touch` v `akce_save`
+  a `akce_finish`) jménem z relace; hodnotu od klienta zahazuje. Do
+  sidecarů ani indexu nejde.
 - **Hesla jen jako hash v `.work/hesla.json`** (píše jen aplikace,
   0600); `uzivatele.json` píše jen správce, aplikace ho nikdy
   nezapisuje. Heslo ani hash nikdy do archivu, logu ani odpovědi API.

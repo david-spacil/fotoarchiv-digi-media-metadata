@@ -212,7 +212,9 @@ def test_prod_saves_into_archive(prod):
     r = c.put(f"/api/akce/{EVENT}/metadata",
               json={"metadata": doc, "version": None, "relace": "r1"})
     assert r.status_code == 200
-    assert json.loads((archiv / EVENT / "_metadata.json").read_text()) == doc
+    stored = json.loads((archiv / EVENT / "_metadata.json").read_text())
+    assert list(stored.pop("upravili")) == ["Spáčil, David"]
+    assert stored == doc
     d = c.get(f"/api/akce/{EVENT}").json
     assert not d["novy"]
     # Fixture: RAW/, a.rw2 a pozn.txt; _metadata.json se nehlásí.
@@ -1028,3 +1030,52 @@ def test_overeno_se_nededi_a_neexportuje(prod):
     assert out["chyby"] == [] and out["zapsano"] >= 1
     sidecar = (archiv / EVENT / "foto.jpg.xmp").read_text()
     assert "overeno" not in sidecar
+
+
+# --- seznam akcí jako fronta práce (fronta-akci) ----------------------------
+
+def test_list_holder_and_yours(client):
+    c, _ = client
+    assert c.get("/api/akce").json[0]["drzitel"] is None
+    c.post(f"/api/akce/{EVENT}/zamek", json=R1)
+    r = c.get("/api/akce?relace=r1")
+    assert r.json[0]["drzitel"] == {"jmeno": "Spáčil, David", "vase": True}
+    r = c.get("/api/akce?relace=r2")
+    assert r.json[0]["drzitel"] == {"jmeno": "Spáčil, David", "vase": False}
+    assert c.get("/api/akce").json[0]["drzitel"]["vase"] is False
+    assert b"r1" not in c.get("/api/akce?relace=r1").data
+
+
+def test_save_writes_editors_ignores_client(client):
+    c, _ = client
+    doc, version = saved(c)
+    stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    assert list(stored["upravili"]) == ["Spáčil, David"]
+    first = stored["upravili"]["Spáčil, David"]
+    assert len(first) == 19 and first[10] == "T"
+    # Podvržená hodnota od klienta se zahodí.
+    doc["upravili"] = {"Podvržený, Pán": "2030-01-01T00:00:00"}
+    r = c.put(f"/api/akce/{EVENT}/metadata",
+              json={"metadata": doc, "version": version, "relace": "r1"})
+    assert r.status_code == 200
+    stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    assert list(stored["upravili"]) == ["Spáčil, David"]
+    # Druhý uživatel přibude vedle prvního.
+    c.delete(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
+    c.post(f"/api/akce/{EVENT}/zamek", json=R2)
+    r = c.put(f"/api/akce/{EVENT}/metadata",
+              json={"metadata": doc, "version": r.json["version"],
+                    "relace": "r2"})
+    stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    assert set(stored["upravili"]) == {"Spáčil, David", "Kopáčová, Jana"}
+    assert c.get("/api/akce").json[0]["upravili"] == stored["upravili"]
+
+
+def test_finish_writes_editors(client):
+    c, _ = client
+    _, version = saved(c)
+    r = c.post(f"/api/akce/{EVENT}/dokoncit",
+               json={"relace": "r1", "version": version})
+    assert r.status_code == 200
+    stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    assert list(stored["upravili"]) == ["Spáčil, David"]

@@ -63,6 +63,21 @@ def version_of(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def samples(present, doc, count=4):
+    """Až `count` názvů souborů rovnoměrně přes seřazené `present`.
+
+    Soubory označené v `doc` k vyřazení se vynechají. Bere se prostředek
+    každé `count`-tiny, takže velká akce nedá jen první soubory.
+    """
+    soubory = (doc or {}).get("soubory") or {}
+    names = sorted(n for n in present
+                   if not (soubory.get(n) or {}).get("vyradit"))
+    if len(names) <= count:
+        return names
+    return [names[int((i + 0.5) * len(names) / count)]
+            for i in range(count)]
+
+
 class Workspace:
     def __init__(self, archiv, work, zapis=False):
         self.archiv = Path(archiv).resolve()
@@ -134,7 +149,7 @@ class Workspace:
         # model a consistency importují archive
         from .consistency import classify, counts
         from .integrity import counted, event_cache_path, summary
-        from .model import incomplete
+        from .model import completeness, incomplete
         events = []
         for name in self.event_names():
             try:
@@ -149,6 +164,9 @@ class Workspace:
                     "chybi": [],
                     "kontrola": {},
                     "poskozene": 0,
+                    "hotovost": None,
+                    "ukazky": [],
+                    "upravili": {},
                 })
                 continue
             present = set()
@@ -165,13 +183,16 @@ class Workspace:
             doc, version = self.load(name)
             zmeneno = False
             chybi = []
+            hotovost = None
+            if doc is not None:
+                hotovost = completeness(doc, present)
             if doc is None:
                 stav = "nezpracovano"
             elif doc.get("dokonceno"):
                 stav = "hotovo"
                 exported = self.export_version(name)
                 zmeneno = exported is not None and exported != version
-                chybi = incomplete(doc, present)
+                chybi = incomplete(doc, present, hotovost)
             else:
                 stav = "rozpracovano"
             events.append({
@@ -186,6 +207,9 @@ class Workspace:
                 # vyřazených a ručně potvrzených, bez čtení souborů.
                 "poskozene": counted(summary(
                     event_cache_path(self.work, name), doc, present)),
+                "hotovost": hotovost,
+                "ukazky": samples(present, doc),
+                "upravili": (doc or {}).get("upravili") or {},
             })
         return events
 

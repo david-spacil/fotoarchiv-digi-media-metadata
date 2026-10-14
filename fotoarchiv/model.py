@@ -59,20 +59,35 @@ def resolve(doc, filename):
 REQUIRED_KEYS = ("autori", "datum", "misto")
 
 
-def incomplete(doc, present):
-    """Povinná pole, která po zdědění chybí aspoň jednomu souboru.
+def completeness(doc, present):
+    """Hotovost akce: {pole: [vyplněno, celkem]} pro `REQUIRED_KEYS`.
 
     `present` = názvy souborů v kořeni akce; soubory označené k vyřazení
-    (`vyradit`) se nepočítají. Vrací klíče v pořadí `REQUIRED_KEYS`.
+    (`vyradit`) se nepočítají. Pole je vyplněné, má-li po zdědění
+    neprázdnou hodnotu.
     """
-    missing = set()
+    filled = dict.fromkeys(REQUIRED_KEYS, 0)
+    total = 0
     for name, record in (doc.get("soubory") or {}).items():
         if name not in present or record.get("vyradit"):
             continue
+        total += 1
         fields = resolve(doc, name)
-        missing.update(k for k in REQUIRED_KEYS
-                       if not (fields.get(k) or {}).get("hodnota"))
-    return [k for k in REQUIRED_KEYS if k in missing]
+        for key in REQUIRED_KEYS:
+            if (fields.get(key) or {}).get("hodnota"):
+                filled[key] += 1
+    return {key: [filled[key], total] for key in REQUIRED_KEYS}
+
+
+def incomplete(doc, present, hotovost=None):
+    """Povinná pole, která po zdědění chybí aspoň jednomu souboru.
+
+    Odvozeno z `completeness`; už spočtenou hotovost lze předat.
+    Vrací klíče v pořadí `REQUIRED_KEYS`.
+    """
+    if hotovost is None:
+        hotovost = completeness(doc, present)
+    return [k for k in REQUIRED_KEYS if hotovost[k][0] < hotovost[k][1]]
 
 
 def _place_gps(doc, result):
@@ -110,6 +125,18 @@ def keep_faces(doc, stored):
         faces = (stored_files.get(name) or {}).get("obliceje")
         if faces:
             record["obliceje"] = faces
+    return doc
+
+
+def touch(doc, stored, jmeno, cas):
+    """Do dokumentu od klienta zapíše `upravili` z uložené verze.
+
+    Položka `jmeno` (přihlášený uživatel) dostane čas `cas`; hodnotu
+    od klienta zahodí. Dokument mění na místě a vrací ho.
+    """
+    upravili = dict((stored or {}).get("upravili") or {})
+    upravili[jmeno] = cas
+    doc["upravili"] = upravili
     return doc
 
 

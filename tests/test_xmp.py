@@ -326,3 +326,12 @@ def test_cli_export_faces(tmp_path, capsys):
           str(ws.work), "--obliceje"])
     assert "mwg-rs:Regions" in ws.sidecar_path(EVENT, "f0.jpg").read_text()
     assert ws.export_version(EVENT) is None
+
+
+def test_editors_not_in_sidecar(tmp_path):
+    ws = make_ws(tmp_path)
+    edit(ws, lambda d: d.update(upravili={"Upravil, Jiný": "2026-10-14"}))
+    xmp.export(ws, EVENT)
+    for path in (ws.work / "xmp" / EVENT).iterdir():
+        text = path.read_text(encoding="utf-8")
+        assert "Upravil" not in text and "2026-10-14" not in text

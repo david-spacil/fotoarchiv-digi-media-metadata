@@ -11,7 +11,7 @@ relace stránky přesměruje na přihlášení, API vrátí 401.
 import json
 import math
 import secrets
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from flask import (Flask, Response, abort, g, jsonify, make_response,
@@ -192,7 +192,16 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     @app.get("/api/akce")
     def akce_list():
-        return jsonify(ws.list_events())
+        """Výpis akcí; `drzitel` je jméno z platného zámku a `vase`, zda
+        ho drží relace z `?relace=` (relace sama se nevrací)."""
+        relace = request.args.get("relace")
+        events = ws.list_events()
+        for event in events:
+            holder = locks.holder(event["nazev"])
+            event["drzitel"] = holder and {
+                "jmeno": holder["jmeno"],
+                "vase": locks.holds(event["nazev"], relace)}
+        return jsonify(events)
 
     @app.get("/api/akce/<nazev>")
     def akce_detail(nazev):
@@ -291,6 +300,13 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         locks.release(nazev, body_field(body, "relace"))
         return {}
 
+    def touch(nazev, doc, stored):
+        """Zapíše do `upravili` přihlášeného uživatele (jméno jako u
+        zámku; bez přihlášení jméno držitele zámku) a čas uložení."""
+        jmeno = g.user["jmeno"] or locks.holder(nazev)["jmeno"]
+        model.touch(doc, stored, jmeno,
+                    datetime.now().isoformat(timespec="seconds"))
+
     @app.put("/api/akce/<nazev>/metadata")
     def akce_save(nazev):
         event_dir(nazev)
@@ -305,6 +321,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         # uložení stejně skončí konfliktem.
         stored, _ = ws.load(nazev)
         model.clean(model.keep_faces(doc, stored))
+        touch(nazev, doc, stored)
         try:
             version = ws.save(nazev, doc, body.get("version"))
         except Conflict as e:
@@ -345,6 +362,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         first = not doc.get("dokonceno")
         if first:
             doc["dokonceno"] = date.today().isoformat()
+        touch(nazev, doc, doc)
         try:
             version = ws.save(nazev, doc, version)
             result = xmp.export(ws, nazev)
