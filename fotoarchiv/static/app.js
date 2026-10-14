@@ -3805,10 +3805,16 @@ function newEventFields(t) {
   const p = imp.popis ||= { cil: null, typ: null, akce: {}, skupiny: {},
     soubory: {}, pripojit: {} };
   if (p.typ !== "nova") {
-    p.akce = p.nova_akce || { nazev: t.nazev.trim(),
-      datum_od: o.od || t.datum, datum_do: o.do || o.od || t.datum };
+    // Prázdné hodnoty se nezapisují: pole by jinak hlásilo „zadáno“.
+    p.akce = p.nova_akce || Object.fromEntries(Object.entries({
+      nazev: t.nazev.trim(), datum_od: o.od || t.datum,
+      datum_do: o.do || o.od || t.datum }).filter(([, v]) => v));
     p.typ = "nova";
     delete p.nova_akce;
+  }
+  // Popis uložený dřív mohl prázdné hodnoty mít.
+  for (const k of Object.keys(p.akce)) {
+    if (isEmpty(p.akce[k])) delete p.akce[k];
   }
   return p.akce;
 }
@@ -3866,7 +3872,8 @@ function renderTarget() {
             t.nazev = e.target.value;
             updatePreview();
             if ((a.nazev || "") === prev) {
-              a.nazev = t.nazev.trim();
+              if (t.nazev.trim()) a.nazev = t.nazev.trim();
+              else delete a.nazev;
               const row = fieldRow(targets, "nazev", onChange);
               rows.nazev.replaceWith(row);
               rows.nazev = row;
