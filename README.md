@@ -553,16 +553,20 @@ po široké monitory.
    Kontrola akce) má štítek „k vyřešení“ s počty nálezů. Nové fotky
    a videa se do archivu dostanou
    **importem** (viz Import) do nové nebo stávající akce.
-2. **Při prvním otevření akce průvodce:** úklid (podsložky, RAW) →
-   načtení a skupiny → údaje akce → autoři skupin. Průvodce provede
-   vším povinným; údaje jednotlivých souborů se doplňují na ploše.
-   V kroku autoři skupin jdou nad skupinami zadat i autoři celé akce:
-   skupiny bez vlastních autorů je zdědí (fotila-li celou akci stejná
-   parta, stačí je zadat jednou).
-   Existuje-li k akci návrh skupin z importu, krok skupin použije jeho
-   skupiny a přiřazení pro soubory v kořeni, které návrh uvádí;
-   ostatní dostanou automatický návrh. Prvním uložením
-   `_metadata.json` se návrh smaže.
+2. **Při prvním otevření akce bez `_metadata.json` průvodce:** úklid
+   (podsložky, RAW; potvrzení načte soubory kořene) → údaje akce
+   (předvyplněné z názvu složky a dat fotek) → skupiny a autoři.
+   Průvodce provede vším povinným; údaje jednotlivých souborů se
+   doplňují na ploše. Krok skupiny a autoři ukáže mřížku náhledů po
+   skupinách s úpravou skupin (přejmenovat, sloučit, nová skupina
+   z výběru, přesun) a u každé skupiny pole autorů; nad skupinami
+   jdou zadat i autoři celé akce: skupiny bez vlastních autorů je
+   zdědí (fotila-li celou akci stejná parta, stačí je zadat jednou).
+   Existuje-li k akci návrh skupin z importu, krok použije jeho
+   skupiny (i s autory) a přiřazení pro soubory v kořeni, které návrh
+   uvádí, a autory celé akce z návrhu; ostatní soubory dostanou
+   automatický návrh. Prvním uložením `_metadata.json` se návrh smaže.
+   Akce založená importem `_metadata.json` má, průvodce ji přeskočí.
 3. **Pak pracovní plocha** (i při každém dalším otevření): vlevo mřížka
    náhledů po skupinách, vpravo formulář podle výběru — nic vybráno =
    akce, hlavička skupiny = skupina, vybrané soubory = soubory. Zděděné
@@ -650,7 +654,8 @@ Našeptávání a kontrola jmen viz výše.
 
 Průvodce importem se spouští ze seznamu akcí (bez cíle) nebo z plochy
 akce (s ní jako předvybraným cílem). Kroky: soubory → přehled → cíl →
-plán → výsledek.
+plán → skupiny a autoři → výsledek. Plán je před popisem, aby se
+popisovalo jen to, co se opravdu přenese.
 
 - **Soubory:** jednotlivé soubory i celá složka, výběrem nebo
   přetažením; soubory z podsložek se berou, jako by ležely v jedné
@@ -708,19 +713,13 @@ plán → výsledek.
   `.ignored` ani bez ní (bez ohledu na velikost písmen; jinak průvodce
   nabídne zvolit ji jako stávající). Nová akce vznikne skrytá před
   Immichem (`název.ignored`, viz [Archiv](#archiv)). U dokončené akce
-  upozorní, že nové soubory budou bez metadat a Immich je uvidí hned.
+  upozorní, že Immich nové soubory uvidí hned a skupiny a autoři
+  z importu se do sidecarů dostanou až novým dokončením akce.
 
-  Ve stejném kroku se volí **skupiny** importovaných médií (RAWy
-  skupinu nedostanou): *podle podsložek* (jen má-li výběr podsložky;
-  skupina = podsložka první úrovně pod nejdelší společnou složkou
-  výběru, soubory přímo v ní dostanou skupinu pojmenovanou po ní),
-  *jedna nová skupina* (název předvyplněný kořenem výběru, jinak
-  `Import YYYY-MM-DD`), *automaticky* (přístroj a vzor názvu jako
-  u nové akce), *bez skupiny*, nebo *zařadit do skupiny …* (jen akce,
-  jejíž `_metadata.json` skupiny má). Předvolba: podsložky → podle
-  podsložek; jinak nová akce a akce bez `_metadata.json` →
-  automaticky, ostatní → jedna nová skupina. Volba se uloží k importu
-  spolu s cílem.
+  U nové akce krok sbírá i **údaje akce**: název (předvyplněný názvem
+  složky bez data a jdoucí s ním, dokud ho uživatel nezmění), datum
+  od–do (nejstarší a nejnovější den médií z přehledu), popis, místa
+  a účastníky. Pokračovat jde jen s názvem a datem od.
 - **Plán:** média do kořene, RAWy do `RAW.ignored/`. Poškozené
   soubory (nečitelné a nepovolené podezřelé) se nepřenesou a plán je
   uvede zvlášť s důvodem; soubor změněný od kontroly se zkontroluje
@@ -732,15 +731,43 @@ plán → výsledek.
   může trvat minuty, proto server posílá průběh porovnání (stream
   NDJSON, po souboru a u velkých po 64 MB; hashe z cache jsou hned
   hotové) a tlačítko je do konce výpočtu zablokované. Zvolený cíl se
-  uloží k importu a po návratu se předvyplní. U každého přenášeného
-  média plán ukáže cílovou skupinu (nové označené). Nové skupiny se
-  s existujícími (v `_metadata.json` nebo návrhu) samy nesloučí ani
-  při shodě: název nové dostane případně pořadové číslo a u každé jde
-  zvolit „nová skupina“ nebo „připojit ke skupině …“, existující se
-  shodným názvem (bez diakritiky a velikosti písmen) nebo přístrojem
-  nahoře jako shoda. Volba připojení plán nepřepočítává, posílá se až
-  s provedením.
-- **Provedení** (jen produkční režim, ve vývojovém se plán jen ukáže):
+  uloží k importu a po návratu se předvyplní. Plán skupiny neukazuje;
+  nabízí jen pokračování ke skupinám a autorům.
+- **Skupiny a autoři:** mřížka náhledů přenášených fotek a videí
+  (náhledy nahraných souborů i souborů zdroje v `přetřídit`, nic se
+  nezapisuje) a panel jako v průvodci akce. Nahoře **výchozí
+  rozdělení** (RAWy skupinu nedostanou): *podle podsložek* (jen má-li
+  výběr podsložky; skupina = podsložka první úrovně pod nejdelší
+  společnou složkou výběru, soubory přímo v ní dostanou skupinu
+  pojmenovanou po ní), *jedna nová skupina* (název předvyplněný
+  kořenem výběru, jinak `Import YYYY-MM-DD`), *automaticky* (přístroj
+  a vzor názvu jako u nové akce), *bez skupiny*, nebo *zařadit do
+  skupiny …* (jen akce, jejíž `_metadata.json` skupiny má).
+  Předvolba: podsložky → podle podsložek; jinak nová akce a akce bez
+  `_metadata.json` → automaticky, ostatní → jedna nová skupina.
+  Výchozí rozdělení počítá server z posledního plánu bez nového
+  porovnání; změna po ručních úpravách nebo autorech skupin se ptá.
+  Pod tím úpravy skupin (přejmenovat, sloučit, nová skupina z výběru,
+  přesun), autoři celé akce a u každé skupiny náhledy a autoři.
+  Nové skupiny se s existujícími (v `_metadata.json` nebo návrhu)
+  samy nesloučí ani při shodě: název nové dostane případně pořadové
+  číslo a u každé jde zvolit „nová skupina“ nebo „připojit ke skupině
+  …“, existující se shodným názvem (bez diakritiky a velikosti písmen)
+  nebo přístrojem nahoře jako shoda; připojená ukazuje autory
+  existující skupiny. Existující skupiny cíle jsou jen ke čtení.
+  Importujícího aplikace jako autora nepředvyplňuje.
+
+  Údaje akce, volba rozdělení, skupiny, přiřazení, připojení a autoři
+  (**popis importu**) se průběžně ukládají do `import.json` (ne do
+  archivu) a po návratu se předvyplní. Po novém plánu média, která se
+  už nepřenesou, ze skupin vypadnou, nově přenášená dostanou skupinu
+  z výchozího rozdělení a ruční úpravy ostatních zůstanou. Má-li
+  některá skupina po zdědění prázdné autory, tlačítko importu na to
+  upozorní a import provede až druhé kliknutí; jinak druhé kliknutí
+  jen potvrzuje zápis do archivu. „Co by se zapsalo“ ukáže souhrn
+  popisu (ve vývojovém režimu místo provedení).
+- **Provedení** (jen produkční režim, ve vývojovém se plán a krok
+  skupin jen ukážou):
   plán se sestaví znovu, soubor se zkopíruje do dočasného
   `.import-*.tmp` v cílové složce, dostane čas změny originálu
   a přejmenuje se, jen pokud cíl pořád neexistuje. Selhání jednoho
@@ -760,15 +787,22 @@ plán → výsledek.
   porovnává sha256 přenášených dat a SMB/TCP přenos hlídá sám; vada
   z issue #10 (vynulované bloky) vzniká na kartě, ne přenosem.
 
-  Po přenosu server zapíše skupiny jen pro skutečně přenesená média.
-  Akce s `_metadata.json`: přenesené soubory (s technickými údaji,
-  jako při otevření akce), nové skupiny a přiřazení jdou rovnou do
-  `_metadata.json` pod zámkem importu; stávající záznamy a skupiny se
-  nemění. Akce bez něj: `_metadata.json` nevznikne, skupiny jdou do
-  návrhu `.work/navrhy-skupin/<akce>.json` (i v produkčním režimu;
-  další import ho doplní) a použije ho průvodce akce. Když zápis
-  selže (např. `_metadata.json` mezitím upravený mimo aplikaci),
-  soubory zůstanou v archivu a výsledek uvede, že jsou bez skupiny.
+  Po přenosu server zapíše popis z `import.json` jen pro skutečně
+  přenesená média; blokované, duplicitní a selhané záznam nedostanou
+  a skupina bez přeneseného souboru nevznikne. **Nová akce:**
+  `_metadata.json` vznikne rovnou s údaji akce z kroku cíl (včetně
+  autorů celé akce), skupinami a přenesenými soubory s technickými
+  údaji; akce je *rozpracovaná* a otevře se rovnou plocha. **Akce
+  s `_metadata.json`:** přenesené soubory (s technickými údaji, jako
+  při otevření akce), nové skupiny s autory, připojení a přiřazení
+  jdou do `_metadata.json` pod zámkem importu; autoři celé akce jen
+  při změně proti stavu v době plánu; stávající záznamy a skupiny se
+  nemění. **Akce bez něj:** `_metadata.json` nevznikne, skupiny
+  s autory, přiřazení a autoři akce jdou do návrhu
+  `.work/navrhy-skupin/<akce>.json` (i v produkčním režimu; další
+  import ho doplní) a použije ho průvodce akce. Když zápis selže
+  (např. `_metadata.json` mezitím upravený mimo aplikaci), soubory
+  zůstanou v archivu a výsledek uvede, že jsou bez skupiny a autorů.
 - **Import ze složky `přetřídit`:** provedení soubory **přesouvá**
   (přejmenování na stejném svazku, obsah i čas změny zůstanou), nic
   nekopíruje. Měřítkem je poslední plán (snímek cest, velikostí a časů
@@ -788,8 +822,8 @@ plán → výsledek.
   souborů ve zdroji se zruší; zahození importu zdroj nemění. Varianty
   se stejným jménem (např. `Procházka 60/JPEG orig`) se navzájem
   zablokují a nepřesune se nic z nich: podsložku přejmenujte na
-  `.ignored` a import zopakujte. Ve vývojovém režimu přehled i plán
-  fungují, provedení ne.
+  `.ignored` a import zopakujte. Ve vývojovém režimu přehled, plán
+  i krok skupin fungují, provedení ne.
 - **Stránka Přetřídit** (odkaz ze seznamu akcí): složky první úrovně
   `přetřídit` (bez `.ignored`) s počty fotek, videí, RAWů a ostatních
   souborů, podsložkami, rozsahem dat z EXIF, datem z názvu

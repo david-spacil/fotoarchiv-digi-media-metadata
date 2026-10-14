@@ -4,6 +4,9 @@
 import { parts, withDay, withTime } from "./datetime.js";
 import { missing, resolve, resolveGroup } from "./inherit.js";
 import {
+  effectiveDoc, freshDescription, groupsWithoutAuthors, reconcile, targetKey,
+} from "./importdesc.js";
+import {
   STAV_KONTROLY, applyDecisionChanges, checkCounts, cleanupDecisions,
   damagedFiles, damagedMap, damagedText, decisionChanges,
   odebranaPolohaFiles, toggleAllowed, unchecked,
@@ -38,7 +41,15 @@ function eventUrl(name, rest = "") {
 
 const LARGE = 1600;
 
+// Náhled souboru akce; v kroku skupiny a autoři importu soubor importu
+// podle cesty ve výběru (`state.scan[f].cesta`).
 function thumbUrl(f, size) {
+  if (state.mode === "import") {
+    const q = new URLSearchParams({ jmeno: userName() });
+    if (size) q.set("velikost", size);
+    return importUrl(`/nahled/${state.scan[f]?.cesta.split("/")
+      .map(encodeURIComponent).join("/")}?${q}`);
+  }
   return eventUrl(state.name, `/nahled/${encodeURIComponent(f)}` +
     (size ? `?velikost=${size}` : ""));
 }
@@ -392,7 +403,9 @@ window.addEventListener("pageshow", (e) => {
   if (e.persisted) route(); // návrat z bfcache: zámek získat znovu
 });
 window.addEventListener("beforeunload", (e) => {
-  if (state.dirty || state.saving || imp.uploading) e.preventDefault();
+  if (state.dirty || state.saving || imp.uploading || descTimer) {
+    e.preventDefault();
+  }
 });
 document.addEventListener("keydown", (e) => {
   if (state.mode !== "workspace" ||
@@ -918,6 +931,12 @@ function groupName(gid) {
   return state.doc.skupiny[gid]?.nazev || gid;
 }
 
+// Existující skupina cíle v popisu importu: jen ke čtení (údaje se
+// nemění), soubory do ní jde jen zařadit.
+function fixedGroup(gid) {
+  return state.mode === "import" && !!imp.defaults?.existujici?.[gid];
+}
+
 function moveFiles(files, gid) {
   for (const f of files) {
     if (gid) state.doc.soubory[f].skupina = gid;
@@ -940,7 +959,9 @@ function dropEmptyGroups(done) {
   const used = new Set(Object.values(state.doc.soubory).map((r) => r.skupina));
   const ask = [];
   for (const gid of groupIds()) {
-    if (used.has(gid) || state.keptEmpty.has(gid)) continue;
+    if (used.has(gid) || state.keptEmpty.has(gid) || fixedGroup(gid)) {
+      continue;
+    }
     const own = Object.keys(state.doc.skupiny[gid])
       .filter((k) => k !== "nazev" && k !== "pristroj");
     if (own.length) ask.push(gid);
@@ -1007,7 +1028,7 @@ function groupTools(afterChange) {
 }
 
 function mergeTools(gid, afterChange) {
-  const others = groupIds().filter((g) => g !== gid);
+  const others = groupIds().filter((g) => g !== gid && !fixedGroup(g));
   if (!others.length) return null;
   const target = h("select", {},
     others.map((g) => h("option", { value: g }, groupName(g))));
@@ -1023,10 +1044,16 @@ function mergeTools(gid, afterChange) {
 
 // --- mřížka a výběr --------------------------------------------------------
 
+// Datum souboru; popis importu technické údaje nenese, bere se ze skenu.
+function fileDate(f) {
+  return resolve(state.doc, f).datum?.hodnota ||
+    (state.mode === "import" ? state.scan[f]?.datum : null);
+}
+
 function sortedFiles(names) {
   return names.sort((a, b) => {
-    const da = resolve(state.doc, a).datum?.hodnota || "";
-    const db = resolve(state.doc, b).datum?.hodnota || "";
+    const da = fileDate(a) || "";
+    const db = fileDate(b) || "";
     return da < db ? -1 : da > db ? 1 : a.localeCompare(b);
   });
 }
@@ -1101,8 +1128,9 @@ function sections() {
     if (r.skupina && byGroup.has(r.skupina)) byGroup.get(r.skupina).push(f);
     else none.push(f);
   }
-  const result = [...byGroup].map(([gid, files]) =>
-    ({ gid, key: `g:${gid}`, title: groupName(gid),
+  const result = [...byGroup]
+    .filter(([gid, files]) => files.length || !fixedGroup(gid))
+    .map(([gid, files]) => ({ gid, key: `g:${gid}`, title: groupName(gid),
       files: sortedFiles(files) }));
   if (none.length) {
     result.push({ gid: null, key: "g:", title: "Bez skupiny",
@@ -1114,14 +1142,13 @@ function sections() {
 function tile(f, markOf) {
   const info = state.scan[f] || {};
   const present = state.present.has(f);
-  const datum = resolve(state.doc, f).datum?.hodnota;
+  const datum = fileDate(f);
   const mark = markOf(f);
   const m = markAttrs(mark, f);
   const d = damagedAttrs(f);
   const thumb = present
     ? h("img", {
-      src: eventUrl(state.name, `/nahled/${encodeURIComponent(f)}`),
-      loading: "lazy", alt: "", draggable: false,
+      src: thumbUrl(f), loading: "lazy", alt: "", draggable: false,
       onerror: (e) => e.target.replaceWith(
         h("div", { class: "ph" }, info.video ? "▶ video" : "bez náhledu")),
     })
@@ -2657,7 +2684,9 @@ function renderBar() {
 function renderPanel() {
   const panel = document.getElementById("panel");
   if (!panel) return;
-  if (state.mode === "wizard") return renderWizardPanel(panel);
+  if (state.mode === "wizard" || state.mode === "import") {
+    return renderGroupsPanel(panel);
+  }
   const placeBox = h("div");
   const onChange = (key) => {
     // Datum mění pořadí, autoři značky (a dědí se na soubory pod úrovní).
@@ -2740,7 +2769,7 @@ function renderPanel() {
 
 const wizard = { step: 0, plan: null, volby: {}, rawRoot: true,
   other: true };
-const STEPS = ["Úklid", "Načtení a skupiny", "Údaje akce", "Autoři skupin"];
+const STEPS = ["Úklid", "Údaje akce", "Skupiny a autoři"];
 
 function wizardFrame(body, nav) {
   return [
@@ -2766,9 +2795,8 @@ async function renderWizard() {
       return renderWorkspace();
     }
   }
-  if (step === 1) return renderGroupsStep();
-  if (step === 2) return renderEventStep();
-  return renderAuthorsStep();
+  if (step === 1) return renderEventStep();
+  return renderWizardGroupsStep();
 }
 
 function navButtons({ back = true, next = "Pokračovat", onNext,
@@ -2945,43 +2973,6 @@ async function renderCleanup() {
   nav));
 }
 
-function renderGroupsStep() {
-  app.replaceChildren(...wizardFrame(h("div", { class: "workspace" },
-    h("div", { id: "grid", class: "grid" }),
-    h("aside", { id: "panel", class: "panel" })), navButtons()));
-  setupGrid(document.getElementById("grid"));
-  renderGrid();
-  renderPanel();
-}
-
-function renderWizardPanel(panel) {
-  // Krok skupiny: přejmenovat, sloučit, nová skupina, přesun souborů.
-  const after = () => {
-    renderGrid();
-    renderPanel();
-  };
-  const groups = groupIds().map((gid) => {
-    const count = Object.values(state.doc.soubory)
-      .filter((r) => r.skupina === gid).length;
-    return h("fieldset", {
-      class: `tools${state.group === gid ? " current" : ""}` },
-    h("legend", {}, plural(count, "soubor", "soubory", "souborů")),
-    h("div", { class: "row" }, h("input", { value: groupName(gid),
-      oninput: (e) => {
-        state.doc.skupiny[gid].nazev = e.target.value;
-        const head = document.querySelector(
-          `#grid .ghead[data-group="${CSS.escape(gid)}"]`);
-        if (head) head.firstChild.textContent = e.target.value;
-      } })),
-    mergeTools(gid, after));
-  });
-  panel.replaceChildren(
-    h("h2", {}, "Skupiny"),
-    h("p", { class: "meta" }, "Navrženo podle přístroje a vzoru názvu. " +
-      "Soubory vyberte v mřížce (klik, Ctrl, Shift, tažení) a přesuňte."),
-    ...[groupTools(after), ...groups].filter(Boolean));
-}
-
 function renderEventStep() {
   const a = state.doc.akce;
   const ok = () => a.nazev && a.datum_od && a.datum_do;
@@ -2994,46 +2985,17 @@ function renderEventStep() {
       .map((k) => fieldRow(targets, k, onChange))), nav));
 }
 
-function renderAuthorsStep() {
-  // Řádek autorů skupiny se vykreslí jednou; po změně autorů akce se
-  // nahradí novým, ať ukazuje aktuální zděděnou hodnotu.
-  const groupRows = {};
-  const groupRow = (gid) =>
-    fieldRow(targetsFor("skupina", [gid]), "autori", () => {});
-  const onEventChange = () => {
-    for (const gid of Object.keys(groupRows)) {
-      const row = groupRow(gid);
-      groupRows[gid].replaceWith(row);
-      groupRows[gid] = row;
-    }
+// Poslední krok průvodce: skupiny a autoři, pak pracovní plocha. Změny
+// se uloží až dokončením.
+function renderWizardGroupsStep() {
+  const warn = h("span", { class: "warn" });
+  const [back, finishBtn] = navButtons({ next: "Dokončit průvodce",
+    onNext: () => finish() });
+  const reset = () => {
     delete finishBtn.dataset.confirm;
     finishBtn.textContent = "Dokončit průvodce";
     warn.textContent = "";
   };
-  const eventBox = h("fieldset", { class: "tools" },
-    h("legend", {}, "Celá akce"),
-    h("p", { class: "meta" },
-      "Skupiny bez vlastních autorů zdědí autory akce."),
-    fieldRow(targetsFor("akce", []), "autori", onEventChange));
-  const rows = groupIds().map((gid) => {
-    const count = Object.values(state.doc.soubory)
-      .filter((r) => r.skupina === gid).length;
-    // Pár náhledů rovnoměrně z celé skupiny, ať se skupina pozná.
-    const files = sortedFiles(Object.keys(state.doc.soubory)
-      .filter((f) => state.doc.soubory[f].skupina === gid &&
-        state.present.has(f)));
-    const step = Math.max(1, Math.floor(files.length / 8));
-    const sample = files.filter((_, i) => i % step === 0).slice(0, 8);
-    return h("fieldset", { class: "tools" },
-      h("legend", {}, `${groupName(gid)} (${plural(count, "soubor",
-        "soubory", "souborů")})`),
-      h("div", { class: "strip" }, sample.map((f) => h("img", {
-        src: eventUrl(state.name, `/nahled/${encodeURIComponent(f)}`),
-        alt: "", title: f, loading: "lazy",
-        onerror: (e) => e.target.remove(),
-      }))),
-      groupRows[gid] = groupRow(gid));
-  });
   const finish = async () => {
     const m = missing(state.doc, state.present);
     if (m.skupinyBezAutoru.length && !finishBtn.dataset.confirm) {
@@ -3056,21 +3018,126 @@ function renderAuthorsStep() {
     state.group = null;
     renderWorkspace();
   };
-  const warn = h("p", { class: "warn" });
-  const nav = navButtons({ next: "Dokončit průvodce", onNext: finish });
-  const finishBtn = nav[1];
-  app.replaceChildren(...wizardFrame(h("main", { class: "wizard" },
-    h("p", { class: "meta" }, "Autoři = fotil někdo z uvedených. " +
-      "U jednotlivých fotek jde autory přepsat na ploše."),
-    eventBox, rows, warn), nav));
+  renderGroupsStep({
+    frame: wizardFrame,
+    nav: [back, h("span", { class: "row" }, warn, finishBtn)],
+    onChange: reset,
+  });
+}
+
+// --- krok skupiny a autoři (průvodce akce i import) ---------------------
+//
+// Mřížka (`renderGrid`) a panel nad `state.doc`: průvodce akce nad
+// dokumentem akce, import nad popisem importu (`state.mode` "import",
+// náhledy přes `thumbUrl`). Rozdíly nese kontext `groupsCtx`: `frame`
+// a `nav` kroku, `onChange` po každé úpravě, `top` (volba rozdělení
+// v importu) a `join` (připojení nové skupiny k existující, jen import:
+// `target(gid)`, `choice(gid, after)`).
+
+let groupsCtx = null;
+
+function renderGroupsStep(ctx) {
+  groupsCtx = ctx;
+  Object.assign(state, { sel: new Set(), group: null, anchor: null,
+    current: null, view: "grid", keptEmpty: new Set() });
+  app.replaceChildren(...ctx.frame(h("div", { class: "workspace" },
+    h("div", { id: "grid", class: "grid", style: `--tile: ${tileSize()}px` }),
+    h("aside", { id: "panel", class: "panel" })), ctx.nav));
+  setupGrid(document.getElementById("grid"));
+  renderGrid();
+  renderPanel();
+}
+
+// Autoři skupiny, kterou krok neupravuje (existující skupina cíle
+// importu, nebo nová skupina k ní připojená).
+function authorsReadonly(gid, note) {
+  const names = resolveGroup(state.doc, gid).autori?.hodnota || [];
+  return h("div", { class: "field readonly" },
+    h("label", {}, F.autori.label, h("span", { class: "note" }, note)),
+    h("div", { class: "readonly-value" }, names.join("; ") || "bez autorů"));
+}
+
+function renderGroupsPanel(panel) {
+  const ctx = groupsCtx;
+  const after = () => {
+    ctx.onChange();
+    renderGrid();
+    renderPanel();
+  };
+  // Řádek autorů skupiny; po změně autorů akce se nahradí novým, ať
+  // ukazuje aktuální zděděnou hodnotu.
+  const rows = {};
+  const authorsRow = (gid) => {
+    const target = ctx.join?.target(gid);
+    if (target) {
+      return authorsReadonly(target, `ze skupiny ${groupName(target)}`);
+    }
+    if (fixedGroup(gid)) return authorsReadonly(gid, "skupina v akci");
+    return fieldRow(targetsFor("skupina", [gid]), "autori", ctx.onChange);
+  };
+  const onEventChange = () => {
+    for (const gid of Object.keys(rows)) {
+      const row = authorsRow(gid);
+      rows[gid].replaceWith(row);
+      rows[gid] = row;
+    }
+    ctx.onChange();
+  };
+  const eventBox = h("fieldset", { class: "tools" },
+    h("legend", {}, "Celá akce"),
+    h("p", { class: "meta" },
+      "Skupiny bez vlastních autorů zdědí autory akce."),
+    fieldRow(targetsFor("akce", []), "autori", onEventChange));
+  const groups = groupIds().map((gid) => {
+    const fixed = fixedGroup(gid);
+    const files = sortedFiles(Object.keys(state.doc.soubory).filter((f) =>
+      state.doc.soubory[f].skupina === gid && state.present.has(f)));
+    if (fixed && !files.length) return null;
+    // Pár náhledů rovnoměrně z celé skupiny, ať se skupina pozná.
+    const step = Math.max(1, Math.floor(files.length / 6));
+    const sample = files.filter((_, i) => i % step === 0).slice(0, 6);
+    return h("fieldset", { class: `tools${state.group === gid
+      ? " current" : ""}` },
+    h("legend", {}, plural(files.length, "soubor", "soubory", "souborů"),
+      fixed ? " · skupina v akci" : ""),
+    h("div", { class: "row" }, h("input", { value: groupName(gid),
+      disabled: fixed, oninput: (e) => {
+        state.doc.skupiny[gid].nazev = e.target.value;
+        const head = document.querySelector(
+          `#grid .ghead[data-group="${CSS.escape(gid)}"]`);
+        if (head) head.firstChild.textContent = e.target.value;
+        ctx.onChange();
+      } })),
+    h("div", { class: "strip" }, sample.map((f) => h("img", {
+      src: thumbUrl(f), alt: "", title: f, loading: "lazy",
+      onerror: (e) => e.target.remove(),
+    }))),
+    fixed ? null : ctx.join?.choice(gid, after),
+    fixed || ctx.join?.target(gid) ? null : mergeTools(gid, after),
+    rows[gid] = authorsRow(gid));
+  });
+  panel.replaceChildren(h("h2", {}, "Skupiny a autoři"),
+    ...[ctx.top?.(),
+      h("label", { class: "tilesize", title: "Velikost náhledů v mřížce" },
+        "Náhledy", h("input", { type: "range", min: TILE.min,
+          max: TILE.max, step: 10, value: tileSize(),
+          oninput: (e) => setTileSize(e.target.value) })),
+      h("p", { class: "meta" }, "Soubory vyberte v mřížce (klik, Ctrl, " +
+        "Shift, tažení) a přesuňte do skupiny. Autoři = fotil někdo " +
+        "z uvedených; u jednotlivých fotek je jde přepsat na ploše."),
+      groupTools(after), eventBox, ...groups].filter(Boolean));
+  panel.querySelector("fieldset.current")?.scrollIntoView({ block: "nearest" });
 }
 
 // --- import ---------------------------------------------------------------
 
 // Průvodce importem: soubory se nahrají do pracovního adresáře serveru
-// (`#/import/<id>` přežije reload), do archivu jdou až po potvrzení plánu.
+// (`#/import/<id>` přežije reload), do archivu jdou až po potvrzení
+// v kroku skupiny a autoři. Popis importu (údaje nové akce, skupiny,
+// autoři; `importdesc.js`) se průběžně ukládá k importu.
 
-const IMPORT_STEPS = ["Soubory", "Přehled", "Cíl", "Plán", "Výsledek"];
+const IMPORT_STEPS = ["Soubory", "Přehled", "Cíl", "Plán",
+  "Skupiny a autoři", "Výsledek"];
 const PARALLEL = 3;
 const TYP = {
   foto: ["fotka", "fotky", "fotek"],
@@ -3099,14 +3166,19 @@ const IMPORT_SKUPINY_CHYBA = {
   bez_nazvu_skupiny: "Doplňte název skupiny.",
   neznama_skupina: "Zvolená skupina v akci není.",
   neplatne_skupiny: "Neplatná volba skupin.",
+  bez_planu: "Plán už neplatí; sestavte ho znovu.",
 };
 
 const imp = {
   id: null, step: 0, cil: null, picked: [], failed: [], uploading: false,
   overview: null, target: null, targetError: null, plan: null,
   result: null, lockHolder: null, error: null, busy: null,
-  groups: null, targetGroups: null, pripojit: {}, unsorted: null,
-  sourceHolder: null, checking: false, checkError: null, checkedFor: null,
+  unsorted: null, sourceHolder: null, checking: false, checkError: null,
+  checkedFor: null,
+  popis: null,      // popis importu (importdesc.js)
+  defaults: null,   // odpověď POST …/skupiny pro aktuální plán
+  volba: null,      // výchozí rozdělení do skupin
+  modes: null,      // dostupné volby rozdělení a předvolba (groupModes)
 };
 
 function importUrl(rest = "") {
@@ -3134,9 +3206,9 @@ async function openImport(id, params) {
       id, step: 0, cil: params.get("cil"), picked: [], failed: [],
       uploading: false, overview: null, target: null, targetError: null,
       plan: null, result: null, lockHolder: null, error: null, busy: null,
-      groups: null, targetGroups: null, pripojit: {}, unsorted: null,
-      sourceHolder: null, checking: false, checkError: null,
-      checkedFor: null,
+      unsorted: null, sourceHolder: null, checking: false, checkError: null,
+      checkedFor: null, popis: null, defaults: null, volba: null,
+      modes: null,
     });
   }
   app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
@@ -3153,6 +3225,7 @@ async function openImport(id, params) {
       return;
     }
     if (imp.overview.soubory.length || imp.overview.zdroj) imp.step = 1;
+    imp.popis = imp.overview.popis; // návrat k rozpracovanému importu
   }
   renderImport();
 }
@@ -3232,7 +3305,7 @@ function importFrame(body, nav) {
 function renderImport() {
   if (state.mode !== "import") return; // mezitím jinam
   [renderPick, renderOverview, renderTarget, renderImportPlan,
-    renderImportResult][imp.step]();
+    renderImportGroups, renderImportResult][imp.step]();
 }
 
 function goStep(step) {
@@ -3696,77 +3769,54 @@ function selectionRoot(files) {
   return root;
 }
 
-// Skupiny cílové akce bez skenu (`_metadata.json`, jinak návrh z importu);
-// načtou se na pozadí a krok cíle se pak překreslí.
-function targetGroups(cil) {
-  if (imp.targetGroups?.cil === cil) return imp.targetGroups;
-  imp.targetGroups = { cil, loading: true };
-  api(`/api/akce/${encodeURIComponent(cil)}/skupiny`)
-    .then((r) => { imp.targetGroups = { cil, ...r }; })
-    .catch(() => { imp.targetGroups = { cil, skupiny: null, zdroj: null }; })
-    .then(() => { if (imp.step === 2) renderTarget(); });
-  return imp.targetGroups;
+// --- popis importu: průběžné ukládání ---------------------------------------
+
+let descTimer = null;
+
+// Po úpravě popisu: uložit s prodlevou. `edit` = ruční úprava skupin nebo
+// autorů (změna výchozího rozdělení se pak ptá).
+function descChanged(edit = true) {
+  if (edit) imp.popis.upraveno = true;
+  clearTimeout(descTimer);
+  descTimer = setTimeout(saveDescription, 1000);
 }
 
-function importGroupsBlock(t) {
+// Uloží popis k importu (ne do archivu); false při chybě.
+async function saveDescription() {
+  clearTimeout(descTimer);
+  descTimer = null;
+  if (!imp.id || !imp.popis) return true;
+  try {
+    await api(importUrl("/popis"), { method: "PUT",
+      body: { jmeno: userName(), popis: imp.popis } });
+    return true;
+  } catch (err) {
+    imp.error = `Popis importu nejde uložit (${err.message}).`;
+    return false;
+  }
+}
+
+// --- cíl -------------------------------------------------------------------
+
+// Údaje nové akce v popisu (krok cíl): odložené z dřívějška, jinak
+// předvyplněné názvem složky a dny médií z přehledu.
+function newEventFields(t) {
   const o = imp.overview;
-  const tg = t.mode === "stavajici" ? targetGroups(t.cil)
-    : { skupiny: null, zdroj: null };
-  const root = selectionRoot(o.soubory);
-  const hasSub = o.soubory.some((f) =>
-    f.cesta.split(/[/\\]/).length - 1 > root.length);
-  const own = tg.zdroj === "metadata" ? tg.skupiny || {} : {};
-  const ownIds = Object.keys(own);
-  const avail = ["podslozky", "jedna", "auto", "zadne", "existujici"]
-    .filter((m) => (m !== "podslozky" || hasSub) &&
-      (m !== "existujici" || ownIds.length));
-  const preset = hasSub ? "podslozky"
-    : tg.zdroj === "metadata" ? "jedna" : "auto";
-  // Uložená volba (návrat k importu) platí, dokud je dostupná; jinak
-  // předvolba podle cíle.
-  imp.groups ||= o.skupiny ? { ...o.skupiny, chosen: true }
-    : { chosen: false };
-  const g = imp.groups;
-  if (!tg.loading && (!g.chosen || !avail.includes(g.rezim))) {
-    g.rezim = preset;
+  const p = imp.popis ||= { cil: null, typ: null, akce: {}, skupiny: {},
+    soubory: {}, pripojit: {} };
+  if (p.typ !== "nova") {
+    // Prázdné hodnoty se nezapisují: pole by jinak hlásilo „zadáno“.
+    p.akce = p.nova_akce || Object.fromEntries(Object.entries({
+      nazev: t.nazev.trim(), datum_od: o.od || t.datum,
+      datum_do: o.do || o.od || t.datum }).filter(([, v]) => v));
+    p.typ = "nova";
+    delete p.nova_akce;
   }
-  g.nazev ??= root.at(-1) ||
-    `Import ${new Date().toLocaleDateString("sv")}`;
-  if (!(g.skupina in own)) g.skupina = ownIds[0];
-  const set = (changes) => {
-    Object.assign(g, changes, { chosen: true });
-    imp.targetError = null;
-    renderTarget();
-  };
-  const radio = (mode) => h("label", {},
-    h("input", { type: "radio", name: "skupiny", checked: g.rezim === mode,
-      onchange: () => set({ rezim: mode }) }), " ", IMPORT_SKUPINY[mode]);
-  return h("fieldset", { class: "folder" }, h("legend", {}, "Skupiny"),
-    tg.loading ? h("p", { class: "meta" }, "Načítám skupiny akce…") : [
-      ...avail.map((m) => h("div", {}, radio(m),
-        m === "jedna" && g.rezim === "jedna" ? [" ", h("input", {
-          type: "text", value: g.nazev, size: 40,
-          oninput: (e) => { g.nazev = e.target.value; g.chosen = true; },
-        })] : null,
-        m === "existujici" && g.rezim === "existujici" ? [" ", h("select", {
-          onchange: (e) => set({ skupina: e.target.value }) },
-        ownIds.map((id) => h("option", { value: id,
-          selected: id === g.skupina }, own[id].nazev || id)))] : null)),
-      g.rezim === "podslozky" ? h("p", { class: "meta" }, "Skupina = " +
-        "podsložka první úrovně" + (root.length ? ` pod ${root.join("/")}`
-          : "") + ". RAWy skupinu nedostanou.") : null,
-    ]);
-}
-
-function importGroupsChoice() {
-  const g = imp.groups;
-  if (!g || imp.targetGroups?.loading && imp.target.mode === "stavajici") {
-    return null;
+  // Popis uložený dřív mohl prázdné hodnoty mít.
+  for (const k of Object.keys(p.akce)) {
+    if (isEmpty(p.akce[k])) delete p.akce[k];
   }
-  const volba = { rezim: g.rezim };
-  if (g.rezim === "jedna") volba.nazev = g.nazev.trim();
-  if (g.rezim === "existujici") volba.skupina = g.skupina;
-  return volba;
+  return p.akce;
 }
 
 function renderTarget() {
@@ -3799,25 +3849,48 @@ function renderTarget() {
         h("option", { value: e.nazev, selected: e.nazev === t.cil },
           e.nazev + (e.stav === "hotovo" ? " (hotovo)" : "")))),
     event?.stav === "hotovo" ? h("p", { class: "warn" }, "Akce je " +
-      "dokončená. Nové soubory v ní budou bez metadat, dokud je " +
-      "nedoplníte a akci znovu nedokončíte, a Immich je uvidí hned.")
+      "dokončená. Immich nové soubory uvidí hned; skupiny a autoři " +
+      "z importu se do sidecarů dostanou až novým dokončením akce.")
       : null) : null;
-  const created = t.mode === "nova" ? h("div", { class: "folder" },
-    h("div", { class: "row" },
-      h("input", { type: "date", value: t.datum,
-        oninput: (e) => { t.datum = e.target.value; updatePreview(); } }),
-      h("input", { type: "text", value: t.nazev, size: 50,
-        placeholder: "název akce, např. kontrola Stezky",
-        oninput: (e) => { t.nazev = e.target.value; updatePreview(); } })),
-    h("p", { class: "meta" }, "Složka: ", preview,
-      o.od ? "" : " (datum z EXIF nezjištěno, doplňte ho)")) : null;
+  let created = null;
+  if (t.mode === "nova") {
+    const a = newEventFields(t);
+    const targets = [{ obj: a, level: "akce", eff: (k) =>
+      k in a ? { hodnota: a[k], uroven: "akce" } : undefined }];
+    const onChange = () => descChanged(false);
+    const rows = Object.fromEntries(FIELDS.akce.filter((k) => k !== "autori")
+      .map((k) => [k, fieldRow(targets, k, onChange)]));
+    created = h("div", { class: "folder" },
+      h("div", { class: "row" },
+        h("input", { type: "date", value: t.datum,
+          oninput: (e) => { t.datum = e.target.value; updatePreview(); } }),
+        h("input", { type: "text", value: t.nazev, size: 50,
+          placeholder: "název akce, např. kontrola Stezky",
+          oninput: (e) => {
+            // Název akce jde se složkou, dokud ho uživatel nezmění.
+            const prev = t.nazev.trim();
+            t.nazev = e.target.value;
+            updatePreview();
+            if ((a.nazev || "") === prev) {
+              if (t.nazev.trim()) a.nazev = t.nazev.trim();
+              else delete a.nazev;
+              const row = fieldRow(targets, "nazev", onChange);
+              rows.nazev.replaceWith(row);
+              rows.nazev = row;
+              descChanged(false);
+            }
+          } })),
+      h("p", { class: "meta" }, "Složka: ", preview,
+        o.od ? "" : " (datum z EXIF nezjištěno, doplňte ho)"),
+      h("div", { class: "form" }, h("h3", {}, "Údaje akce"),
+        Object.values(rows)));
+  }
   const err = imp.targetError;
   const planning = imp.busy === "plan";
-  const groups = importGroupsBlock(t);
   const body = h("main", { class: "wizard" },
     h("div", { class: "row" }, radio("stavajici", "do stávající akce"),
       radio("nova", "do nové akce")),
-    existing, created, groups,
+    existing, created,
     planning ? progressBox("Sestavuji plán…") : null,
     err ? h("p", { class: "notice error" }, err.text,
       err.akce ? [" ", h("button", { class: "link", onclick: () => {
@@ -3830,18 +3903,16 @@ function renderTarget() {
     const body = { jmeno: userName() };
     if (t.mode === "stavajici") body.cil = t.cil;
     else if (!t.datum || !t.nazev.trim()) {
-      imp.targetError = { text: "Doplňte datum i název nové akce." };
+      imp.targetError = { text: "Doplňte datum i název složky nové akce." };
+      return renderTarget();
+    } else if (!imp.popis.akce.nazev || !imp.popis.akce.datum_od) {
+      imp.targetError = { text: "Doplňte název akce a datum od." };
       return renderTarget();
     } else body.nova = folder();
-    body.skupiny = importGroupsChoice();
-    if (!body.skupiny) return;
-    if (body.skupiny.rezim === "jedna" && !body.skupiny.nazev) {
-      imp.targetError = { text: IMPORT_SKUPINY_CHYBA.bez_nazvu_skupiny };
-      return renderTarget();
-    }
     imp.busy = "plan";
     imp.targetError = null;
     renderTarget();
+    await saveDescription();
     let total = null;
     try {
       let checkTotal = null;
@@ -3856,8 +3927,8 @@ function renderTarget() {
         }
       });
       if (last?.typ !== "plan") throw new Error("plán nedorazil celý");
-      imp.plan = { ...last, volba: body.skupiny };
-      imp.pripojit = {};
+      imp.plan = last;
+      imp.defaults = null;
     } catch (e) {
       imp.busy = null;
       if (e.status !== 409) {
@@ -3865,9 +3936,7 @@ function renderTarget() {
         return renderTarget();
       }
       const known = events.some((x) => x.nazev === e.data.akce);
-      imp.targetError = IMPORT_SKUPINY_CHYBA[e.data.chyba]
-        ? { text: IMPORT_SKUPINY_CHYBA[e.data.chyba] }
-        : e.data.chyba === "existuje"
+      imp.targetError = e.data.chyba === "existuje"
         ? { text: `Složka ${e.data.akce} v archivu už je.`,
           akce: known ? e.data.akce : null }
         : { text: "Neplatný název: složka musí mít tvar „YYYY-MM-DD " +
@@ -3882,11 +3951,12 @@ function renderTarget() {
   app.replaceChildren(...importFrame(body, [
     h("button", { disabled: planning, onclick: () => goStep(1) }, "← Zpět"),
     h("button", { class: "primary",
-      disabled: planning || (t.mode === "stavajici" && !t.cil) ||
-        !importGroupsChoice(),
+      disabled: planning || (t.mode === "stavajici" && !t.cil),
       onclick: next }, planning ? "Počítám plán…" : "Ukázat plán"),
   ]));
 }
+
+// --- plán ------------------------------------------------------------------
 
 // `group(gid)` = popis cílové skupiny (bez ní sloupec chybí).
 function importOps(ops, group) {
@@ -3909,55 +3979,15 @@ function countBy(ops) {
   return (st) => c[st] || 0;
 }
 
-// Nové skupiny plánu s volbou „nová / připojit ke skupině …“; změna
-// plán nepřepočítává, `pripojit` jde až s provedením.
-function importPlanGroups(p) {
-  const nove = Object.entries(p.skupiny.nove);
-  if (!nove.length) return null;
-  const ex = p.skupiny.existujici;
-  const count = (gid) => p.operace.filter((o) => o.skupina === gid).length;
-  return h("table", { class: "ops" },
-    h("tr", {}, h("th", {}, "Nová skupina"), h("th", {}, "Souborů"),
-      Object.keys(ex).length ? h("th", {}, "Zařazení") : null),
-    nove.map(([gid, g]) => h("tr", {},
-      h("td", {}, g.nazev, g.pristroj ? h("span", { class: "meta" },
-        ` (${g.pristroj})`) : null),
-      h("td", { class: "num" }, String(count(gid))),
-      Object.keys(ex).length ? h("td", {}, h("select", {
-        onchange: (e) => {
-          if (e.target.value) imp.pripojit[gid] = e.target.value;
-          else delete imp.pripojit[gid];
-          renderImportPlan();
-        } },
-      h("option", { value: "" }, "nová skupina"),
-      [...g.shody, ...Object.keys(ex).filter((x) => !g.shody.includes(x))]
-        .map((x) => h("option", { value: x,
-          selected: imp.pripojit[gid] === x },
-        `připojit ke skupině ${ex[x].nazev || x}` +
-          (g.shody.includes(x) ? " (shoda)" : ""))))) : null)));
-}
-
 function renderImportPlan() {
   const p = imp.plan;
   const n = countBy(p.operace);
   const bezPolohy = p.operace.filter(bezPolohyOp);
-  const zapis = state.info.zapis;
-  const holder = imp.lockHolder;
   const zdroj = imp.overview?.zdroj;
   const body = h("main", { class: "wizard" },
-    zapis && zdroj
-      ? h("p", { class: "notice" }, "Po potvrzení se soubory přesunou ze " +
-        `složky ${UNSORTED}/${zdroj}, média do kořene akce, RAWy do ` +
-        "RAW.ignored. Nic se nepřepíše; blokované, duplicitní, poškozené " +
-        "a nepodporované soubory zůstanou ve zdroji. Prázdné složky zdroje " +
-        "se smažou.")
-      : zapis
-      ? h("p", { class: "notice" }, "Po potvrzení se soubory zkopírují do " +
-        "archivu, média do kořene akce, RAWy do RAW.ignored. Nic se " +
-        "nepřepíše; blokované, duplicitní a poškozené soubory zůstanou " +
-        "v pracovním adresáři.")
-      : h("p", { class: "notice" }, "Vývojový režim: plán se jen ukazuje, " +
-        "do archivu se nic nezapíše."),
+    imp.error ? h("p", { class: "notice error" }, imp.error) : null,
+    h("p", { class: "notice" }, "Plán ukazuje, co se přenese. Skupiny " +
+      "a autory zadáte v dalším kroku; do archivu se zatím nic nezapíše."),
     h("p", {}, p.nova ? "Vznikne nová akce " : "Cíl: ",
       h("code", {}, p.cil), "."),
     h("p", {}, `Přenese se ${n("ok")}, blokováno ${n("blokovano")}, ` +
@@ -3966,6 +3996,237 @@ function renderImportPlan() {
       (n("poskozeny") - bezPolohy.length
         ? `, poškozených (nepřenesou se) ` +
           `${n("poskozeny") - bezPolohy.length}.` : ".")),
+    p.nepodporovane.length ? h("p", { class: "meta" },
+      `Nepodporované (nepřenesou se): ${p.nepodporovane.join(", ")}`) : null,
+    bezPolohyGroup(bezPolohy, zdroj),
+    importOps(p.operace));
+  const go = h("button", { class: "primary", disabled: !n("ok"),
+    onclick: () => enterImportGroups(go) },
+  "Pokračovat ke skupinám a autorům");
+  app.replaceChildren(...importFrame(body, [
+    h("span", { class: "row" },
+      h("button", { onclick: () => goStep(2) }, "← Zpět"),
+      h("button", { onclick: discardImport }, "Zahodit import")),
+    go,
+  ]));
+}
+
+// --- skupiny a autoři --------------------------------------------------------
+
+// Volby výchozího rozdělení a předvolba (spec photo-import, Volba
+// skupin). `tg` = skupiny cíle (`GET /api/akce/<n>/skupiny`).
+function groupModes(tg) {
+  const files = imp.overview.soubory;
+  const root = selectionRoot(files);
+  const hasSub = files.some((f) =>
+    f.cesta.split(/[/\\]/).length - 1 > root.length);
+  const own = tg.zdroj === "metadata" ? tg.skupiny || {} : {};
+  return {
+    root, own,
+    avail: ["podslozky", "jedna", "auto", "zadne", "existujici"]
+      .filter((m) => (m !== "podslozky" || hasSub) &&
+        (m !== "existujici" || Object.keys(own).length)),
+    preset: hasSub ? "podslozky" : tg.zdroj === "metadata" ? "jedna" : "auto",
+    nazev: root.at(-1) || `Import ${new Date().toLocaleDateString("sv")}`,
+  };
+}
+
+function presetVolba(m) {
+  const volba = { rezim: m.preset };
+  if (m.preset === "jedna") volba.nazev = m.nazev;
+  return volba;
+}
+
+// Výchozí rozdělení přenášených médií podle `volba` (server plán znovu
+// nepočítá).
+function loadDefaults(volba) {
+  return api(importUrl("/skupiny"), { method: "POST",
+    body: { jmeno: userName(), skupiny: volba } });
+}
+
+// Z plánu do kroku skupiny a autoři: volba rozdělení (uložená, jinak
+// předvolba), výchozí rozdělení a popis sladěný s plánem.
+async function enterImportGroups(button) {
+  const label = button.textContent;
+  setBusy(button, "Sestavuji skupiny…");
+  try {
+    const p = imp.plan;
+    const tg = p.nova ? { zdroj: null }
+      : await api(`/api/akce/${encodeURIComponent(p.cil)}/skupiny`);
+    const m = imp.modes = groupModes(tg);
+    const saved = imp.volba || imp.overview.skupiny;
+    const volba = saved && m.avail.includes(saved.rezim) &&
+      (saved.rezim !== "existujici" || saved.skupina in m.own)
+      ? saved : presetVolba(m);
+    const d = await loadDefaults(volba);
+    imp.defaults = d;
+    imp.volba = volba;
+    if (imp.popis?.cil === targetKey(d)) reconcile(imp.popis, d);
+    else imp.popis = freshDescription(d, imp.popis);
+    imp.error = (await saveDescription()) ? null : imp.error;
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = label;
+    imp.error = IMPORT_SKUPINY_CHYBA[err.data?.chyba] ||
+      `Skupiny nejde sestavit (${err.message}).`;
+    return renderImport();
+  }
+  goStep(4);
+}
+
+// Změna výchozího rozdělení sestaví skupiny znovu; ruční úpravy a autoři
+// skupin se zahodí jen po potvrzení. Údaje a autoři akce zůstanou.
+async function changeVolba(volba) {
+  if (volba.rezim === "jedna" && !volba.nazev) {
+    imp.error = IMPORT_SKUPINY_CHYBA.bez_nazvu_skupiny;
+    return renderImport();
+  }
+  if (imp.popis.upraveno && !(await confirmDialog("Rozdělit znovu?", [
+    "Skupiny se sestaví znovu podle nové volby; ruční úpravy skupin " +
+    "a jejich autoři se zahodí."], "Rozdělit znovu"))) {
+    return renderImport();
+  }
+  try {
+    const d = await loadDefaults(volba);
+    const akce = imp.popis.akce;
+    imp.defaults = d;
+    imp.volba = volba;
+    imp.popis = freshDescription(d, imp.popis);
+    imp.popis.akce = akce;
+    imp.error = (await saveDescription()) ? null : imp.error;
+  } catch (err) {
+    imp.error = IMPORT_SKUPINY_CHYBA[err.data?.chyba] ||
+      `Skupiny nejde sestavit (${err.message}).`;
+  }
+  renderImport();
+}
+
+// Volba výchozího rozdělení nahoře v panelu.
+function importVolbaBlock() {
+  const m = imp.modes;
+  const v = imp.volba;
+  const name = h("input", { type: "text", value: v.rezim === "jedna"
+    ? v.nazev : m.nazev, size: 24 });
+  const own = Object.keys(m.own);
+  return h("fieldset", { class: "tools" }, h("legend", {}, "Výchozí rozdělení"),
+    h("select", { onchange: (e) => {
+      const rezim = e.target.value;
+      if (rezim === "jedna") return changeVolba({ rezim, nazev: m.nazev });
+      if (rezim === "existujici") {
+        return changeVolba({ rezim, skupina: own[0] });
+      }
+      changeVolba({ rezim });
+    } }, m.avail.map((r) => h("option", { value: r, selected: r === v.rezim },
+      IMPORT_SKUPINY[r]))),
+    v.rezim === "jedna" ? h("div", { class: "row" }, name,
+      h("button", { onclick: () => changeVolba({ rezim: "jedna",
+        nazev: name.value.trim() }) }, "Přejmenovat")) : null,
+    v.rezim === "existujici" ? h("div", { class: "row" }, h("select", {
+      onchange: (e) => changeVolba({ rezim: "existujici",
+        skupina: e.target.value }) },
+    own.map((id) => h("option", { value: id, selected: id === v.skupina },
+      m.own[id].nazev || id)))) : null,
+    v.rezim === "podslozky" ? h("p", { class: "meta" }, "Skupina = " +
+      "podsložka první úrovně" + (m.root.length ? ` pod ${m.root.join("/")}`
+        : "") + ". RAWy skupinu nedostanou.") : null);
+}
+
+// Nová skupina: „nová skupina“, nebo „připojit ke skupině …“ cíle (shody
+// první); změna plán nepřepočítává.
+function joinChoice(gid, after) {
+  const ex = imp.defaults.existujici;
+  if (!Object.keys(ex).length) return null;
+  const shody = imp.defaults.shody?.[gid] || [];
+  const order = [...shody,
+    ...Object.keys(ex).filter((x) => !shody.includes(x))];
+  return h("div", { class: "row" }, h("select", { onchange: (e) => {
+    if (e.target.value) imp.popis.pripojit[gid] = e.target.value;
+    else delete imp.popis.pripojit[gid];
+    after();
+  } }, h("option", { value: "" }, "nová skupina"),
+  order.map((x) => h("option", { value: x,
+    selected: imp.popis.pripojit[gid] === x },
+  `připojit ke skupině ${ex[x].nazev || x}` +
+    (shody.includes(x) ? " (shoda)" : "")))));
+}
+
+// Co se při provedení zapíše (vývojový režim i kontrola před importem).
+function descriptionLines() {
+  const p = imp.popis;
+  const doc = effectiveDoc(p);
+  const lines = [];
+  const a = p.akce;
+  if (imp.defaults.nova) {
+    lines.push(`Nová akce ${imp.plan.cil}: ${a.nazev}, ${a.datum_od}` +
+      (a.datum_do && a.datum_do !== a.datum_od ? ` – ${a.datum_do}` : "") +
+      (a.mista?.length ? `, místa ${a.mista.join("; ")}` : "") +
+      (a.ucastnici?.length ? `, účastníci ${a.ucastnici.join("; ")}` : ""));
+  }
+  lines.push(`Autoři celé akce: ${(a.autori || []).join("; ") || "—"}`);
+  const counts = new Map();
+  for (const r of Object.values(doc.soubory)) {
+    counts.set(r.skupina || "", (counts.get(r.skupina || "") || 0) + 1);
+  }
+  for (const [gid, n] of counts) {
+    if (!gid) continue;
+    const autori = resolveGroup(doc, gid).autori?.hodnota || [];
+    lines.push(`${fixedGroup(gid) ? "Skupina v akci" : "Nová skupina"} ` +
+      `${doc.skupiny[gid]?.nazev || gid}: ${plural(n, "soubor", "soubory",
+        "souborů")}, autoři ${autori.join("; ") || "chybí"}`);
+  }
+  if (counts.get("")) {
+    lines.push(`Bez skupiny: ${plural(counts.get(""), "soubor", "soubory",
+      "souborů")}`);
+  }
+  return lines;
+}
+
+function linesDialog(title, lines) {
+  const dialog = h("dialog", { class: "conflict names",
+    onclose: () => dialog.remove() },
+  h("h2", {}, title),
+  h("ul", {}, lines.map((l) => h("li", {}, l))),
+  h("div", { class: "buttons" },
+    h("button", { onclick: () => dialog.close() }, "Zavřít")));
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+function renderImportGroups() {
+  const d = imp.defaults;
+  const p = imp.popis;
+  Object.assign(state, { doc: p, detail: null, readonly: null,
+    present: new Set(Object.keys(p.soubory)),
+    scan: Object.fromEntries(d.soubory.map((f) => [f.nazev, f])) });
+  const zapis = state.info.zapis;
+  const zdroj = imp.overview?.zdroj;
+  const n = countBy(imp.plan.operace)("ok");
+  const warn = h("span", { class: "warn" });
+  const label = `Importovat (${plural(n, "soubor", "soubory", "souborů")})`;
+  const go = h("button", { class: "primary", onclick: () => {
+    if (!go.dataset.confirm) {
+      const bez = groupsWithoutAuthors(p);
+      go.dataset.confirm = "1";
+      warn.textContent = bez.length ? `${plural(bez.length, "skupina",
+        "skupiny", "skupin")} bez autorů: ${bez.map(groupName)
+        .join(", ")}.` : "";
+      go.textContent = (bez.length ? "Přesto importovat – " : "Opravdu ") +
+        (zdroj ? "přesunout do archivu?" : "zkopírovat do archivu?");
+      return;
+    }
+    executeImport(go);
+  } }, label);
+  const reset = () => {
+    delete go.dataset.confirm;
+    go.textContent = label;
+    warn.textContent = "";
+  };
+  const holder = imp.lockHolder;
+  const notices = [
+    imp.error ? h("p", { class: "notice error" }, imp.error) : null,
+    zapis ? null : h("p", { class: "notice" }, "Vývojový režim: import " +
+      "se neprovede a popis se nezapíše; tlačítkem Co by se zapsalo " +
+      "uvidíte, co by se zapsalo."),
     holder ? h("p", { class: "notice readonly" },
       `${holderText(holder)} Import teď nejde provést; ` + (zdroj
         ? "soubory zůstávají ve zdroji."
@@ -3973,32 +4234,26 @@ function renderImportPlan() {
     imp.sourceHolder ? h("p", { class: "notice readonly" },
       `Složku ${UNSORTED}/${zdroj} právě přesouvá ` +
       `${imp.sourceHolder.jmeno}. Import teď nejde provést.`) : null,
-    p.nepodporovane.length ? h("p", { class: "meta" },
-      `Nepodporované (nepřenesou se): ${p.nepodporovane.join(", ")}`) : null,
-    importPlanGroups(p),
-    bezPolohyGroup(bezPolohy, zdroj),
-    importOps(p.operace, (gid) => {
-      const join = imp.pripojit[gid];
-      if (join) return p.skupiny.existujici[join].nazev || join;
-      const nova = p.skupiny.nove[gid];
-      return nova ? `${nova.nazev} (nová)`
-        : p.skupiny.existujici[gid]?.nazev || gid;
-    }));
-  const go = h("button", { class: "primary", onclick: () => {
-    if (!go.dataset.confirm) {
-      go.dataset.confirm = "1";
-      go.textContent = zdroj ? "Opravdu přesunout do archivu?"
-        : "Opravdu zkopírovat do archivu?";
-      return;
-    }
-    executeImport(go);
-  } }, `Importovat (${plural(n("ok"), "soubor", "soubory", "souborů")})`);
-  app.replaceChildren(...importFrame(body, [
-    h("span", { class: "row" },
-      h("button", { onclick: () => goStep(2) }, "← Zpět"),
-      h("button", { onclick: discardImport }, "Zahodit import")),
-    zapis && n("ok") ? go : h("span"),
-  ]));
+  ].filter(Boolean);
+  renderGroupsStep({
+    frame: (body, nav) => importFrame(
+      h("div", { class: "import-groups" }, notices, body), nav),
+    nav: [
+      h("span", { class: "row" },
+        h("button", { onclick: () => goStep(3) }, "← Zpět"),
+        h("button", { onclick: discardImport }, "Zahodit import")),
+      h("span", { class: "row" }, warn,
+        h("button", { onclick: () => linesDialog("Co se zapíše",
+          descriptionLines()) }, "Co by se zapsalo"),
+        zapis && n ? go : null),
+    ],
+    onChange: () => {
+      descChanged();
+      reset();
+    },
+    top: importVolbaBlock,
+    join: { target: (gid) => p.pripojit[gid], choice: joinChoice },
+  });
 }
 
 async function executeImport(button) {
@@ -4008,6 +4263,11 @@ async function executeImport(button) {
   const p = imp.plan;
   const zdroj = imp.overview?.zdroj;
   imp.sourceHolder = null;
+  // Provedení bere popis z importu: nejdřív uložit poslední úpravy.
+  if (!(await saveDescription())) {
+    imp.busy = null;
+    return renderImport();
+  }
   if (!p.nova && !(await acquireLock(p.cil))) {
     imp.busy = null;
     imp.lockHolder = state.readonly;
@@ -4030,7 +4290,6 @@ async function executeImport(button) {
     const last = await apiStream(importUrl("/provest"), {
       jmeno: userName(), relace: session(),
       [p.nova ? "nova" : "cil"]: p.cil,
-      skupiny: p.volba, pripojit: imp.pripojit,
     }, (ev) => {
       checkTotal = checkProgress(ev, checkTotal);
       if (ev.typ === "hash") total = ev;
@@ -4098,7 +4357,7 @@ async function executeImport(button) {
   // Novou akci server zamkl pro tuhle relaci; klient zámek převezme.
   if (p.nova) await acquireLock(p.cil).catch(() => false);
   state.events = await api("/api/akce");
-  goStep(4);
+  goStep(5);
 }
 
 function renderImportResult() {
@@ -4135,18 +4394,19 @@ function renderImportResult() {
       `přerušeného importu (starší než hodina): ${r.smazano.join(", ")}`)
       : null,
     r.skupiny && !r.skupiny.zapsano ? h("p", { class: "notice error" },
-      `Skupiny se nepodařilo zapsat (${r.skupiny.chyba}); přenesené ` +
-      "soubory jsou v akci bez skupiny, rozdělte je na ploše.") : null,
+      `Popis se nepodařilo zapsat (${r.skupiny.chyba}); přenesené ` +
+      "soubory jsou v akci bez skupiny a autorů, doplňte je na ploše " +
+      "nebo v průvodci akce.") : null,
     r.index?.length ? h("p", { class: "notice error" },
       `Index archivu se nepodařilo aktualizovat: ${r.index.join("; ")}`)
       : null,
-    r.skupiny?.zapsano && r.skupiny.navrh &&
-      Object.keys(r.skupiny.prirazeni).length
-      ? h("p", { class: "meta" }, "Skupiny se použijí jako návrh při " +
-        "prvním otevření akce.") : null,
+    r.skupiny?.zapsano && r.skupiny.navrh
+      ? h("p", { class: "meta" }, "Akce zatím nemá _metadata.json: " +
+        "skupiny a autoři se použijí jako návrh v průvodci při prvním " +
+        "otevření akce.") : null,
     bezPolohyGroup(bezPolohy, zdroj),
     importOps(r.operace, r.skupiny && ((gid) =>
-      r.skupiny.skupiny[gid]?.nazev || gid)));
+      r.skupiny.nazvy?.[gid] || gid)));
   app.replaceChildren(...importFrame(body, [
     r.zahozeno ? h("span") : h("button", { onclick: discardImport },
       zdroj ? "Zahodit import" : "Zahodit nepřenesené"),

@@ -209,6 +209,9 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             doc = model.new_document(
                 nazev, files, importer.apply_proposal(files, proposal)
                 if proposal else scan.propose_groups(files))
+            autori = ((proposal or {}).get("akce") or {}).get("autori")
+            if autori:
+                doc["akce"]["autori"] = autori
         else:
             nove, chybejici = model.merge_scan(doc, files)
         return {
@@ -509,43 +512,67 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         response.call_on_close(events.close)
         return response
 
-    def existing_groups(nazev, path):
-        """Skupiny cíle importu: `_metadata.json`, jinak návrh."""
+    def target_state(nazev, path):
+        """(skupiny, autoři celé akce) cíle importu: z `_metadata.json`,
+        jinak z návrhu; nová akce nic."""
         if path is None:
-            return {}
+            return {}, None
         doc, _ = ws.load(nazev)
-        if doc is not None:
-            return doc.get("skupiny") or {}
-        return (imports.proposal(nazev) or {}).get("skupiny") or {}
+        if doc is None:
+            doc = imports.proposal(nazev) or {}
+        return doc.get("skupiny") or {}, (doc.get("akce") or {}).get("autori")
 
-    def write_groups(nazev, path, had_doc, groups):
-        """Zapíše skupiny přenesených médií do `_metadata.json` (akce ho
-        má), jinak do návrhu. Vrátí {"zapsano": bool, "navrh": bool,
-        "chyba"?}."""
-        if not groups["prirazeni"]:
-            return {"zapsano": True, "navrh": not had_doc}
+    def write_description(nazev, path, created, had_doc, record, done):
+        """Zapíše popis importu (`record["popis"]`) pro přenesená média
+        `done`: nové akci založí `_metadata.json`, akci s ním doplní nové
+        skupiny a přiřazení, akci bez něj návrh skupin. Autory celé akce
+        u stávající akce jen při změně proti cíli v době plánu. Vrátí
+        výsledek `importer.describe` se {"zapsano", "navrh", "chyba"?}."""
+        popis = record.get("popis") or {}
+        akce = popis.get("akce") or {}
+        autori = akce.get("autori") or []
+        changed = autori != (record.get("cil_autori") or [])
+        known = set(record.get("existujici") or [])
+        groups = importer.describe(popis, done, {}, set())
         try:
+            if created:
+                files, _ = scan.scan(path, cache_dir)
+                doc = model.new_document(nazev, files, groups)
+                doc["akce"].update(importer.event_fields(akce))
+                ws.save(nazev, model.clean(doc), None)
+                return dict(groups, zapsano=True, navrh=False)
             if not had_doc:
-                imports.add_proposal(nazev, groups)
-                return {"zapsano": True, "navrh": True}
+                proposal = imports.proposal(nazev) or {}
+                groups = importer.describe(
+                    popis, done, proposal.get("skupiny") or {}, known)
+                if groups["prirazeni"] or changed:
+                    imports.add_proposal(nazev, groups,
+                                         autori if changed else None)
+                return dict(groups, zapsano=True, navrh=True)
             doc, version = ws.load(nazev)
             if doc is None:
                 raise Conflict(None)
+            groups = importer.describe(popis, done,
+                                       doc.get("skupiny") or {}, known)
             files, _ = scan.scan(path, cache_dir)
             model.merge_scan(doc, files)
-            skupiny = doc.setdefault("skupiny", {})
-            for gid in groups["nove"]:
-                skupiny[gid] = groups["skupiny"][gid]
+            doc.setdefault("skupiny", {}).update(groups["skupiny"])
             for name, gid in groups["prirazeni"].items():
                 record = doc["soubory"].get(name)
                 if record is not None and not record.get("skupina"):
                     record["skupina"] = gid
+            if changed:
+                if autori:
+                    doc.setdefault("akce", {})["autori"] = autori
+                else:
+                    doc.get("akce", {}).pop("autori", None)
             ws.save(nazev, doc, version)
         except Conflict:
-            return {"zapsano": False, "navrh": False, "chyba": "konflikt"}
+            return dict(groups, zapsano=False, navrh=False, chyba="konflikt")
         except (OSError, ValueError) as e:
-            return {"zapsano": False, "navrh": not had_doc, "chyba": str(e)}
-        return {"zapsano": True, "navrh": False}
+            return dict(groups, zapsano=False, navrh=not had_doc,
+                        chyba=str(e))
+        return dict(groups, zapsano=True, navrh=False)
 
     @app.get("/api/pretridit")
     def pretridit():
@@ -678,21 +705,64 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         body = request.get_json(force=True)
         jmeno = body.get("jmeno")
         check_import(id, jmeno)
-        volba = body.get("skupiny")
         try:
             nazev, path = import_target(body)
-            existing = existing_groups(nazev, path)
-            importer.check_groups(volba, existing)
         except importer.Refused as e:
             return refused(e)
-        imports.set_target(id, jmeno, nazev, path is None, volba)
+        imports.set_target(id, jmeno, nazev, path is None,
+                           target_state(nazev, path)[1])
 
         def events():
-            for event in imports.plan(id, jmeno, path, existing, volba):
+            for event in imports.plan(id, jmeno, path):
                 if event["typ"] == "plan":
                     event.update(cil=nazev, nova=path is None)
                 yield event
         return ndjson(events())
+
+    @app.post("/api/import/<id>/skupiny")
+    def import_groups(id):
+        """Výchozí rozdělení přenášených médií posledního plánu podle
+        volby `skupiny` (`Imports.defaults`), se skupinami cíle
+        (`existujici`) a jeho autory (`akce_autori`)."""
+        body = request.get_json(force=True)
+        jmeno = body.get("jmeno")
+        record = check_import(id, jmeno)
+        if not record.get("cil"):
+            return {"chyba": "bez_planu"}, 409
+        nazev = record["cil"]
+        path = None if record.get("nova") else event_dir(nazev)
+        existing, _ = target_state(nazev, path)
+        volba = body.get("skupiny")
+        try:
+            importer.check_groups(volba, existing)
+            result = imports.defaults(id, jmeno, existing, volba)
+        except importer.Refused as e:
+            return refused(e)
+        return dict(result, existujici=existing, cil=nazev,
+                    nova=path is None, akce_autori=record.get("cil_autori"))
+
+    @app.put("/api/import/<id>/popis")
+    def import_description(id):
+        """Rozpracovaný popis importu (údaje akce, skupiny, autoři)."""
+        body = request.get_json(force=True)
+        jmeno = body.get("jmeno")
+        check_import(id, jmeno)
+        try:
+            imports.set_description(id, jmeno, body.get("popis"))
+        except importer.Refused as e:
+            return refused(e, 400 if e.code == "neplatny_popis" else 409)
+        return {}
+
+    @app.get("/api/import/<id>/nahled/<path:cesta>")
+    def import_thumb(id, cesta):
+        """Náhled souboru importu (nahraného i ve zdroji); nic nezapíše."""
+        jmeno = request.args.get("jmeno")
+        check_import(id, jmeno)
+        src = imports.file_path(id, jmeno, cesta)
+        if src is None or importer.kind(src.name) not in ("foto", "video") \
+                or not src.is_file():
+            abort(404)
+        return thumb_response(src)
 
     @app.post("/api/import/<id>/provest")
     def import_execute(id):
@@ -709,10 +779,6 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         if not ws.zapis:
             return {"chyba": "vyvojovy_rezim"}, 403
         relace = body_field(body, "relace")
-        volba = body.get("skupiny")
-        pripojit = body.get("pripojit")
-        if pripojit is not None and not isinstance(pripojit, dict):
-            abort(400)
         source_key = f"{UNSORTED}/{record['zdroj']}" \
             if record.get("zdroj") else None
         source_relace = f"{relace}#{UNSORTED}"
@@ -725,8 +791,6 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             imports.check_idle(id)
             imports.check_plan(record)
             nazev, path = import_target(body)
-            existing = existing_groups(nazev, path)
-            importer.check_groups(volba, existing)
             if source_key:
                 ok, info = locks.acquire(source_key, source_relace,
                                          g.user["jmeno"] or record["jmeno"],
@@ -764,8 +828,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             if created and not finished:
                 locks.release(nazev, relace)
 
-        events = imports.execute(id, jmeno, path, relace, existing, volba,
-                                 pripojit)
+        events = imports.execute(id, jmeno, path, relace)
         try:
             first = next(events)
         except importer.Refused as e:
@@ -784,9 +847,14 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                     event["cil"] = nazev
                     # Zámek akce drží tato relace, klient akci nemá
                     # otevřenou: zápis nesouběží s plochou.
-                    event["skupiny"] = dict(
-                        write_groups(nazev, path, had_doc, event["skupiny"]),
-                        **event["skupiny"])
+                    done = [o["do"] for o in event["operace"]
+                            if o["stav"] == cleanup.DONE and importer.kind(
+                                o["do"]) in ("foto", "video")]
+                    groups = event["skupiny"] = write_description(
+                        nazev, path, created, had_doc, record, done)
+                    for o in event["operace"]:
+                        o["skupina"] = groups["prirazeni"].get(o["do"]) \
+                            if o["stav"] == cleanup.DONE else None
                     event["index"] = archive_index.write(ws)
                 yield event
                 finished = event["typ"] == "vysledek"
