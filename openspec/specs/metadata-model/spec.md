@@ -152,12 +152,14 @@ MUST NOT ukládat (ruční zrušení příznak odstraní).
 `_metadata.json` SHALL obsahovat na nejvyšší úrovni pole `upravili`:
 objekt jméno uživatele → datum a čas jeho posledního uložení akce
 (ISO 8601, místní čas serveru, na sekundy). Pole SHALL zapisovat jen
-server při každém úspěšném uložení metadat a při dokončení akce,
-a to jménem z přihlášené relace (stejné jako u zámku), nikdy
-z požadavku. Hodnotu, kterou pošle klient, server MUST ignorovat
-a vzít `upravili` z uložené verze. Dokument bez `upravili` (starší
-akce) MUST zůstat platný; pole vznikne prvním uložením. `upravili`
-se MUST NOT exportovat do sidecarů ani indexu a nedědí se.
+server při každém úspěšném uložení metadat, při dokončení akce a při
+zápisu popisu po provedení importu do akce (nová akce i akce
+s `_metadata.json`), a to jménem z přihlášené relace (stejné jako
+u zámku), nikdy z požadavku. Hodnotu, kterou pošle klient, server MUST
+ignorovat a vzít `upravili` z uložené verze. Dokument bez `upravili`
+(starší akce) MUST zůstat platný; pole vznikne prvním uložením.
+`upravili` se MUST NOT exportovat do sidecarů ani indexu a nedědí se.
+Podle `upravili` se řídí oprávnění k úpravě akce (viz `user-login`).
 
 #### Scenario: První uložení
 - **WHEN** uživatel Spáčil, David 2026-10-14 v 10:15:02 poprvé uloží
@@ -174,6 +176,11 @@ se MUST NOT exportovat do sidecarů ani indexu a nedědí se.
 - **WHEN** klient pošle v metadatech `upravili` s jiným jménem
 - **THEN** server ji zahodí a uloží jen záznam přihlášeného uživatele
   k uložené verzi
+
+#### Scenario: Import do nové akce
+- **WHEN** uživatel Kopáčová, Zuzana provede import do nové akce
+- **THEN** založený `_metadata.json` má v `upravili` jen
+  `Kopáčová, Zuzana` s časem zápisu
 
 #### Scenario: Sidecar
 - **WHEN** se akce s `upravili` exportuje
