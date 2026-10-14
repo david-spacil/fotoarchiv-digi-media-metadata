@@ -308,6 +308,10 @@ dialog.sample p { margin: 6px 0 0; }
 /* --- pracovní plocha ------------------------------------------------- */
 
 .workspace { display: flex; flex: 1; min-height: 0; }
+/* Krok skupiny a autoři v importu: upozornění nad mřížkou a panelem. */
+.import-groups { display: flex; flex-direction: column; flex: 1;
+  min-height: 0; }
+.import-groups > .notice { margin: var(--space-2) var(--space-4) 0; }
 .grid { --tile: 150px; flex: 1; min-width: 0; overflow: auto;
   padding: var(--space-3) var(--space-4); position: relative;
   user-select: none; background: var(--stage); }
@@ -475,7 +479,7 @@ fieldset.place .attribution { font-size: 11px; }
   flex-wrap: wrap; }
 fieldset { border-radius: var(--radius); }
 fieldset.tools { border: 1px solid var(--border); margin: var(--space-3) 0;
-  padding: 6px var(--space-3); }
+  padding: 6px var(--space-3); min-width: 0; }
 fieldset.tools.current { border-color: var(--accent); }
 
 /* jména a štítky */

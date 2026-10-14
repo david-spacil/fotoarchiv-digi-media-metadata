@@ -652,34 +652,83 @@ def test_groups_auto_same_device_new_group():
     assert g["shody"]["samsung-sm-a515f-2"] == ["sm-a515f"]
 
 
-def test_target_groups_saved(imports):
-    id = make_import(imports, {"a.jpg": "a"})
-    volba = {"rezim": "jedna", "nazev": "Workshop"}
-    imports.set_target(id, ME, EVENT, False, volba)
-    assert imports.overview(id, ME, exiftool=fake_exiftool)["skupiny"] \
-        == volba
-
-
-def test_plan_and_execute_groups(imports, tree):
+def test_defaults_without_replan(imports, tree, monkeypatch):
+    monkeypatch.setattr(scan, "run_exiftool", fake_exiftool)
     akce = tree({"akce/": {"x.jpg": "starý"}}) / "akce"
     id = make_import(imports, {"D/A/a.jpg": "a", "D/A/x.jpg": "x",
-                               "D/B/b.jpg": "b", "D/B/b.rw2": "r"})
-    volba = {"rezim": "podslozky"}
+                               "D/B/P1.jpg": "b", "D/B/b.rw2": "r"})
+    with pytest.raises(Refused) as e:
+        imports.defaults(id, ME, {}, {"rezim": "auto"})
+    assert e.value.code == "bez_planu"
+    plan = last(imports.plan(id, ME, akce))
+    assert "skupiny" not in plan
+    assert all("skupina" not in o for o in plan["operace"])
+
+    def replan(*a, **k):
+        raise AssertionError("plán se počítá znovu")
+    monkeypatch.setattr(importer, "iter_plan", replan)
     existing = {"a": {"nazev": "A"}}
-    plan = last(imports.plan(id, ME, akce, existing, volba))
-    assert [(o["z"], o["skupina"]) for o in plan["operace"]] == [
-        ("D/A/a.jpg", "a-2"), ("D/A/x.jpg", None), ("D/B/b.jpg", "b"),
-        ("D/B/b.rw2", None)]
-    assert plan["skupiny"] == {
-        "nove": {"a-2": {"nazev": "A 2", "shody": ["a"]},
-                 "b": {"nazev": "B", "shody": []}},
-        "existujici": existing}
-    result = last(imports.execute(id, ME, akce, None, existing, volba,
-                                  {"a-2": "a"}))
-    assert result["skupiny"]["prirazeni"] == {"a.jpg": "a", "b.jpg": "b"}
-    assert result["skupiny"]["nove"] == ["b"]
-    assert [o["skupina"] for o in result["operace"]] == ["a", None, "b",
-                                                          None]
+    volba = {"rezim": "podslozky"}
+    g = imports.defaults(id, ME, existing, volba)
+    # Jen přenášená média: blokovaný x.jpg a RAW chybí.
+    assert [(f["cesta"], f["pristroj"]) for f in g["soubory"]] == [
+        ("D/A/a.jpg", None), ("D/B/P1.jpg", "Panasonic DC-G9")]
+    assert members(g) == {"A 2": ["a.jpg"], "B": ["P1.jpg"]}
+    assert g["shody"] == {"a-2": ["a"], "b": []}
+    assert imports.overview(id, ME, exiftool=fake_exiftool)["skupiny"] \
+        == volba
+    g = imports.defaults(id, ME, existing, {"rezim": "auto"})
+    assert set(g["prirazeni"]) == {"a.jpg", "P1.jpg"}
+    assert g["skupiny"][g["prirazeni"]["P1.jpg"]]["pristroj"] == \
+        "Panasonic DC-G9"
+    g = imports.defaults(id, ME, existing,
+                         {"rezim": "existujici", "skupina": "a"})
+    assert g["prirazeni"] == {"a.jpg": "a", "P1.jpg": "a"}
+    assert imports.get(id, ME)["existujici"] == ["a"]
+
+
+def test_description_saved(imports):
+    id = make_import(imports, {"a.jpg": "a"})
+    popis = {"akce": {"autori": [ME]}, "skupiny": {"g": {"nazev": "G"}},
+             "soubory": {"a.jpg": {"skupina": "g"}}, "pripojit": {}}
+    imports.set_description(id, ME, popis)
+    assert imports.overview(id, ME, exiftool=fake_exiftool)["popis"] == popis
+    for bad in (None, [], {"akce": {}}, dict(popis, skupiny={"g": "G"}),
+                dict(popis, soubory={"a.jpg": {"skupina": 7}}),
+                dict(popis, pripojit={"g": None})):
+        with pytest.raises(Refused) as e:
+            imports.set_description(id, ME, bad)
+        assert e.value.code == "neplatny_popis", bad
+    with pytest.raises(KeyError):
+        imports.set_description(id, "Kopáčová, Jana", popis)
+
+
+def test_describe():
+    popis = {"skupiny": {"g9": {"nazev": "G9"},  # existující, jen čte
+                         "jana": {"nazev": "Jana", "autori": ["Novák, J"],
+                                  "obliceje": []},
+                         "verca": {"nazev": "Verča"},
+                         "prazdna": {"nazev": "Prázdná"}},
+             "soubory": {"a.jpg": {"skupina": "g9"},
+                         "b.jpg": {"skupina": "jana"},
+                         "c.jpg": {"skupina": "verca"},
+                         "d.jpg": {"skupina": "prazdna"},
+                         "e.jpg": {}},
+             "pripojit": {"verca": "v"}}
+    # `jana` mezitím obsadila jiná skupina; d.jpg se nepřenesl.
+    existing = {"g9": {"nazev": "G9"}, "v": {"nazev": "V"},
+                "jana": {"nazev": "Jiná"}}
+    g = importer.describe(popis, ["a.jpg", "b.jpg", "c.jpg", "e.jpg"],
+                          existing, {"g9", "v"})
+    assert g["prirazeni"] == {"a.jpg": "g9", "b.jpg": "jana-2",
+                              "c.jpg": "v"}
+    assert g["skupiny"] == {"jana-2": {"nazev": "Jana",
+                                       "autori": ["Novák, J"]}}
+    assert g["nove"] == ["jana-2"]
+    assert g["nazvy"] == {"g9": "G9", "jana-2": "Jana", "v": "V"}
+    # Existující skupina, která mezitím zmizela: soubor bez skupiny.
+    assert importer.describe(popis, ["a.jpg"], {}, {"g9"})["prirazeni"] == {}
+    assert importer.describe(None, ["a.jpg"], {}, set())["prirazeni"] == {}
 
 
 def test_proposal_merge(imports):
@@ -818,14 +867,14 @@ def test_api_new_event(tmp_path, monkeypatch):
     # Skrytá před Immichem do dokončení; akce se jmenuje bez přípony.
     assert not (archiv / name).exists()
     assert sorted(os.listdir(archiv / f"{name}.ignored")) == [
-        "RAW.ignored", "a.jpg"]
+        "RAW.ignored", "_metadata.json", "a.jpg"]
     assert name in [e["nazev"] for e in c.get("/api/akce").json]
     assert r["index"] == []
     row = next(line for line in (archiv / "_INDEX.md").read_text()
                .splitlines() if "kontrola Stezky" in line)
     assert [c.strip() for c in row.strip("│").split("│")][-2:] == ["1", "0"]
     html = (archiv / "_INDEX.html").read_text()
-    assert 'data-stav="nezpracovano"' in html
+    assert 'data-stav="rozpracovano"' in html
     assert 'href="./2026-04-28%20kontrola%20Stezky.ignored/"' in html
     lock = c.post(f"/api/akce/{name}/zamek", json=R2)
     assert lock.status_code == 409  # drží ho relace importu
@@ -905,6 +954,89 @@ def open_event(c, name=EVENT, relace=R1):
     return d
 
 
+def plan_and_defaults(c, id, volba, **target):
+    """Plán a výchozí rozdělení (`POST …/skupiny`) jako klient."""
+    stream(c.post(f"/api/import/{id}/plan", json=dict(jmeno=ME, **target)))
+    r = c.post(f"/api/import/{id}/skupiny",
+               json={"jmeno": ME, "skupiny": volba})
+    assert r.status_code == 200, r.json
+    return r.json
+
+
+def save_description(c, id, d, akce=None, autori=None, pripojit=None):
+    """Popis z rozdělení `d` ({skupiny, prirazeni}); `autori` = {gid:
+    autoři skupiny}."""
+    autori = autori or {}
+    popis = {"akce": akce or {},
+             "skupiny": {gid: dict(g, **({"autori": autori[gid]}
+                                         if gid in autori else {}))
+                         for gid, g in d["skupiny"].items()},
+             "soubory": {n: {"skupina": gid}
+                         for n, gid in d["prirazeni"].items()},
+             "pripojit": pripojit or {}}
+    r = c.put(f"/api/import/{id}/popis", json={"jmeno": ME, "popis": popis})
+    assert r.status_code == 200, r.json
+    return popis
+
+
+def jpeg(color="red"):
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 30), color).save(buf, "JPEG")
+    return buf.getvalue()
+
+
+def test_api_description_and_thumbs(tmp_path, monkeypatch):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=False)
+    before = snapshot(archiv)
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload_bytes(c, id, {"W/a.jpg": jpeg(), "W/b.jpg": b"neni obrazek"})
+    url = f"/api/import/{id}/popis"
+    popis = {"akce": {}, "skupiny": {}, "soubory": {}, "pripojit": {}}
+    assert c.put(url, json={"jmeno": ME, "popis": {"akce": {}}}) \
+        .status_code == 400
+    assert c.put(url, json={"jmeno": R2["jmeno"], "popis": popis}) \
+        .status_code == 404
+    assert c.put(url, json={"jmeno": ME, "popis": popis}).status_code == 200
+    assert c.get(f"/api/import/{id}", query_string={"jmeno": ME}) \
+        .json["popis"] == popis
+    r = c.post(f"/api/import/{id}/skupiny",
+               json={"jmeno": ME, "skupiny": {"rezim": "auto"}})
+    assert r.status_code == 409 and r.json["chyba"] == "bez_planu"
+
+    thumb = f"/api/import/{id}/nahled/W/a.jpg"
+    r = c.get(thumb, query_string={"jmeno": ME})
+    assert r.status_code == 200 and r.mimetype == "image/jpeg"
+    assert c.get(thumb, query_string={"jmeno": ME, "velikost": 1600}) \
+        .status_code == 200
+    assert c.get(thumb, query_string={"jmeno": R2["jmeno"]}) \
+        .status_code == 404
+    for bad in ("W/neni.jpg", "W/b.jpg", "../import.json"):
+        assert c.get(f"/api/import/{id}/nahled/{bad}",
+                     query_string={"jmeno": ME}).status_code == 404, bad
+    assert snapshot(archiv) == before
+
+
+def test_api_source_thumb(tmp_path, monkeypatch):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=False)
+    src = archiv / "přetřídit" / "DOD 2016"
+    (src / "A").mkdir(parents=True)
+    (src / "x.ignored").mkdir()
+    (src / "A" / "a.jpg").write_bytes(jpeg())
+    (src / "x.ignored" / "b.jpg").write_bytes(jpeg("blue"))
+    before = snapshot(src)
+    id = c.post("/api/import", json=dict(R1, zdroj="DOD 2016")).json["id"]
+    url = f"/api/import/{id}/nahled/DOD 2016"
+    assert c.get(f"{url}/A/a.jpg", query_string={"jmeno": ME}) \
+        .status_code == 200
+    for bad in ("x.ignored/b.jpg", "A/../x.ignored/b.jpg"):
+        assert c.get(f"{url}/{bad}", query_string={"jmeno": ME}) \
+            .status_code == 404, bad
+    assert c.get(f"{url}/A/a.jpg", query_string={"jmeno": R2["jmeno"]}) \
+        .status_code == 404
+    assert snapshot(src) == before
+
+
 def test_api_groups_into_event(tmp_path, monkeypatch):
     c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
     assert c.get(f"/api/akce/{EVENT}/skupiny").json == {
@@ -917,33 +1049,51 @@ def test_api_groups_into_event(tmp_path, monkeypatch):
     files = {f"W/n{i}.jpg": f"n{i}" for i in range(3)}
     files["W/foto.jpg"] = "jiná"  # kolize jména s fotkou v akci
     api_upload(c, id, files)
-    url = f"/api/import/{id}/plan"
-    r = c.post(url, json={"jmeno": ME, "cil": EVENT,
+    stream(c.post(f"/api/import/{id}/plan", json={"jmeno": ME, "cil": EVENT}))
+    url = f"/api/import/{id}/skupiny"
+    r = c.post(url, json={"jmeno": ME,
                           "skupiny": {"rezim": "jedna", "nazev": ""}})
     assert r.status_code == 409 and r.json["chyba"] == "bez_nazvu_skupiny"
-    volba = {"rezim": "jedna", "nazev": "Workshop"}
-    plan = stream(c.post(url, json={"jmeno": ME, "cil": EVENT,
-                                    "skupiny": volba}))[-1]
-    assert [(o["z"], o["skupina"]) for o in plan["operace"]] == [
-        ("W/foto.jpg", None), ("W/n0.jpg", "workshop"),
-        ("W/n1.jpg", "workshop"), ("W/n2.jpg", "workshop")]
-    assert plan["skupiny"]["nove"] == {
-        "workshop": {"nazev": "Workshop", "shody": []}}
-    assert plan["skupiny"]["existujici"] == before["skupiny"]
-    assert c.get(f"/api/import/{id}",
-                 query_string={"jmeno": ME}).json["skupiny"] == volba
+    d = c.post(url, json={"jmeno": ME, "skupiny": {
+        "rezim": "jedna", "nazev": "Workshop"}}).json
+    assert d["nove"] == ["workshop"] and d["existujici"] == before["skupiny"]
+    assert [f["nazev"] for f in d["soubory"]] == ["n0.jpg", "n1.jpg",
+                                                 "n2.jpg"]
+    assert d["akce_autori"] is None and d["cil"] == EVENT and not d["nova"]
+    save_description(c, id, d, autori={"workshop": ["Kopáčová, Zuzana"]})
     r = stream(c.post(f"/api/import/{id}/provest",
-                      json=dict(R1, cil=EVENT, skupiny=volba)))[-1]
-    assert r["skupiny"]["zapsano"]
-    assert r["skupiny"]["nove"] == ["workshop"]
+                      json=dict(R1, cil=EVENT)))[-1]
+    assert r["skupiny"]["zapsano"] and r["skupiny"]["nove"] == ["workshop"]
+    assert [o["skupina"] for o in r["operace"]] == [None] + ["workshop"] * 3
     doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
-    assert doc["skupiny"] == dict(before["skupiny"],
-                                  workshop={"nazev": "Workshop"})
+    assert doc["skupiny"] == dict(before["skupiny"], workshop={
+        "nazev": "Workshop", "autori": ["Kopáčová, Zuzana"]})
     for i in range(3):
         assert doc["soubory"][f"n{i}.jpg"]["skupina"] == "workshop"
+    assert "autori" not in doc["akce"]
     # Blokovaný soubor: existující záznam beze změny.
     assert doc["soubory"]["foto.jpg"] == before["soubory"]["foto.jpg"]
     assert (archiv / EVENT / "foto.jpg").read_bytes() != b"jin\xc3\xa1"
+
+    # Zvolené připojení a autoři celé akce.
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"X/m.jpg": "m"})
+    d = plan_and_defaults(c, id, {"rezim": "jedna", "nazev": "Workshop"},
+                          cil=EVENT)
+    assert d["nove"] == ["workshop-2"]
+    assert d["shody"] == {"workshop-2": ["workshop"]}
+    save_description(c, id, d, akce={"autori": [ME]},
+                     autori={"workshop-2": ["Jiný, Autor"]},
+                     pripojit={"workshop-2": "workshop"})
+    r = stream(c.post(f"/api/import/{id}/provest",
+                      json=dict(R1, cil=EVENT)))[-1]
+    assert r["skupiny"]["nove"] == [] and r["skupiny"]["nazvy"] == {
+        "workshop": "Workshop"}
+    doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    assert doc["soubory"]["m.jpg"]["skupina"] == "workshop"
+    assert "workshop-2" not in doc["skupiny"]
+    assert doc["skupiny"]["workshop"]["autori"] == ["Kopáčová, Zuzana"]
+    assert doc["akce"]["autori"] == [ME]
 
 
 def test_api_groups_conflict_keeps_files(tmp_path, monkeypatch):
@@ -957,27 +1107,66 @@ def test_api_groups_conflict_keeps_files(tmp_path, monkeypatch):
     monkeypatch.setattr(ws, "save", conflict)
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"n.jpg": "n"})
-    r = stream(c.post(f"/api/import/{id}/provest", json=dict(
-        R1, cil=EVENT, skupiny={"rezim": "jedna", "nazev": "X"})))[-1]
+    save_description(c, id, {"skupiny": {"x": {"nazev": "X"}},
+                             "prirazeni": {"n.jpg": "x"}})
+    r = stream(c.post(f"/api/import/{id}/provest",
+                      json=dict(R1, cil=EVENT)))[-1]
     assert r["skupiny"]["zapsano"] is False
     assert r["skupiny"]["chyba"] == "konflikt"
     assert (archiv / EVENT / "n.jpg").read_text() == "n"
 
 
+def test_api_new_event_description(tmp_path, monkeypatch):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
+    name = "2026-04-28 kontrola Stezky"
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"S/a.jpg": "a", "S/dup/a2.jpg": "a", "S/c.jpg": "c",
+                       "S/RAW/a.rw2": "r"})
+    akce = {"nazev": "kontrola Stezky", "datum_od": "2026-04-28",
+            "datum_do": "2026-04-29", "popis": "Kontrola", "mista": [],
+            "ucastnici": [ME], "autori": ["Kopáčová, Zuzana"]}
+    save_description(c, id, {
+        "skupiny": {"g": {"nazev": "G", "autori": [ME]},
+                    "prazdna": {"nazev": "Prázdná"}},
+        "prirazeni": {"a.jpg": "g", "c.jpg": "g", "a2.jpg": "prazdna"}},
+        akce=akce)
+    r = stream(c.post(f"/api/import/{id}/provest",
+                      json=dict(R1, nova=name)))[-1]
+    assert r["skupiny"]["zapsano"] and not r["skupiny"]["navrh"]
+    assert (archiv / f"{name}.ignored" / "_metadata.json").exists()
+    d = c.get(f"/api/akce/{name}").json
+    assert not d["novy"]
+    doc = d["metadata"]
+    assert doc["akce"] == {k: v for k, v in akce.items() if v}
+    # Duplicita bez záznamu, skupina bez přeneseného souboru nevznikne.
+    assert doc["skupiny"] == {"g": {"nazev": "G", "autori": [ME]}}
+    assert {n: r["skupina"] for n, r in doc["soubory"].items()} == {
+        "a.jpg": "g", "c.jpg": "g"}
+    [e] = [e for e in c.get("/api/akce").json if e["nazev"] == name]
+    assert e["stav"] == "rozpracovano"
+    row = next(line for line in (archiv / "_INDEX.md").read_text()
+               .splitlines() if "kontrola Stezky" in line)
+    # Skupina přepisuje autory akce vlastními.
+    assert "Spáčil" in row and "Kopáčová" not in row
+    assert 'data-stav="rozpracovano"' in (archiv / "_INDEX.html").read_text()
+
+
 def test_api_groups_proposal(tmp_path, monkeypatch):
     c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
-    name = "2026-04-28 DOD"
-    folder = archiv / f"{name}.ignored"  # import zakládá skrytou akci
+    c.post(f"/api/akce/{EVENT}/zamek", json=R1)
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"DOD 2015/DOD 2015_Jana/a.jpg": "a",
                        "DOD 2015/DOD 2015_Pavla/b.jpg": "b"})
     volba = {"rezim": "podslozky"}
+    d = plan_and_defaults(c, id, volba, cil=EVENT)
+    assert d["existujici"] == {} and d["akce_autori"] is None
+    save_description(c, id, d, akce={"autori": [ME]},
+                     autori={"dod-2015-jana": ["Nováková, Jana"]})
     r = stream(c.post(f"/api/import/{id}/provest",
-                      json=dict(R1, nova=name, skupiny=volba)))[-1]
-    assert r["skupiny"]["zapsano"]
-    assert not (folder / "_metadata.json").exists()
-    assert c.get("/api/akce").json[0]["stav"] == "nezpracovano"
-    g = c.get(f"/api/akce/{name}/skupiny").json
+                      json=dict(R1, cil=EVENT)))[-1]
+    assert r["skupiny"]["zapsano"] and r["skupiny"]["navrh"]
+    assert not (archiv / EVENT / "_metadata.json").exists()
+    g = c.get(f"/api/akce/{EVENT}/skupiny").json
     assert g["zdroj"] == "navrh"
     assert sorted(x["nazev"] for x in g["skupiny"].values()) == [
         "DOD 2015_Jana", "DOD 2015_Pavla"]
@@ -985,28 +1174,35 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     # Druhý import: skupiny návrhu jsou existující, nic se nepřipojí.
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"DOD/DOD 2015_Jana/c.jpg": "c"})
-    plan = stream(c.post(f"/api/import/{id}/plan", json={
-        "jmeno": ME, "cil": name, "skupiny": volba}))[-1]
-    assert plan["skupiny"]["nove"] == {"dod-2015-jana-2": {
-        "nazev": "DOD 2015_Jana 2", "shody": ["dod-2015-jana"]}}
-    stream(c.post(f"/api/import/{id}/provest",
-                  json=dict(R1, cil=name, skupiny=volba)))
-    assert len(c.get(f"/api/akce/{name}/skupiny").json["skupiny"]) == 3
+    d = plan_and_defaults(c, id, volba, cil=EVENT)
+    assert d["nove"] == ["dod-2015-jana-2"]
+    assert d["shody"] == {"dod-2015-jana-2": ["dod-2015-jana"]}
+    assert d["akce_autori"] == [ME]
+    save_description(c, id, d, akce={"autori": [ME]},
+                     autori={"dod-2015-jana-2": ["Tesař, Bára"]})
+    stream(c.post(f"/api/import/{id}/provest", json=dict(R1, cil=EVENT)))
+    g = c.get(f"/api/akce/{EVENT}/skupiny").json["skupiny"]
+    assert {x["nazev"]: x.get("autori") for x in g.values()} == {
+        "DOD 2015_Jana": ["Nováková, Jana"], "DOD 2015_Pavla": None,
+        "DOD 2015_Jana 2": ["Tesař, Bára"]}
 
-    # Průvodce: návrh z importu, soubor mimo návrh automaticky.
-    (folder / "IMG-20260428-WA0001.jpg").write_text("w")
-    d = c.get(f"/api/akce/{name}").json
+    # Průvodce: návrh z importu s autory, soubor mimo návrh automaticky.
+    d = c.get(f"/api/akce/{EVENT}").json
     assert d["novy"]
     doc = d["metadata"]
-    assert {n: doc["skupiny"][r["skupina"]]["nazev"]
-            for n, r in doc["soubory"].items()} == {
-        "a.jpg": "DOD 2015_Jana", "b.jpg": "DOD 2015_Pavla",
-        "c.jpg": "DOD 2015_Jana 2", "IMG-20260428-WA0001.jpg": "WhatsApp"}
-    r = c.put(f"/api/akce/{name}/metadata",
+    assert doc["akce"]["autori"] == [ME]
+    named = {n: doc["skupiny"][r["skupina"]] for n, r in
+             doc["soubory"].items() if r.get("skupina")}
+    assert named["a.jpg"] == {"nazev": "DOD 2015_Jana",
+                              "autori": ["Nováková, Jana"]}
+    assert named["b.jpg"]["nazev"] == "DOD 2015_Pavla"
+    assert named["c.jpg"]["autori"] == ["Tesař, Bára"]
+    assert named["IMG-20260428-WA0001.jpg"]["nazev"] == "WhatsApp"
+    r = c.put(f"/api/akce/{EVENT}/metadata",
               json=dict(R1, metadata=doc, version=None))
     assert r.status_code == 200
-    assert c.get(f"/api/akce/{name}/skupiny").json["zdroj"] == "metadata"
-    assert not (tmp_path / "work" / "navrhy-skupin" / f"{name}.json") \
+    assert c.get(f"/api/akce/{EVENT}/skupiny").json["zdroj"] == "metadata"
+    assert not (tmp_path / "work" / "navrhy-skupin" / f"{EVENT}.json") \
         .exists()
 
 
@@ -1059,18 +1255,22 @@ def test_source_overview_skips_ignored(source):
     assert o["pocty"] == {"foto": 1, "raw": 1} and o["zdroj"] == "Procházka 60"
 
 
-def test_source_groups_by_subfolder(source):
-    imp, _ = source({"Vánoční večírek 2019_Pavlov/": {
+def test_source_groups_and_paths(source, monkeypatch):
+    monkeypatch.setattr(scan, "run_exiftool", fake_exiftool)
+    imp, archiv = source({"Vánoční večírek 2019_Pavlov/": {
         "Pavlov/": {"a.jpg": "a", "b.jpg": "bb"},
-        "Pavlov2/": {"c.jpg": "ccc"}}})
-    id = imp.create(ME, zdroj="Vánoční večírek 2019_Pavlov")
-    plan = last(imp.plan(id, ME, None, {}, {"rezim": "podslozky"}))
-    assert sorted(g["nazev"] for g in plan["skupiny"]["nove"].values()) == [
-        "Pavlov", "Pavlov2"]
-    assert {o["z"].rsplit("/", 1)[-1]: o["skupina"]
-            for o in plan["operace"]} == {"a.jpg": "pavlov",
-                                          "b.jpg": "pavlov",
-                                          "c.jpg": "pavlov2"}
+        "Pavlov2/": {"c.jpg": "ccc"}, "x.ignored/": {"d.jpg": "d"}}})
+    name = "Vánoční večírek 2019_Pavlov"
+    id = imp.create(ME, zdroj=name)
+    last(imp.plan(id, ME, None))
+    g = imp.defaults(id, ME, {}, {"rezim": "podslozky"})
+    assert members(g) == {"Pavlov": ["a.jpg", "b.jpg"], "Pavlov2": ["c.jpg"]}
+    root = archiv / "přetřídit" / name
+    assert imp.file_path(id, ME, f"{name}/Pavlov/a.jpg") == \
+        root / "Pavlov" / "a.jpg"
+    for bad in ("Jiná/a.jpg", f"{name}/../x", f"{name}/x.ignored/d.jpg",
+                name, f"{name}//a.jpg"):
+        assert imp.file_path(id, ME, bad) is None, bad
 
 
 def counting_sha(monkeypatch):
