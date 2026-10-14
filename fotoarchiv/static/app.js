@@ -405,6 +405,10 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "Delete") {
     e.preventDefault();
     toggleDiscard();
+  } else if ((e.key === "p" || e.key === "P") &&
+             !e.altKey && !e.ctrlKey && !e.metaKey) {
+    e.preventDefault();
+    togglePanel();
   } else if (e.key === "Enter" && !loupe && !e.target.closest("button, a")) {
     e.preventDefault();
     setView("loupe");
@@ -448,6 +452,7 @@ function header(...right) {
       info.verze || "verze neznámá") : null,
     paths,
     ...right,
+    modeToggle(),
     state.me?.admin
       ? h("a", { href: "#/nastaveni", class: "settings-link" }, "Nastavení")
       : null,
@@ -459,6 +464,26 @@ function header(...right) {
       title: "Změnit jméno",
       onclick: async () => { await askName(); route(); } }, userName())
       : null);
+}
+
+// Světlý/tmavý režim (viz vzhled.js); volba prohlížeče.
+function modeToggle() {
+  const root = document.documentElement;
+  const label = () => root.dataset.rezim === "svetly"
+    ? ["☾ Tmavý", "Přepnout do tmavého režimu"]
+    : ["☀ Světlý", "Přepnout do světlého režimu"];
+  const [icon, title] = label();
+  const b = h("button", { class: "rezim", title, onclick: () => {
+    const light = root.dataset.rezim !== "svetly";
+    if (light) root.dataset.rezim = "svetly";
+    else delete root.dataset.rezim;
+    try {
+      if (light) localStorage.setItem("rezim", "svetly");
+      else localStorage.removeItem("rezim");
+    } catch { /* bez úložiště jen do obnovení stránky */ }
+    [b.textContent, b.title] = label();
+  } }, icon);
+  return b;
 }
 
 async function logout() {
@@ -1754,8 +1779,9 @@ const FIELDS = {
   soubor: ["datum", "autori", "popis", "osoby", "misto", "pristroj", "gps"],
 };
 
-const LEVEL = { akce: "akce", skupina: "skupiny", soubor: "souboru",
-  misto: "souřadnic místa" };
+// Štítek zdroje zděděné hodnoty podle úrovně, ze které pochází.
+const SOURCE = { akce: "z akce", skupina: "ze skupiny", soubor: "ze souboru",
+  misto: "z místa" };
 
 // Cíl formuláře: objekt k úpravě a výpočet výsledné hodnoty.
 function targetsFor(level, ids) {
@@ -1795,7 +1821,8 @@ function setField(targets, key, value) {
 
 // Osoby na fotce: jména z `obliceje` (z Immiche), jen pro čtení.
 function facesRow(files) {
-  const note = h("span", { class: "note" }, "z Immiche");
+  const note = h("span", { class: "note", title: "Synchronizace z Immiche, " +
+    "jen pro čtení" }, "z Immiche");
   let text;
   if (!state.info?.immich) {
     text = "Immich není napojen";
@@ -1809,8 +1836,8 @@ function facesRow(files) {
     text = [...names].sort((a, b) => a.localeCompare(b, "cs")).join("; ") ||
       "nikdo pojmenovaný";
   }
-  return h("div", { class: "field readonly" },
-    h("label", {}, F.osoby.label, " ", note),
+  return h("div", { class: "field readonly from-immich" },
+    h("label", {}, F.osoby.label, note),
     h("div", { class: "readonly-value" }, text));
 }
 
@@ -1819,52 +1846,56 @@ function fieldRow(targets, key, onChange) {
   if (def.type === "faces") return facesRow(targets.map((t) => t.file));
   const st = fieldState(targets, key);
   const inherited = !st.anyOwn && !isEmpty(st.value);
-  const row = h("div", {
-    class: `field${st.mixed ? " mixed" : ""}` +
-      `${inherited ? " inherited" : ""}${st.anyOwn ? " own" : ""}` +
-      `${inherited && st.from === "misto" ? " from-place" : ""}`,
-  });
-  const update = (value) => {
-    setField(targets, key, value);
-    row.classList.remove("mixed", "inherited", "from-place");
-    row.classList.toggle("own", !isEmpty(value));
-    note.textContent = noteText();
-    onChange(key);
-  };
-  const noteText = () => {
-    const s = fieldState(targets, key);
-    if (s.mixed && !s.allOwn) return "rozdílné hodnoty";
-    if (s.mixed) return "rozdílné hodnoty (zadané)";
-    if (!s.anyOwn && !isEmpty(s.value)) return `zděděno z ${LEVEL[s.from]}`;
-    if (s.anyOwn && !s.allOwn) return "zadáno jen u části výběru";
-    return "";
-  };
-  const note = h("span", { class: "note" }, noteText());
-  const revert = targets[0].level !== "akce" && st.anyOwn
-    ? h("button", {
-      class: "link", title: "Smazat zadanou hodnotu a dědit",
+  const row = h("div", { class: "field" });
+  const note = h("span", { class: "note" });
+  // Vlastní hodnota skupiny nebo souborů jde vrátit na zděděnou (týž
+  // zápis jako vyprázdnění pole). Akce nic nedědí.
+  const revert = targets[0].level === "akce" ? null
+    : h("button", {
+      class: "revert", title: "Smazat zadanou hodnotu a dědit",
       onclick: () => {
-        for (const t of targets) delete t.obj[key];
+        setField(targets, key, null);
         onChange(key);
         row.replaceWith(fieldRow(targets, key, onChange));
       },
-    }, "vrátit na zděděné")
-    : null;
+    }, "↺ vrátit na zděděné");
+  // Proužek, štítek a tlačítko podle stavu. Během psaní (`editing`) se
+  // zděděná hodnota neukazuje (pole nemá zástupný text), takže ani její
+  // štítek.
+  const refresh = (editing) => {
+    const s = fieldState(targets, key);
+    const inh = !editing && !s.anyOwn && !isEmpty(s.value);
+    row.classList.toggle("mixed", s.mixed);
+    row.classList.toggle("own", s.anyOwn && !s.mixed);
+    row.classList.toggle("inherited", inh && !s.mixed);
+    row.classList.toggle("from-place", inh && !s.mixed && s.from === "misto");
+    note.textContent = s.mixed ? "rozdílné"
+      : inh ? SOURCE[s.from] || "zděděno"
+      : s.anyOwn && !s.allOwn ? "zadáno u části"
+      : s.anyOwn ? "zadáno" : "";
+    note.title = s.mixed ? (s.allOwn ? "Rozdílné zadané hodnoty"
+      : "Rozdílné hodnoty, část zděděná") : "";
+    if (revert) revert.hidden = !s.anyOwn;
+  };
+  refresh(false);
+  const update = (value) => {
+    setField(targets, key, value);
+    refresh(true);
+    onChange(key);
+  };
   const shown = st.mixed ? undefined : st.value;
   const placeholder = st.mixed ? "rozdílné hodnoty – zápisem přepíšete vše"
     : inherited ? format(def.type, st.value) : "";
   const input = def.type === "datetime"
     ? dateTimeEditor(targets, key, () => {
-      row.classList.remove("inherited", "from-place");
-      const s = fieldState(targets, key);
-      row.classList.toggle("mixed", s.mixed);
-      row.classList.toggle("own", s.anyOwn);
-      note.textContent = noteText();
+      refresh(true);
       onChange(key);
     })
     : editor(def.type, inherited ? undefined : shown, placeholder,
       update, inherited ? st.value : undefined);
-  row.append(h("label", {}, def.label, " ", note, revert), input);
+  // Tlačítko mimo <label>: jinak by klik na popisek spustil vrácení.
+  row.append(h("div", { class: "lrow" }, h("label", {}, def.label, note),
+    revert), input);
   return row;
 }
 
@@ -2421,23 +2452,33 @@ function renderWorkspace() {
           class: state.layout === "datum" ? "active" : "",
           title: "Všechny soubory podle data pořízení, oddíly po dnech",
           onclick: () => setLayout("datum") }, "Podle data")),
-      h("button", { disabled: !!state.readonly,
-        title: "Nahrát do akce další fotky a videa", onclick: () => {
-          location.hash = `#/import?cil=${encodeURIComponent(state.name)}`;
-        } }, "Importovat…"),
-      h("span", { class: "export" },
-        h("span", { id: "export-status" }),
-        h("button", { id: "finish", class: "primary",
-          disabled: !!state.readonly, title: exportTarget(),
-          onclick: () => finishEvent() }, "Dokončit akci"))),
+      h("label", { class: "tilesize", title: "Velikost náhledů v mřížce" },
+        "Náhledy", h("input", { type: "range", min: TILE.min,
+          max: TILE.max, step: 10, value: tileSize(),
+          oninput: (e) => setTileSize(e.target.value) })),
+      // Chybějící údaje (renderBar): čipy se zalamují, akce vpravo ne.
+      h("div", { id: "bar", class: "bar" }),
+      h("span", { class: "acts" },
+        h("button", { disabled: !!state.readonly,
+          title: "Nahrát do akce další fotky a videa", onclick: () => {
+            location.hash = `#/import?cil=${encodeURIComponent(state.name)}`;
+          } }, "Importovat…"),
+        h("span", { class: "export" },
+          h("span", { id: "export-status" }),
+          h("button", { id: "finish", class: "primary",
+            disabled: !!state.readonly, title: exportTarget(),
+            onclick: () => finishEvent() }, "Dokončit akci")))),
     lockNotice(),
-    h("div", { id: "bar", class: "bar" }),
-    h("div", { class: "workspace" },
-      h("div", { id: "grid", class: "grid" }),
+    h("div", { class: `workspace${panelCollapsed() ? " panel-sbaleny" : ""}` },
+      h("div", { id: "grid", class: "grid",
+        style: `--tile: ${tileSize()}px` }),
       h("div", { id: "loupe", class: "loupe", hidden: true },
         h("div", { id: "big", class: "big" }),
         h("div", { id: "film", class: "film" })),
+      h("button", { id: "panel-toggle", class: "panel-toggle",
+        onclick: togglePanel }),
       h("aside", { id: "panel", class: "panel" })));
+  setPanelToggle();
   setupGrid(document.getElementById("grid"));
   setupFilm(document.getElementById("film"));
   renderGrid();
@@ -2447,6 +2488,51 @@ function renderWorkspace() {
   setStatus();
   renderExportStatus();
   if (state.dirty) scheduleSave();
+}
+
+// Velikost dlaždic mřížky (`--tile`); volba prohlížeče, ne akce. Strop
+// 300 px: náhled ze serveru má 320 px.
+const TILE = { min: 100, max: 300, init: 150 };
+
+function tileSize() {
+  const v = Number(localStorage.getItem("dlazdice"));
+  return v >= TILE.min && v <= TILE.max ? v : TILE.init;
+}
+
+function setTileSize(v) {
+  localStorage.setItem("dlazdice", v);
+  document.getElementById("grid")?.style.setProperty("--tile", `${v}px`);
+  if (state.current && state.view === "grid") {
+    document.querySelector(
+      `#grid .tile[data-file="${CSS.escape(state.current)}"]`)
+      ?.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// Sbalený panel formuláře: obsah zůstane v DOM, jen se skryje, takže
+// výběr ani rozepsaná pole se neztratí.
+function panelCollapsed() {
+  return localStorage.getItem("panel") === "sbaleny";
+}
+
+function setPanelToggle() {
+  const b = document.getElementById("panel-toggle");
+  if (!b) return;
+  const collapsed = panelCollapsed();
+  b.textContent = collapsed ? "‹" : "›";
+  b.title = `${collapsed ? "Rozbalit" : "Sbalit"} panel (P)`;
+  b.setAttribute("aria-expanded", String(!collapsed));
+}
+
+function togglePanel() {
+  const ws = document.querySelector(".workspace");
+  if (!ws || state.mode !== "workspace") return;
+  const collapsed = !panelCollapsed();
+  if (collapsed) localStorage.setItem("panel", "sbaleny");
+  else localStorage.removeItem("panel");
+  ws.classList.toggle("panel-sbaleny", collapsed);
+  setPanelToggle();
+  if (state.view === "loupe") renderBig();
 }
 
 // Chybějící údaje jako [{text, onclick}] pro lištu i dokončení akce.

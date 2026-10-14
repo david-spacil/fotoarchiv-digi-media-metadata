@@ -538,7 +538,11 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
 
 ## Aplikace
 
-Lokální webová aplikace spouštěná nad složkou archivu.
+Lokální webová aplikace spouštěná nad složkou archivu. Výchozí je
+tmavý režim; přepínač v hlavičce přepne do světlého (pamatuje si ho
+prohlížeč, platí i pro přihlášení). Lupa je tmavá v obou režimech.
+Plocha je stavěná na okna od 1280 × 720 CSS px (notebook se škálováním)
+po široké monitory.
 
 ### Tok práce
 
@@ -562,8 +566,23 @@ Lokální webová aplikace spouštěná nad složkou archivu.
 3. **Pak pracovní plocha** (i při každém dalším otevření): vlevo mřížka
    náhledů po skupinách, vpravo formulář podle výběru — nic vybráno =
    akce, hlavička skupiny = skupina, vybrané soubory = soubory. Zděděné
-   hodnoty jsou ve formuláři vidět a jdou přepsat. Lišta ukazuje, co
-   chybí („2 skupiny bez autorů, 14 souborů bez data“).
+   hodnoty jsou ve formuláři vidět a jdou přepsat. Každé pole má
+   barevný proužek a štítek zdroje hodnoty: „z akce“, „ze skupiny“,
+   „z místa“, „rozdílné“ (různé hodnoty ve výběru) nebo „zadáno“.
+   Zadaná hodnota skupiny nebo souborů má tlačítko „vrátit na
+   zděděné“; to hodnotu z dané úrovně smaže, stejně jako vyprázdnění
+   pole.
+
+   Lišta akce pod hlavičkou nese název akce, přepínače zobrazení,
+   velikost náhledů, Importovat a Dokončit akci a mezi nimi čipy toho,
+   co chybí („2 skupiny bez autorů“, „14 souborů bez data“); klik na
+   čip vybere dotčené soubory nebo skupinu. Nevejdou-li se, zalomí se
+   na další řádek lišty. Posuvník **Náhledy** mění velikost dlaždic
+   mřížky (100–300 px, pamatuje si ho prohlížeč). Panel formuláře jde
+   **sbalit** úchytem na jeho levém okraji nebo klávesou `P` (mimo
+   textové pole); mřížka nebo lupa pak zabere celou šířku, stav si
+   pamatuje prohlížeč. Na širokém monitoru má panel nejvýš 420 px
+   a šířku využije mřížka.
 
    Přepínač **Po skupinách / Podle data** (pamatuje si ho prohlížeč,
    platí pro mřížku i lupu) ukáže místo skupin všechny soubory akce
