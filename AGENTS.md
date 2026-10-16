@@ -2,6 +2,10 @@
 
 Pokyny pro AI agenty (Claude Code, Codex aj.) pracující v tomto repozitáři.
 
+## Pokyny
+
+Agent bez výslovného svolení nepřistupuje k reálným datům (fotkám, obličejům, ...). Pokud je to potřeba, vytváří si dummy data. 
+
 ## Stav
 
 Flask server v `fotoarchiv/` na WSGI serveru cheroot, klient
@@ -69,7 +73,7 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
 - **Zdroj pravdy je `_metadata.json` ve složce akce.** XMP sidecary a index
   (`_INDEX.html`, `_INDEX.md`, `index.py`) jsou čistě generované výstupy —
   nikdy z nich nečíst zpět a nikdy je needitovat ručně. Index se
-  přegeneruje jen po importu a exportu, ne při uložení.
+  přegeneruje jen po importu a exportu.
 - **Originály fotek a videí se nemění** (žádný zápis EXIF/XMP do souboru).
 - **Dědění akce → skupina → soubor**, nižší úroveň přepisuje vyšší. Sidecar
   obsahuje hodnoty už rozepsané (zděděné), JSON jen to, co je na dané úrovni
@@ -113,15 +117,3 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
   `arubrno/archiv-immich` (viz README, Výstupy).
 - Datum u WhatsApp fotek (`IMG-YYYYMMDD-WA*`) jen z názvu souboru, EXIF
   nemají.
-
-## Otevřené otázky
-
-- Zdroj souborů `IMG_####.jpg` a jejich EXIF.
-- Immich je napojený jen ke čtení obličejů; přesuny a přejmenování
-  dělat před importem do produkčního Immiche (změna cesty = nový asset
-  bez obličejů).
-
-## Prostředí
-
-Primárně Fedora. Windows u kolegů žádoucí, ale jen pokud to nestojí dny
-práce — neobětovat kvůli tomu jednoduchost na Linuxu.
