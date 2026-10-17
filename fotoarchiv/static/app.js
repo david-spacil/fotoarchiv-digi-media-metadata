@@ -5079,7 +5079,21 @@ async function showSettings() {
   }
   const [s, nominatim] = await Promise.all([api("/api/immich"),
     api("/api/nominatim")]);
+  let knihovny = [];
+  if (s.nastaveno) {
+    // Uložená knihovna zůstane volbou i bez spojení, jinak by ji
+    // uložení nastavení smazalo.
+    try {
+      knihovny = (await api("/api/immich/knihovny")).knihovny || [];
+    } catch {
+      knihovny = []; // Immich nedostupný
+    }
+    if (s.knihovna && !knihovny.some((k) => k.id === s.knihovna)) {
+      knihovny.push({ id: s.knihovna, name: s.knihovna });
+    }
+  }
   const msg = h("p", { class: "status" });
+  const varovani = h("div", {});
   const say = (text, error = false) => {
     msg.textContent = text;
     msg.className = error ? "status error" : "status";
@@ -5088,7 +5102,11 @@ async function showSettings() {
     placeholder: "http://10.10.1.51:2283" });
   const klic = h("input", { type: "password", autocomplete: "off",
     placeholder: s.nastaveno ? `klíč nastaven (${s.klic}) – vyplňte jen ` +
-      "pro změnu" : "API klíč (jen pro čtení)" });
+      "pro změnu" : "API klíč (osoby, assety, obličeje)" });
+  const knihovna = h("select", {},
+    h("option", { value: "" }, "— není vybrána —"),
+    ...knihovny.map((k) => h("option", {
+      value: k.id, selected: k.id === s.knihovna }, k.name || k.id)));
   const refresh = async () => {
     state.info = await api("/api/info");
     await showSettings();
@@ -5096,7 +5114,8 @@ async function showSettings() {
   const saveSettings = async () => {
     try {
       await api("/api/immich", { method: "PUT",
-        body: { adresa: adresa.value, klic: klic.value } });
+        body: { adresa: adresa.value, klic: klic.value,
+          knihovna: knihovna.value } });
       await refresh();
     } catch (err) {
       say({ klic_povinny: "Při změně adresy zadejte klíč znovu.",
@@ -5106,9 +5125,12 @@ async function showSettings() {
   };
   const test = async () => {
     say("Zkouším připojení…");
+    varovani.replaceChildren();
     try {
       const r = await api("/api/immich/test", { method: "POST" });
       say(`Připojení funguje: Immich ${r.verze}, osob ${r.osob}.`);
+      varovani.replaceChildren(...(r.varovani || []).map(
+        (w) => h("p", { class: "warn" }, w)));
     } catch (err) {
       say(`Připojení nefunguje: ${err.data?.chyba || err.message}`, true);
     }
@@ -5125,14 +5147,20 @@ async function showSettings() {
     h("h1", {}, "Nastavení"),
     h("h2", {}, "Immich"),
     h("p", {}, "Osoby na fotkách se přebírají z pojmenovaných obličejů " +
-      "v Immichi. Stačí klíč jen pro čtení (osoby, assety, obličeje)."),
+      "v Immichi. Klíč potřebuje čtení osob, assetů a obličejů; pro " +
+      "alba akcí, sken knihovny a nástroj pojmenování i práva k zápisu " +
+      "a uživatele s rolí admin. Test připojení vypíše, co chybí."),
     h("div", { class: "field" }, h("label", {}, "Adresa serveru"), adresa),
     h("div", { class: "field" }, h("label", {}, "API klíč"), klic),
+    s.nastaveno ? h("div", { class: "field" },
+      h("label", {}, "Knihovna archivu (sken po dokončení akce)"),
+      knihovna) : null,
     h("div", { class: "row" },
       h("button", { class: "primary", onclick: saveSettings }, "Uložit"),
       s.nastaveno ? h("button", { onclick: test }, "Otestovat") : null,
       s.nastaveno ? h("button", { onclick: remove }, "Smazat") : null),
     msg,
+    varovani,
     s.nastaveno ? syncBlock(s.synchronizace, sync) : null,
     contactBlock(nominatim, refresh)));
   if (s.synchronizace.bezi) {

@@ -26,7 +26,11 @@ def face(name, box=(252, 296, 293, 352), size=(1000, 750)):
 
 
 class FakeImmich:
-    """Podvržené API: osoby, assety (id → cesta) a obličeje assetů."""
+    """Podvržené API: osoby, assety (id → cesta), obličeje a alba.
+
+    Zapisovací dotazy (POST/PUT/DELETE) zaznamenává do `writes` jako
+    (metoda, cesta, tělo).
+    """
 
     def __init__(self):
         self.people = []
@@ -34,6 +38,13 @@ class FakeImmich:
         self.faces = {}
         self.fail = None        # část URL, na které dotaz selže
         self.calls = []
+        self.writes = []        # (metoda, cesta, tělo) zápisových dotazů
+        self.permissions = ["all"]
+        self.libraries = [{"id": "lib-1", "name": "Archiv"}]
+        self.no_admin = False   # GET /api/libraries odpovědí 403
+        self.queues = {}        # název → statistics (default = nuly)
+        self.albums = {}        # id → {id, albumName, assetIds}
+        self.album_seq = 0
 
     def add(self, asset_id, path, *faces):
         self.paths[asset_id] = path
@@ -43,15 +54,36 @@ class FakeImmich:
             if p and p not in self.people:
                 self.people.append(p)
 
+    def thumbnail(self, method, url, klic):
+        """Podvržený binární dotaz (`fetch_bytes`) na zmenšeninu."""
+        self.calls.append((method, url))
+        assert klic == KEY
+        return b"nahled-preview", "image/jpeg"
+
     def __call__(self, method, url, klic, body=None):
         self.calls.append((method, url))
         assert klic == KEY
         if self.fail and self.fail in url:
-            raise immich.ImmichError(f"HTTP 403 {url}")
+            raise immich.ImmichError(f"HTTP 403 {url}", status=403)
         parts = urlsplit(url)
         query = parse_qs(parts.query)
+        if method != "GET":
+            self.writes.append((method, parts.path, body))
         if parts.path == "/api/server/version":
             return {"major": 3, "minor": 3, "patch": 0, "prerelease": 2}
+        if parts.path == "/api/api-keys/me":
+            return {"permissions": self.permissions}
+        if parts.path == "/api/people" and method == "PUT":
+            for item in body["people"]:
+                for p in self.people:
+                    if p["id"] == item["id"]:
+                        if "name" in item:
+                            p["name"] = item["name"]
+                        if "isHidden" in item:
+                            p["isHidden"] = item["isHidden"]
+            return None
+        if parts.path == "/api/people/merge":
+            return None
         if parts.path == "/api/people":
             page, size = int(query["page"][0]), int(query["size"][0])
             chunk = self.people[(page - 1) * size:page * size]
@@ -61,6 +93,13 @@ class FakeImmich:
             ids = [a for a in sorted(self.paths) if not body.get("personIds")
                    or any((f["person"] or {}).get("id") in body["personIds"]
                           for f in self.faces[a])]
+            if body.get("albumIds"):
+                members = {i for aid in body["albumIds"] for i in
+                           self.albums.get(aid, {}).get("assetIds", [])}
+                ids = [a for a in ids if a in members]
+            if body.get("originalPath"):
+                ids = [a for a in ids
+                       if body["originalPath"] in self.paths[a]]
             page, size = body["page"], body["size"]
             chunk = ids[(page - 1) * size:page * size]
             more = page * size < len(ids)
@@ -68,6 +107,42 @@ class FakeImmich:
                 "items": [{"id": a, "originalPath": self.paths[a]}
                           for a in chunk],
                 "nextPage": str(page + 1) if more else None}}
+        if parts.path == "/api/albums":
+            if method == "POST":
+                self.album_seq += 1
+                album = {"id": f"alb{self.album_seq}",
+                         "albumName": body["albumName"],
+                         "assetIds": list(body.get("assetIds") or [])}
+                self.albums[album["id"]] = album
+                return dict(album)
+            return [dict(a) for a in self.albums.values()]
+        if parts.path.startswith("/api/albums/"):
+            rest = parts.path.removeprefix("/api/albums/")
+            if rest.endswith("/assets"):
+                album = self.albums[rest[: -len("/assets")]]
+                ids = body["ids"]
+                if method == "PUT":
+                    album["assetIds"] += [i for i in ids
+                                          if i not in album["assetIds"]]
+                else:
+                    album["assetIds"] = [i for i in album["assetIds"]
+                                         if i not in ids]
+                return None
+            if rest not in self.albums:
+                raise immich.ImmichError(f"HTTP 404 {url}", status=404)
+            return dict(self.albums[rest])
+        if parts.path == "/api/libraries":
+            if self.no_admin:
+                raise immich.ImmichError(f"HTTP 403 {url}", status=403)
+            return [dict(lib) for lib in self.libraries]
+        if (parts.path.startswith("/api/libraries/")
+                and parts.path.endswith("/scan")):
+            return None                    # prázdná odpověď (204)
+        if parts.path.startswith("/api/queues/"):
+            name = parts.path.removeprefix("/api/queues/")
+            return {"name": name, "statistics": self.queues.get(
+                name, {"active": 0, "waiting": 0, "completed": 0,
+                       "failed": 0})}
         if parts.path == "/api/faces":
             return self.faces[query["id"][0]]
         raise AssertionError(url)
@@ -88,7 +163,7 @@ def setup(tmp_path, monkeypatch):
     ws.save(EVENT, {"schema": SCHEMA, "akce": {"nazev": "Konference"},
                     "skupiny": {}, "soubory": {"P9109996.JPG": {},
                                                "b.jpg": {}}}, None)
-    immich.Settings(ws.work).save(URL, KEY)
+    immich.Settings(ws.work).save(URL, KEY, "lib-1")
     return app, fake
 
 
@@ -141,8 +216,59 @@ def test_connection_ok(setup):
     fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
     r = app.test_client().post("/api/immich/test")
     assert r.status_code == 200
-    assert r.json == {"ok": True, "verze": "3.3.0-rc2", "osob": 1}
+    assert r.json == {"ok": True, "verze": "3.3.0-rc2", "osob": 1,
+                      "varovani": [], "chybi": []}
     assert any("/api/faces" in url for _, url in fake.calls)
+
+
+def test_connection_all_key_has_no_permission_warning(setup):
+    """Klíč s `all`: žádná varování (knihovna vybraná, admin)."""
+    app, fake = setup
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    r = app.test_client().post("/api/immich/test")
+    assert r.status_code == 200
+    assert r.json["chybi"] == [] and r.json["varovani"] == []
+
+
+def test_connection_read_only_key_warns_but_passes(setup):
+    """Klíč jen pro čtení: test projde a vypíše chybějící oprávnění."""
+    app, fake = setup
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.permissions = ["person.read", "asset.read", "face.read",
+                        "asset.view"]
+    r = app.test_client().post("/api/immich/test")
+    assert r.status_code == 200 and r.json["ok"] is True
+    assert "person.update" in r.json["chybi"]
+    assert "album.create" in r.json["chybi"]
+    assert "person.read" not in r.json["chybi"]
+    assert len(r.json["varovani"]) == 1
+    assert "Čtení osob a obličejů funguje" in r.json["varovani"][0]
+    assert "pojmenování osob" in r.json["varovani"][0]
+    assert "person.update" in r.json["varovani"][0]
+
+
+def test_connection_without_admin_role_warns(setup):
+    """Klíč s `all` ale bez role admin: 403 na knihovnách = varování."""
+    app, fake = setup
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.no_admin = True
+    r = app.test_client().post("/api/immich/test")
+    assert r.status_code == 200 and r.json["ok"] is True
+    assert r.json["chybi"] == []
+    assert len(r.json["varovani"]) == 1
+    assert "bez role admin" in r.json["varovani"][0]
+    assert "sken knihovny a stav rozpoznávání" in r.json["varovani"][0]
+
+
+def test_connection_without_library_warns(setup):
+    app, fake = setup
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    ws = app.config["WORKSPACE"]
+    immich.Settings(ws.work).save(URL, KEY)   # bez vybrané knihovny
+    r = app.test_client().post("/api/immich/test")
+    assert r.status_code == 200 and r.json["ok"] is True
+    assert len(r.json["varovani"]) == 1
+    assert "není vybraná knihovna" in r.json["varovani"][0]
 
 
 def test_connection_without_face_permission(setup):
@@ -152,6 +278,160 @@ def test_connection_without_face_permission(setup):
     r = app.test_client().post("/api/immich/test")
     assert r.status_code == 502
     assert r.json["ok"] is False and r.json["chyba"].startswith("obličeje")
+
+
+# --- klient: zápis, alba, knihovny, zmenšeniny -----------------------------
+
+def test_api_key_permissions(setup):
+    _, fake = setup
+    fake.permissions = ["asset.read", "face.read"]
+    assert immich.Client(URL, KEY, fake).api_key_permissions() == \
+        ["asset.read", "face.read"]
+
+
+def test_update_people_request(setup):
+    _, fake = setup
+    fake.people = [{"id": "p-1", "name": ""}, {"id": "p-2", "name": "X"}]
+    client = immich.Client(URL, KEY, fake)
+    client.update_people([{"id": "p-1", "name": "Hlava, Miloš"},
+                          {"id": "p-2", "isHidden": True}])
+    assert fake.writes == [("PUT", "/api/people", {"people": [
+        {"id": "p-1", "name": "Hlava, Miloš"},
+        {"id": "p-2", "isHidden": True}]})]
+    assert fake.people[0]["name"] == "Hlava, Miloš"
+    assert fake.people[1]["isHidden"] is True
+
+
+def test_merge_people_target_is_first_id(setup):
+    _, fake = setup
+    immich.Client(URL, KEY, fake).merge_people("p-cil",
+                                               ["p-a", "p-cil", "p-b"])
+    method, path, body = fake.writes[0]
+    assert (method, path) == ("POST", "/api/people/merge")
+    assert body == {"ids": ["p-cil", "p-a", "p-b"]}
+
+
+def test_album_requests(setup):
+    _, fake = setup
+    client = immich.Client(URL, KEY, fake)
+    album = client.create_album(EVENT, ["a1", "a2"])
+    client.add_album_assets(album["id"], ["a3"])
+    client.remove_album_assets(album["id"], ["a1"])
+    albums = client.albums()
+    assert [a["id"] for a in albums] == [album["id"]]
+    assert albums[0]["albumName"] == EVENT
+    assert albums[0]["assetIds"] == ["a2", "a3"]
+    with pytest.raises(immich.ImmichError) as e:
+        client.album("neexistujici")
+    assert e.value.status == 404
+    assert fake.writes[:3] == [
+        ("POST", "/api/albums",
+         {"albumName": EVENT, "assetIds": ["a1", "a2"]}),
+        ("PUT", f"/api/albums/{album['id']}/assets", {"ids": ["a3"]}),
+        ("DELETE", f"/api/albums/{album['id']}/assets", {"ids": ["a1"]})]
+
+
+def test_search_album_paging_and_body(setup):
+    _, fake = setup
+    for i in range(5):
+        fake.add(f"a{i}", f"{ROOT}/{EVENT}/P9109996.JPG",
+                 face(f"Osoba{i}, X"))
+    client = immich.Client(URL, KEY, fake)
+    album = client.create_album(EVENT, [f"a{i}" for i in range(5)])
+    fake.writes.clear()
+    items = client.search_album(album["id"], size=2)
+    assert sorted(i["id"] for i in items) == [f"a{i}" for i in range(5)]
+    assert len(fake.writes) == 3          # stránkování po 2
+    for _, _, body in fake.writes:
+        assert body["albumIds"] == [album["id"]]
+        assert body["withPeople"] is True and body["withExif"] is True
+
+
+def test_search_path_pages_and_filters(setup):
+    _, fake = setup
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/2026-09-20 jina akce/x.jpg", face(None))
+    client = immich.Client(URL, KEY, fake)
+    found = client.search_path(EVENT, size=1)
+    assert [i["id"] for i in found] == ["a1"]
+    assert fake.writes[0][2]["originalPath"] == EVENT
+
+
+def test_thumbnail_binary(setup):
+    _, fake = setup
+    client = immich.Client(URL, KEY, fake, fetch_bytes=fake.thumbnail)
+    assert client.thumbnail("a1") == (b"nahled-preview", "image/jpeg")
+    assert fake.calls[-1] == ("GET",
+                              f"{URL}/api/assets/a1/thumbnail"
+                              "?size=preview")
+
+
+def test_libraries_scan_queue(setup):
+    _, fake = setup
+    client = immich.Client(URL, KEY, fake)
+    assert client.libraries() == [{"id": "lib-1", "name": "Archiv"}]
+    assert client.scan_library("lib-1") is None
+    assert ("POST", "/api/libraries/lib-1/scan", None) in fake.writes
+    assert client.queue("faceDetection")["statistics"]["active"] == 0
+    fake.queues["faceDetection"] = {"active": 2, "waiting": 1}
+    assert client.queue("faceDetection")["statistics"] == {
+        "active": 2, "waiting": 1}
+
+
+def test_immich_error_status():
+    err = immich.ImmichError("HTTP 403", status=403)
+    assert err.status == 403
+    assert immich.ImmichError("x").status is None
+
+
+# --- knihovna v nastavení ---------------------------------------------------
+
+def test_settings_knihovna(tmp_path):
+    s = immich.Settings(tmp_path / "work")
+    s.save(URL, KEY, "lib-1")
+    assert s.load() == {"adresa": URL, "klic": KEY, "knihovna": "lib-1"}
+    assert json.loads(
+        (tmp_path / "work" / "immich.json").read_text())["knihovna"] \
+        == "lib-1"
+    s.save(URL, KEY)                        # bez knihovny: id tam není
+    assert s.load()["knihovna"] is None
+
+
+def test_knihovna_save_via_api(tmp_path):
+    app = create_app(tmp_path, tmp_path / "work", prihlaseni=False)
+    c = app.test_client()
+    c.put("/api/immich", json={"adresa": URL, "klic": KEY})
+    assert c.get("/api/immich").json["knihovna"] is None
+    r = c.put("/api/immich", json={"adresa": URL, "knihovna": "lib-1"})
+    assert r.status_code == 200 and r.json["knihovna"] == "lib-1"
+    assert KEY not in r.get_data(as_text=True)
+    # Změna knihovny bez nového klíče: klíč se nemění.
+    r = c.put("/api/immich", json={"adresa": URL, "knihovna": "lib-2"})
+    assert r.json["knihovna"] == "lib-2"
+    assert immich.Settings(tmp_path / "work").load()["klic"] == KEY
+    # PUT bez pole knihovna: výběr zůstává.
+    assert c.put("/api/immich",
+                 json={"adresa": URL}).json["knihovna"] == "lib-2"
+    # Změna adresy dál vyžaduje klíč.
+    assert c.put("/api/immich", json={"adresa": "http://jine:2283",
+                                      "knihovna": "lib-2"}
+                 ).status_code == 400
+
+
+def test_knihovny_endpoint(setup):
+    app, fake = setup
+    c = app.test_client()
+    r = c.get("/api/immich/knihovny")
+    assert r.status_code == 200
+    assert r.json == {"knihovny": [{"id": "lib-1", "name": "Archiv"}]}
+    assert KEY not in r.get_data(as_text=True)
+    fake.no_admin = True
+    assert c.get("/api/immich/knihovny").status_code == 502
+
+
+def test_knihovny_endpoint_without_settings(tmp_path):
+    app = create_app(tmp_path, tmp_path / "work", prihlaseni=False)
+    assert app.test_client().get("/api/immich/knihovny").status_code == 409
 
 
 # --- přepočet a párování ---------------------------------------------------
@@ -359,7 +639,8 @@ def test_settings_admin_only(tmp_path):
     for method, path in [("put", "/api/immich"), ("get", "/api/immich"),
                          ("delete", "/api/immich"),
                          ("post", "/api/immich/test"),
-                         ("post", "/api/immich/sync")]:
+                         ("post", "/api/immich/sync"),
+                         ("get", "/api/immich/knihovny")]:
         r = getattr(c, method)(path, json={"adresa": URL, "klic": KEY})
         assert r.status_code == 403, path
     assert not (work / "immich.json").exists()

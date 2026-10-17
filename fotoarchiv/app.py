@@ -963,6 +963,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         return {"nastaveno": s is not None,
                 "adresa": s["adresa"] if s else None,
                 "klic": immich.key_hint(s["klic"]) if s else None,
+                "knihovna": s["knihovna"] if s else None,
                 "synchronizace": sync.status()}
 
     @app.get("/api/immich")
@@ -971,7 +972,11 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     @app.put("/api/immich")
     def immich_put():
-        """Adresa a klíč; bez klíče jen beze změny adresy (klíč zůstane)."""
+        """Adresa a klíč; bez klíče jen beze změny adresy (klíč zůstane).
+
+        `knihovna` (id) se uloží, jen když je v těle; bez ní zůstane
+        dosavadní výběr.
+        """
         body = request.get_json(force=True)
         adresa = str(body.get("adresa") or "").strip().rstrip("/")
         klic = str(body.get("klic") or "").strip()
@@ -982,7 +987,11 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             if not current or current["adresa"] != adresa:
                 return {"chyba": "klic_povinny"}, 400
             klic = current["klic"]
-        immich_settings.save(adresa, klic)
+        if "knihovna" in body:
+            knihovna = str(body.get("knihovna") or "").strip() or None
+        else:
+            knihovna = current["knihovna"] if current else None
+        immich_settings.save(adresa, klic, knihovna)
         if immich_interval:
             sync.start()
         return immich_state()
@@ -992,13 +1001,28 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         immich_settings.delete()
         return immich_state()
 
+    @app.get("/api/immich/knihovny")
+    def immich_knihovny():
+        """Knihovny Immiche pro výběr (jen admin; klíč se nevrací)."""
+        client = sync.client()
+        if client is None:
+            return {"chyba": "nenastaveno"}, 409
+        try:
+            libraries = client.libraries() or []
+        except immich.ImmichError as e:
+            return {"ok": False, "chyba": str(e)}, 502
+        return {"knihovny": [{"id": l["id"], "name": l.get("name")}
+                             for l in libraries]}
+
     @app.post("/api/immich/test")
     def immich_test():
         client = sync.client()
         if client is None:
             return {"chyba": "nenastaveno"}, 409
+        s = immich_settings.load() or {}
         try:
-            return dict(immich.test_connection(client), ok=True)
+            return dict(immich.test_connection(client, s.get("knihovna")),
+                        ok=True)
         except immich.ImmichError as e:
             return {"ok": False, "chyba": str(e)}, 502
 

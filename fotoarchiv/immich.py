@@ -1,8 +1,9 @@
 """Pojmenované obličeje z Immiche do `_metadata.json` (pole `obliceje`).
 
 Immich osoby rozpoznává a pojmenovává autoritativně; synchronizace je
-jen čte (API klíč jen pro čtení) a zapisuje do souborů akcí, které už
-mají `_metadata.json`. Nastavení (adresa, klíč) je v pracovním adresáři
+čte a zapisuje do souborů akcí, které už mají `_metadata.json`. Klient
+umí i zápis (alba akcí, knihovny, fronty, pojmenování osob) pro nástroj
+pojmenování. Nastavení (adresa, klíč, knihovna) je v pracovním adresáři
 (`immich.json`, práva 0600), nikdy v archivu ani v prohlížeči.
 """
 
@@ -28,17 +29,28 @@ INTERVAL = 15 * 60
 RELACE = "immich-sync"
 JMENO = "Immich (synchronizace)"
 
+# Oprávnění klíče pro alba akcí, sken knihovny, stav rozpoznávání
+# a nástroj pojmenování (klíč s `all` má vše).
+OPRAVNENI = ("person.read", "asset.read", "face.read", "asset.view",
+             "person.update", "person.merge", "album.read", "album.create",
+             "albumAsset.create", "albumAsset.delete", "library.read",
+             "library.update", "queue.read")
+
 log = logging.getLogger(__name__)
 
 
 class ImmichError(Exception):
-    """Immich neodpověděl nebo vrátil chybu."""
+    """Immich neodpověděl nebo vrátil chybu (`status` = HTTP kód, 403…)."""
+
+    def __init__(self, text, status=None):
+        super().__init__(text)
+        self.status = status
 
 
 # --- nastavení -------------------------------------------------------------
 
 class Settings:
-    """`<work>/immich.json` = {adresa, klic}."""
+    """`<work>/immich.json` = {adresa, klic, knihovna?}."""
 
     def __init__(self, work):
         self.path = Path(work) / "immich.json"
@@ -50,16 +62,21 @@ class Settings:
             return None
         if not data.get("adresa") or not data.get("klic"):
             return None
-        return {"adresa": data["adresa"].rstrip("/"), "klic": data["klic"]}
+        return {"adresa": data["adresa"].rstrip("/"), "klic": data["klic"],
+                "knihovna": data.get("knihovna") or None}
 
-    def save(self, adresa, klic):
+    def save(self, adresa, klic, knihovna=None):
+        """Zapíše nastavení; bez `knihovny` se id do souboru nezapíše."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=".immich-",
                                    suffix=".tmp")
+        data = {"adresa": adresa, "klic": klic}
+        if knihovna:
+            data["knihovna"] = knihovna
         try:
             os.chmod(tmp, 0o600)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump({"adresa": adresa, "klic": klic}, f)
+                json.dump(data, f)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp, self.path)
@@ -78,27 +95,51 @@ def key_hint(klic):
 # --- klient ----------------------------------------------------------------
 
 def fetch_json(method, url, klic, body=None):
+    """JSON odpověď; prázdné tělo (204) snese a vrátí None."""
     data = None if body is None else json.dumps(body).encode("utf-8")
     req = urllib.request.Request(url, data=data, method=method, headers={
         "x-api-key": klic, "Accept": "application/json",
         "Content-Type": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-            return json.load(resp)
+            raw = resp.read()
     except urllib.error.HTTPError as e:
-        raise ImmichError(f"HTTP {e.code} {url}") from e
-    except (OSError, ValueError) as e:
+        raise ImmichError(f"HTTP {e.code} {url}", status=e.code) from e
+    except OSError as e:
+        raise ImmichError(f"{e} ({url})") from e
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError as e:
+        raise ImmichError(f"{e} ({url})") from e
+
+
+def fetch_binary(method, url, klic):
+    """Binární odpověď jako (bytes, content_type) (zmenšeniny)."""
+    req = urllib.request.Request(url, method=method,
+                                 headers={"x-api-key": klic})
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            return resp.read(), resp.headers.get("Content-Type")
+    except urllib.error.HTTPError as e:
+        raise ImmichError(f"HTTP {e.code} {url}", status=e.code) from e
+    except OSError as e:
         raise ImmichError(f"{e} ({url})") from e
 
 
 class Client:
-    def __init__(self, adresa, klic, fetch=None):
+    def __init__(self, adresa, klic, fetch=None, fetch_bytes=None):
         self.adresa = adresa.rstrip("/")
         self.klic = klic
         self.fetch = fetch or fetch_json
+        self.fetch_bytes = fetch_bytes or fetch_binary
 
     def _call(self, method, path, body=None):
         return self.fetch(method, self.adresa + path, self.klic, body)
+
+    def _call_bytes(self, method, path):
+        return self.fetch_bytes(method, self.adresa + path, self.klic)
 
     def version(self):
         v = self._call("GET", "/api/server/version")
@@ -138,11 +179,91 @@ class Client:
         query = urllib.parse.urlencode({"id": asset_id})
         return self._call("GET", f"/api/faces?{query}")
 
+    # --- zápis a správa (alba, knihovny, fronty, osoby) --------------------
 
-def test_connection(client):
-    """Verze a oprávnění (osoby, assety, obličeje).
+    def api_key_permissions(self):
+        """Seznam oprávnění klíče (`all` = vše)."""
+        r = self._call("GET", "/api/api-keys/me")
+        return (r or {}).get("permissions") or []
 
-    Vrací {"verze", "osob"}; selhání → ImmichError s krokem v textu.
+    def update_people(self, people):
+        """Hromadný zápis osob; položky {id, name?, isHidden?}."""
+        return self._call("PUT", "/api/people", {"people": list(people)})
+
+    def merge_people(self, target_id, ids):
+        """Sloučení osob do `target_id`; v těle je cíl jako první id."""
+        others = [i for i in ids if i != target_id]
+        return self._call("POST", "/api/people/merge",
+                          {"ids": [target_id, *others]})
+
+    def albums(self):
+        return self._call("GET", "/api/albums")
+
+    def album(self, album_id):
+        return self._call("GET", f"/api/albums/{album_id}")
+
+    def create_album(self, name, asset_ids):
+        return self._call("POST", "/api/albums",
+                          {"albumName": name, "assetIds": list(asset_ids)})
+
+    def add_album_assets(self, album_id, asset_ids):
+        return self._call("PUT", f"/api/albums/{album_id}/assets",
+                          {"ids": list(asset_ids)})
+
+    def remove_album_assets(self, album_id, asset_ids):
+        return self._call("DELETE", f"/api/albums/{album_id}/assets",
+                          {"ids": list(asset_ids)})
+
+    def _search_paged(self, body, size=PAGE, all_pages=True):
+        """Stránkované `POST /api/search/metadata` (další `nextPage`)."""
+        result, page = [], 1
+        while page:
+            r = self._call("POST", "/api/search/metadata",
+                           {**body, "page": page, "size": size})["assets"]
+            result += r.get("items") or []
+            if not all_pages:
+                break
+            page = int(r["nextPage"]) if r.get("nextPage") else None
+        return result
+
+    def search_album(self, album_id, size=PAGE, all_pages=True):
+        """Assety alba s osobami i EXIF (jeden stránkovaný dotaz)."""
+        return self._search_paged({"albumIds": [album_id],
+                                   "withPeople": True, "withExif": True},
+                                  size=size, all_pages=all_pages)
+
+    def search_path(self, original_path, size=PAGE, all_pages=True):
+        """Assety, jejichž cesta v Immichi obsahuje `original_path`
+        (filtr je podřetězec — výsledek se dofiltruje přes `file_key`)."""
+        return self._search_paged({"originalPath": original_path},
+                                  size=size, all_pages=all_pages)
+
+    def thumbnail(self, asset_id):
+        """Zmenšenina `preview` jako (bytes, content_type)."""
+        query = urllib.parse.urlencode({"size": "preview"})
+        return self._call_bytes(
+            "GET", f"/api/assets/{asset_id}/thumbnail?{query}")
+
+    def libraries(self):
+        """Knihovny Immiche (jen admin; jinak 403)."""
+        return self._call("GET", "/api/libraries")
+
+    def scan_library(self, library_id):
+        """Spustí asynchronní sken knihovny; odpověď může být prázdná."""
+        return self._call("POST", f"/api/libraries/{library_id}/scan")
+
+    def queue(self, name):
+        """Statistiky fronty úloh (`statistics.active`, `waiting`, …)."""
+        return self._call("GET", f"/api/queues/{name}")
+
+
+def test_connection(client, knihovna=None):
+    """Verze, čtení osob a obličejů, oprávnění klíče a role admina.
+
+    Vrací {"verze", "osob", "varovani": [texty], "chybi": [oprávnění]};
+    selhání čtení → ImmichError s krokem v textu. Chybějící oprávnění,
+    klíč uživatele bez role admin a nevybraná knihovna jsou varování:
+    test připojení i tak projde.
     """
     def step(label, fn):
         try:
@@ -156,7 +277,30 @@ def test_connection(client):
         people[0]["id"] if people else None, size=1, all_pages=False))
     if found:
         step("obličeje", lambda: client.faces(found[0]["id"]))
-    return {"verze": verze, "osob": total}
+    varovani, chybi = [], []
+    permissions = step("oprávnění", client.api_key_permissions)
+    if "all" not in permissions:
+        chybi = [p for p in OPRAVNENI if p not in permissions]
+    if chybi:
+        varovani.append("Čtení osob a obličejů funguje, ale klíči chybí "
+                        "oprávnění: " + ", ".join(chybi) + ". Alba akcí, "
+                        "sken knihovny, stav rozpoznávání nebo pojmenování "
+                        "osob proto nemusí být dostupné.")
+    try:
+        client.libraries()
+    except ImmichError as e:
+        if e.status == 403:
+            varovani.append("Klíč patří uživateli Immiche bez role "
+                            "admin: sken knihovny a stav rozpoznávání "
+                            "nebudou dostupné, ostatní funkce fungují.")
+        else:
+            raise ImmichError(f"knihovny: {e}") from e
+    if not knihovna:
+        varovani.append("V nastavení není vybraná knihovna Immiche: "
+                        "dokončení akce nespustí sken. Vyberte ji na "
+                        "stránce nastavení.")
+    return {"verze": verze, "osob": total, "varovani": varovani,
+            "chybi": chybi}
 
 
 # --- převod ----------------------------------------------------------------
