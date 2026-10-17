@@ -204,19 +204,33 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 "import_limit": importer.MAX_FILE,
                 "verze": verze}
 
+    def immich_stav(polozka):
+        """{stav, cas, album} ze záznamu `.work/immich-alba.json`; bez
+        `chyba` (ta se ukazuje jen adminovi na Nastavení) a bez id alba
+        (vrací se jen bool, že album existuje)."""
+        entry = polozka or {}
+        return {"stav": entry.get("stav"), "cas": entry.get("cas"),
+                "album": bool(entry.get("album"))}
+
     @app.get("/api/akce")
     def akce_list():
         """Výpis akcí; `drzitel` je jméno z platného zámku a `vase`, zda
         ho drží relace z `?relace=` (relace sama se nevrací). `upravit`
-        = smí ji přihlášený uživatel upravit (`model.can_edit`)."""
+        = smí ji přihlášený uživatel upravit (`model.can_edit`).
+        `immich` je stav akce v Immichi (jen s nastaveným Immichem a
+        se záznamem); čteno ze `.work/immich-alba.json`."""
         relace = request.args.get("relace")
         events = ws.list_events()
+        # Jedno čtení souboru pro celý výpis; Immiche se neptá.
+        alba = sync.alba.nacti() if immich_settings.load() else {}
         for event in events:
             event["upravit"] = model.can_edit(g.user, event)
             holder = locks.holder(event["nazev"])
             event["drzitel"] = holder and {
                 "jmeno": holder["jmeno"],
                 "vase": locks.holds(event["nazev"], relace)}
+            if event["nazev"] in alba:
+                event["immich"] = immich_stav(alba[event["nazev"]])
         return jsonify(events)
 
     @app.get("/api/akce/<nazev>")
@@ -263,6 +277,19 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 "version": ws.export_version(nazev),
             },
         }
+
+    @app.get("/api/akce/<nazev>/immich")
+    def akce_immich_stav(nazev):
+        """Stav akce v Immichi pro každého přihlášeného (není pod
+        `/api/immich`, který je jen pro admina). Čte jen
+        `<work>/immich-alba.json`; Immiche se nikdy neptá. Bez
+        nastaveného Immiche se stav neuvádí; `chyba` se nevrací
+        (ukazuje se jen adminovi na Nastavení)."""
+        event_dir(nazev)                     # neexistující akce = 404
+        if immich_settings.load() is None:
+            return {"nastaveno": False, "stav": None, "cas": None,
+                    "album": False}
+        return dict(nastaveno=True, **immich_stav(sync.alba.polozka(nazev)))
 
     def body_field(body, key):
         value = body.get(key)
@@ -975,11 +1002,17 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     def immich_state():
         s = immich_settings.load()
+        # Chyby alba (spojení, oprávnění) — jen na stránku nastavení;
+        # stav akce kvůli nim nemění a běžný uživatel je nevidí.
+        alba_chyby = [{"akce": akce, "chyba": entry["chyba"]}
+                      for akce, entry in sorted(sync.alba.nacti().items())
+                      if entry.get("chyba")]
         return {"nastaveno": s is not None,
                 "adresa": s["adresa"] if s else None,
                 "klic": immich.key_hint(s["klic"]) if s else None,
                 "knihovna": s["knihovna"] if s else None,
-                "synchronizace": sync.status()}
+                "synchronizace": sync.status(),
+                "alba_chyby": alba_chyby}
 
     @app.get("/api/immich")
     def immich_get():

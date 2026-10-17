@@ -957,6 +957,35 @@ jako varování — čtení obličejů funguje i bez nich, alba akcí, sken
 a nástroj pojmenování ne. Nastavení (i synchronizaci na požádání)
 smí jen admin.
 
+**Alba dokončených akcí** vymezují fotky akce v Immichi (pro nástroj
+pojmenování osob i pro prohlížení). Po dokončení (odebrání přípony
+`.ignored`) spustí server hlídače na pozadí: spustí sken knihovny
+vybrané v nastavení a pak co 20 s zjišťuje, zda Immich zná všechny
+soubory akce; jakmile ano, založí album pojmenované jako akce a později
+do něj doplňuje přibývající assety a cizí z alba odebírá. Album ani
+asset se nikdy nemažou. Pravidelná synchronizace totéž opakuje pro
+každou dokončenou akci (bez skenu), takže album dorovná i po restartu
+serveru nebo smazání alba v Immichi; hlídač je jen zrychlení. Vazba
+akce → id alba je v `.work/immich-alba.json`; při ztrátě souboru se
+album dohledá podle názvu, takže nevznikne duplicitní.
+
+**Stav akce v Immichi** vidí každý přihlášený uživatel na kartě akce
+a na ploše akce; bez nastaveného Immiche se nezobrazuje. Hlídač
+i synchronizace zapisují do `.work/immich-alba.json` stavy:
+`nacitani` („Immich načítá fotky“), `rozpoznavani` („Rozpoznávání
+obličejů probíhá“), `rozpoznano` („Obličeje rozpoznány (datum)“)
+a `nenalezeno` („Immich fotky akce zatím nenašel“ — hlídač vypršel
+a Immich žádné soubory akce nezná). Zobrazení se Immiche neptá:
+výpis akcí čte stav ze souboru a plocha jej během načítání
+a rozpoznávání obnovuje přes `GET /api/akce/<název>/immich` (ten čte
+taky jen soubor; není pod `/api/immich`, který je jen pro admina).
+Rozpoznání se pozná jen nepřímo: Immich nemá příznak „obličeje
+zpracovány“ — hotovo je, když mají všechny fotky alba zmenšeninu
+(`thumbhash`; videa se nepočítají) a fronty `faceDetection`
+i `facialRecognition` nemají aktivní ani čekající úlohy. Chyba spojení
+nebo chybějící oprávnění stav nemění: zapíše se do `chyba` a vypíše
+na stránce Nastavení (jen admin).
+
 **Synchronizace obličejů** běží v serveru po startu, pak každých
 15 minut a na tlačítko Načíst osoby:
 

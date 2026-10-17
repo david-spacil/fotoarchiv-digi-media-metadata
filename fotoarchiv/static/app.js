@@ -16,6 +16,7 @@ import {
   ratio, visibleEvents,
 } from "./fronta.js";
 import { icon } from "./icons.js";
+import { immichStav } from "./immichstav.js";
 import {
   byDay, dayLabel, personIndex, sectionInfo, stripeSegments, stripeStops,
 } from "./sections.js";
@@ -654,6 +655,10 @@ function eventBadges(e) {
     e.upravit === false ? h("span", { class: "badge jen-cteni",
       title: "Akci upravují jen ti, kdo ji importovali nebo upravovali, " +
         "archivář a admin." }, "jen ke čtení") : null,
+    // Stav v Immichi jen u dokončené akce se záznamem; bez nastaveného
+    // Immichu výpis pole `immich` nevrací.
+    e.stav === "hotovo" && e.immich?.stav
+      ? h("span", { class: "badge immich" }, immichStav(e.immich)) : null,
   ];
 }
 
@@ -912,6 +917,7 @@ async function openEvent(name, finish = false) {
     conflict: false, view: "grid", current: null, readonly: null,
     placeOpen: null, exporting: false, exportVersion: null, exportNote: "",
     exportStale: true, exportErrors: [], finishResult: null,
+    immich: null,
   });
   // Stav akce se mohl změnit u jiného uživatele.
   const events = state.events = await api("/api/akce");
@@ -920,6 +926,8 @@ async function openEvent(name, finish = false) {
     app.replaceChildren(header(), h("main", {}, "Akce nenalezena."));
     return;
   }
+  // Stav v Immichi z výpisu akcí (ze `.work/`, bez dotazu na Immich).
+  state.immich = entry.immich || null;
   if (entry.stav === "kolize") {
     app.replaceChildren(header(), h("main", {}, KOLIZE));
     return;
@@ -2963,6 +2971,12 @@ async function finishEvent() {
   } finally {
     state.exporting = false;
   }
+  if (state.finishResult?.dokonceno && name === state.name) {
+    // Hlídač začíná na serveru až po dokončení; načti stav hned a
+    // čekej na první zápis do `.work/immich-alba.json`.
+    await loadImmichStav(name);
+    if (name === state.name) pollImmichStav(name, IMMICH_ZAPIS_POKUSU);
+  }
   refreshFinish();
   if (state.dirty && !state.conflict) scheduleSave();
 }
@@ -2972,6 +2986,49 @@ async function finishEvent() {
 function refreshFinish() {
   if (state.mode === "finish") renderFinish();
   else renderExportStatus();
+}
+
+// --- stav akce v Immichi ----------------------------------------------------
+
+// Plocha obnovuje stav přes `GET /api/akce/<název>/immich` (čte jen
+// `.work/immich-alba.json`), dokud je stav průběhový; po dokončení
+// počká i na první zápis hlídače, který může chvíli trvat.
+const IMMICH_POLL_MS = 10000;
+const IMMICH_ZAPIS_POKUSU = 6;
+let immichTimer = null;
+
+function renderImmichStav() {
+  const el = document.getElementById("immich-stav");
+  // Jen u dokončené akce; bez záznamu nebo bez Immiche prázdné.
+  if (el) el.textContent = state.doc?.dokonceno
+    ? immichStav(state.immich) : "";
+}
+
+async function loadImmichStav(name) {
+  try {
+    const r = await api(eventUrl(name, "/immich"));
+    if (name !== state.name) return;
+    state.immich = r.nastaveno ? r : null;
+    renderImmichStav();
+  } catch { /* jen informativní údaj; zkusí se příští tik */ }
+}
+
+// `pockat` = kolik tiků zbývá, než hlídač první záznam zapíše (0 =
+// obnovovat jen když už stav známe a je průběhový).
+function pollImmichStav(name, pockat) {
+  clearTimeout(immichTimer);
+  const probiha = state.immich?.stav === "nacitani"
+    || state.immich?.stav === "rozpoznavani";
+  if (!probiha && pockat <= 0) return;
+  immichTimer = setTimeout(async () => {
+    // Úklid po navigaci: plocha už může být jiná akce nebo zavřená.
+    if (name !== state.name
+        || (state.mode !== "workspace" && state.mode !== "finish")) return;
+    await loadImmichStav(name);
+    // Se záznamem rozhoduje jen stav (průběhový = dál), bez něj
+    // ubývají pokusy čekání na první zápis hlídače.
+    pollImmichStav(name, state.immich ? 0 : pockat - 1);
+  }, IMMICH_POLL_MS);
 }
 
 // --- kontrolní stránka dokončení -------------------------------------------
@@ -3066,6 +3123,10 @@ function renderWorkspace() {
     h("div", { class: "eventbar" }, back,
       h("h1", {}, state.name),
       h("span", { class: "paths" }, d.pracovni_soubor),
+      // Stav v Immichi (jen u dokončené akce se záznamem); vidí ho i
+      // běžný uživatel a bez zámku. `paths` by byl skrytý, `meta` je
+      // viditelný slabý text.
+      h("span", { class: "meta", id: "immich-stav" }),
       h("span", { class: "views" },
         h("button", { dataset: { view: "grid" }, class: "ico",
           title: "Mřížka (Esc)", "aria-label": "Mřížka",
@@ -3119,6 +3180,8 @@ function renderWorkspace() {
   renderPanel();
   setStatus();
   renderExportStatus();
+  renderImmichStav();
+  pollImmichStav(state.name, 0);   // obnovuje jen během načítání
   if (state.dirty) scheduleSave();
 }
 
@@ -5162,6 +5225,13 @@ async function showSettings() {
     msg,
     varovani,
     s.nastaveno ? syncBlock(s.synchronizace, sync) : null,
+    // Chyby alba (spojení, oprávnění) stav akce nemění; alb se ujme
+    // až další synchronizace. Ukazují se jen adminovi.
+    s.nastaveno && s.alba_chyby?.length
+      ? h("section", {}, h("h2", {}, "Alba akcí"),
+          ...s.alba_chyby.map((a) => h("p", { class: "warn" },
+            `${a.akce}: ${a.chyba}`)))
+      : null,
     contactBlock(nominatim, refresh)));
   if (s.synchronizace.bezi) {
     settingsTimer = setTimeout(() => {

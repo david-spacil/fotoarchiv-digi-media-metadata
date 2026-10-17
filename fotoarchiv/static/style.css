@@ -281,6 +281,8 @@ main.list, main.loading, main.wizard { padding: var(--space-4)
   margin-left: 4px; }
 .stav-nezpracovano .badge.stav { background: var(--todo-bg);
   color: var(--todo); }
+.stav-hotovo .badge.immich { background: var(--surface-2);
+  color: var(--text-muted); }
 .badge.jen-cteni { background: var(--surface-2); color: var(--text);
   margin-left: 4px; }
 

@@ -1141,3 +1141,115 @@ def test_hlidac_vychozi_konstanty():
     hlidac = albums.Hlidac(sync=None)
     assert hlidac.interval == immich.HLIDAC_INTERVAL == 20
     assert hlidac.limit == immich.HLIDAC_LIMIT == 3600
+
+
+# --- stav akce na kartě a ploše (2.5) ---------------------------------------
+
+def test_api_stav_cte_jenze_soubor(setup):
+    """`GET /api/akce/<nazev>/immich`: stav ze `.work/`, žádné volání
+    Immiche; `chyba` a id alba se nevrací."""
+    app, fake = setup
+    sync = app.config["IMMICH"]
+    sync.alba.nastav(EVENT, stav="rozpoznavani", album="alb-1",
+                     chyba="HTTP 403 fronty")
+    r = app.test_client().get(f"/api/akce/{EVENT}/immich")
+    assert r.status_code == 200
+    assert r.json["nastaveno"] is True and r.json["stav"] == "rozpoznavani"
+    assert r.json["album"] is True and r.json["cas"]
+    text = r.get_data(as_text=True)
+    assert "chyba" not in text and "alb-1" not in text and KEY not in text
+    assert fake.calls == []                  # Immiche se neptá
+
+
+def test_api_stav_404_a_bez_nastaveni(setup):
+    """Neexistující akce = 404; bez nastaveného Immiche se stav
+    neuvádí ani ve výpisu."""
+    app, _ = setup
+    sync = app.config["IMMICH"]
+    sync.alba.nastav(EVENT, stav="rozpoznavani")
+    assert app.test_client().get("/api/akce/2099-01-01 Nic/immich") \
+        .status_code == 404
+    sync.settings.delete()
+    r = app.test_client().get(f"/api/akce/{EVENT}/immich")
+    assert r.json == {"nastaveno": False, "stav": None, "cas": None,
+                      "album": False}
+    events = {e["nazev"]: e
+              for e in app.test_client().get("/api/akce").json}
+    assert "immich" not in events[EVENT]
+
+
+def test_vypis_akci_leze_stav_bez_dotazu(setup):
+    """Výpis akcí dostane `immich` jen u akcí se záznamem; bez `chyby`,
+    bez id alba, bez dotazu na Immich."""
+    app, fake = setup
+    alba = app.config["IMMICH"].alba
+    alba.nastav(EVENT, stav="rozpoznano", album="alb-1",
+                chyba="HTTP 403 front")
+    r = app.test_client().get("/api/akce")
+    events = {e["nazev"]: e for e in r.json}
+    assert events[EVENT]["immich"] == {
+        "stav": "rozpoznano", "cas": events[EVENT]["immich"]["cas"],
+        "album": True}
+    assert "immich" not in events[OTHER]
+    text = r.get_data(as_text=True)
+    assert "chyba" not in text and "alb-1" not in text
+    assert fake.calls == []
+
+
+def test_alba_chyby_jen_na_nastaveni(setup):
+    """Chyby alba se vrácí jen v odpovědi `GET /api/immich` (admin)."""
+    app, _ = setup
+    alba = app.config["IMMICH"].alba
+    alba.nastav(EVENT, chyba="HTTP 403 /api/queues")
+    alba.nastav(OTHER, stav="nacitani")
+    r = app.test_client().get("/api/immich")
+    assert r.json["alba_chyby"] == [{"akce": EVENT,
+                                     "chyba": "HTTP 403 /api/queues"}]
+
+
+def prihlaseni_setup(tmp_path, monkeypatch):
+    """Přihlášená aplikace: admin `spacil` a `kopacova` bez role;
+    Immich nastavený, u akce stav `rozpoznavani`."""
+    from fotoarchiv import auth
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "uzivatele.json").write_text(json.dumps(
+        {"spacil": {"jmeno": "Spáčil, David", "role": "admin"},
+         "kopacova": {"jmeno": "Kopáčová, Jana"}}), encoding="utf-8")
+    archiv = tmp_path / "archiv"
+    archiv.mkdir()
+    make_tree(archiv, {f"{EVENT}/": {"P9109996.JPG": "x"}})
+    monkeypatch.setattr("fotoarchiv.scan.run_exiftool", lambda d, n: {})
+    fake = FakeImmich()
+    app = create_app(archiv, work, immich_fetch=fake)
+    app.testing = True
+    for login in ("spacil", "kopacova"):
+        auth.Passwords(work).set(login, "tajne-heslo-1")
+    immich.Settings(work).save(URL, KEY, "lib-1")
+    app.config["IMMICH"].alba.nastav(EVENT, stav="rozpoznavani",
+                                     album="alb-1")
+    return app
+
+
+def prihlasen(app, login):
+    c = app.test_client()
+    r = c.post("/api/prihlaseni",
+               json={"login": login, "heslo": "tajne-heslo-1"})
+    assert r.status_code == 200, r.json
+    return c
+
+
+def test_bezny_uzivatel_vidi_stav(tmp_path, monkeypatch):
+    """Scénář Běžný uživatel: stav vidí i bez role; nastavení zůstává
+    jen pro admina."""
+    app = prihlaseni_setup(tmp_path, monkeypatch)
+    c = prihlasen(app, "kopacova")
+    r = c.get(f"/api/akce/{EVENT}/immich")
+    assert r.status_code == 200
+    assert r.json["stav"] == "rozpoznavani" and r.json["album"] is True
+    events = {e["nazev"]: e for e in c.get("/api/akce").json}
+    assert events[EVENT]["immich"]["stav"] == "rozpoznavani"
+    assert c.get("/api/immich").status_code == 403
+    admin = prihlasen(app, "spacil")
+    assert admin.get(f"/api/akce/{EVENT}/immich").status_code == 200
+    assert "alba_chyby" in admin.get("/api/immich").json
