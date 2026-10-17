@@ -40,10 +40,14 @@ API Immiche, ze kterého návrh vychází, je ověřené ve spec v3.3.3
 | sken knihovny | `POST /api/libraries/{id}/scan` (asynchronní, celá knihovna) | `library.update`, jen admin |
 | fronty úloh | `GET /api/queues/{name}` (`statistics.active`, `waiting`, …) | `queue.read`, jen admin |
 
-Asset nemá příznak „obličeje zpracovány“. Má jen `resized` (zmenšenina
-hotová), a ta je vstupem detekce obličejů. Rozpoznání proto jde
-poznat jen nepřímo, z `resized` a z front `faceDetection`
-a `facialRecognition`.
+Asset nemá příznak „obličeje zpracovány“. Zmenšenina, která je vstupem
+detekce obličejů, se pozná podle `thumbhash` (vyplněný, až zmenšenina
+vznikne). Pole `resized` je od v1.113 deprecated a Immich 3.3.1 ho
+vrací `true` i u assetu bez zmenšeniny (ověřeno 2026-10-17 na
+produkčním Immichi: videa s `thumbhash` null a zmenšeninou 404).
+Odpověď alba (`AlbumResponseDto`) seznam assetů nemá, členy alba se
+čtou přes `search/metadata` s `albumIds`. Rozpoznání jde poznat jen
+nepřímo, z `thumbhash` a z front `faceDetection` a `facialRecognition`.
 
 ## Goals / Non-Goals
 
@@ -99,7 +103,9 @@ nikdy nečeká a chyba Immiche dokončení neshodí. Hlídač:
    držely do vypršení);
 3. založí album, nebo doplní a odebere assety, je-li už vazba;
 4. sleduje rozpoznávání: hotovo je, když mají všechny assety alba
-   `resized` a fronty `faceDetection` i `facialRecognition` nemají
+   `thumbhash` (videa se nepočítají: zmenšenina se jim nemusí
+   vytvořit a obličeje se v nich nehledají) a fronty `faceDetection`
+   i `facialRecognition` nemají
    aktivní ani čekající úlohy. Pak spustí `Sync.trigger()` (obličeje,
    počty osob);
 5. po `HLIDAC_LIMIT` (60 min) skončí a další práci převezme pravidelná
@@ -114,11 +120,14 @@ složky. Hlídač je jen zrychlení, ne jediná cesta.
 Fronty jsou společné celému Immichi, takže rozpoznávání cizích fotek
 ohlášení „rozpoznáno“ jen oddálí, nikdy neuspíší. Rozpoznávání krátce
 po vzniku assetu ještě nemusí být ve frontě. Tento závod pokrývá
-podmínka `resized`: detekce se zařazuje až po zmenšenině
+podmínka `thumbhash`: detekce se zařazuje až po zmenšenině
 (pravděpodobné podle chování Immiche, v API neověřené; ověří ruční
 zkouška 7.2). Obličeje pod prahem „minimum recognized faces“ Immich
 přiřadí k osobám až nočním během. Stav „rozpoznáno“ proto neznamená, že
 počet osob už se nezmění. Pravidelná synchronizace počty dorovná.
+Jednou zjištěné `rozpoznano` synchronizace nevrací zpět kvůli cizím
+úlohám ve frontách; fronty znovu ověří, jen když do alba přibudou
+assety.
 
 Ve vývojovém režimu se `.ignored` neodebírá a sken nic nového nenajde,
 proto se nespouští. Kroky 2–4 proběhnou, pokud Immich fotky akce už

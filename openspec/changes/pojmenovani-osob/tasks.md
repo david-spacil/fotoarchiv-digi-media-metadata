@@ -32,23 +32,23 @@
   vymezuje album“ a Open Questions) a případné změny zapsat do
   design.md a delty `immich-people` jako samostatný commit
   v `openspec/`. Ověření: uživatel provedení odsouhlasí.
-- [ ] 2.2 Stav akcí ve `.work/immich-alba.json`
+- [x] 2.2 Stav akcí ve `.work/immich-alba.json`
   (`{akce: {album, stav, cas, chyba?}}`), atomický zápis pod zámkem
   v paměti, čtení pro výpis akcí bez Immiche. Ověření: unit testy
   zápisu a načtení, poškozený nebo chybějící soubor = prázdný stav.
-- [ ] 2.3 Udržení alba (společné pro hlídač i synchronizaci):
+- [x] 2.3 Udržení alba (společné pro hlídač i synchronizaci):
   assety akce přes `originalPath` + `file_key` bez označených
   k vyřazení, album dohledat podle vazby nebo názvu, jinak založit,
   doplnit chybějící a odebrat cizí assety, zjistit rozpoznání
-  (`resized` u všech + prázdné fronty `faceDetection`
+  (`thumbhash` u všech fotek + prázdné fronty `faceDetection`
   a `facialRecognition`) a zapsat stav. Pravidelná synchronizace to
   udělá pro každou dokončenou akci, bez skenu. Ověření: testy
   v `tests/test_immich.py` na scénáře Album akce (Immich fotky nezná,
   album smazané, cizí akce se stejným podřetězcem cesty, klíč bez práv
   k albům, nikdy nemaže album ani asset, restart serveru) a Stav akce
   v Immichi (rozpoznání doběhlo, fronta neprázdná, asset bez
-  `resized`, chyba spojení stav nemění).
-- [ ] 2.4 Hlídač po dokončení: `akce_finish` po úspěšném zveřejnění
+  `thumbhash`, chyba spojení stav nemění).
+- [x] 2.4 Hlídač po dokončení: `akce_finish` po úspěšném zveřejnění
   spustí na pozadí sken vybrané knihovny a hlídání akce
   (`HLIDAC_INTERVAL`, `HLIDAC_LIMIT`, nejvýš jeden na akci, opakované
   dokončení ho pustí znovu). Hotovo podle všech souborů alba, nebo
