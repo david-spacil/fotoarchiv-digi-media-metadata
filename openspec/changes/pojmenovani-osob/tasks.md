@@ -2,7 +2,7 @@
 
 ## 1. Klient Immiche: zápis a oprávnění klíče
 
-- [ ] 1.1 `immich.py`: metody klienta `api_key_permissions`
+- [x] 1.1 `immich.py`: metody klienta `api_key_permissions`
   (`GET /api/api-keys/me`), `update_people` (`PUT /api/people`),
   `merge_people` (`POST /api/people/merge`), `albums`/`album`/
   `create_album`/`add_album_assets`/`remove_album_assets`,
@@ -13,7 +13,7 @@
   v `tests/test_immich.py` rozšířit o tytéž endpointy a záznam zápisů.
   Ověření: unit testy na tvar požadavků (metoda, cesta, tělo, cíl
   sloučení = první id).
-- [ ] 1.2 `test_connection`: krok oprávnění porovná `permissions` se
+- [x] 1.2 `test_connection`: krok oprávnění porovná `permissions` se
   seznamem pro alba, sken, fronty a nástroj (`all` = vše) a chybějící
   vrátí jako varování. Varuje i při 403 na `GET /api/libraries` (klíč
   bez role admin) a při nevybrané knihovně. Ověření: testy „klíč jen
@@ -21,7 +21,7 @@
   a „klíč bez role admin“. Stránka nastavení (`app.js`) varování
   zobrazí. README, Aplikace → Immich: potřebná oprávnění klíče
   a varování.
-- [ ] 1.3 Výběr knihovny v nastavení: `GET /api/immich/knihovny`
+- [x] 1.3 Výběr knihovny v nastavení: `GET /api/immich/knihovny`
   (admin) vrátí knihovny Immiche, uložení přidá `knihovna` do
   `immich.json` (`Settings`). Ověření: testy uložení a načtení id,
   scénář Výběr knihovny; stránka nastavení výběr ukáže.
