@@ -58,7 +58,7 @@
   Ověření: testy s `FakeImmich` a zkráceným intervalem na scénáře
   Dokončení akce, Dokončení nečeká na Immich, Vývojový režim, Immich
   fotky nenašel; test, že chyba Immiche nemění výsledek dokončení.
-- [ ] 2.5 `GET /api/akce/<nazev>/immich` (každý přihlášený, jen ze
+- [x] 2.5 `GET /api/akce/<nazev>/immich` (každý přihlášený, jen ze
   `.work/`), stav na kartě akce (`app.js`, data z výpisu akcí) a na
   ploše akce s obnovováním během `nacitani` a `rozpoznavani`.
   Ověření: test endpointu (bez dotazu na `FakeImmich`), prohlížeč nad
