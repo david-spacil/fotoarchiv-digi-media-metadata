@@ -17,9 +17,9 @@ from pathlib import Path
 from flask import (Flask, Response, abort, g, jsonify, make_response,
                    redirect, request, send_file, session)
 
-from . import (auth, cleanup, consistency, geocode, immich, importer,
-               integrity, lock, model, names, scan, thumbs, unsorted,
-               version, xmp)
+from . import (albums, auth, cleanup, consistency, geocode, immich,
+               importer, integrity, lock, model, names, scan, thumbs,
+               unsorted, version, xmp)
 from . import index as archive_index
 from .archive import SCHEMA, UNSORTED, Collision, Conflict, Workspace
 
@@ -38,9 +38,14 @@ NOBODY = dict({"login": None, "jmeno": None, "email": None, "role": "admin",
 
 def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                immich_fetch=None, immich_interval=None, prihlaseni=True,
-               https=False):
+               https=False, immich_hlidac_interval=None,
+               immich_hlidac_limit=None):
     """`immich_interval` (s) zapne pravidelnou synchronizaci obličejů
     z Immiche, jakmile je nastavené připojení; None = jen na požádání.
+
+    `immich_hlidac_interval` a `immich_hlidac_limit` (s) zkracují
+    hlídání akce po dokončení (`albums.Hlidac`) pro testy; ve výchozím
+    nastavení jsou to konstanty `HLIDAC_INTERVAL` a `HLIDAC_LIMIT`.
 
     `prihlaseni=False` jen ve vývojovém režimu (hlídá CLI); `https`
     posílá cookie relace jen přes HTTPS.
@@ -60,6 +65,11 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     immich_settings = immich.Settings(ws.work)
     sync = immich.Sync(ws, locks, immich_settings, name_index.names,
                        fetch=immich_fetch, interval=immich_interval)
+    # Hlídač alba a rozpoznávání po dokončení akce (na pozadí).
+    hlidac = albums.Hlidac(
+        sync,
+        interval=immich_hlidac_interval or immich.HLIDAC_INTERVAL,
+        limit=immich_hlidac_limit or immich.HLIDAC_LIMIT)
     if immich_interval and immich_settings.load():
         sync.start()
     app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
@@ -67,6 +77,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     app.config["LOCKS"] = locks
     app.config["IMPORTS"] = imports
     app.config["IMMICH"] = sync
+    app.config["IMMICH_HLIDAC"] = hlidac
     app.config["AUTH"] = accounts
     app.config.update(SECRET_KEY=auth.secret_key(ws.work),
                       SESSION_COOKIE_NAME="fotoarchiv",
@@ -403,6 +414,10 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 version = ws.save(nazev, doc, version)
         except Conflict as e:
             return {"chyba": "konflikt", "version": e.current_version}, 409
+        if result and not result["chyby"] and not result.get("zverejneni"):
+            # Alba a rozpoznávání hlídá pozadí: sken knihovny, album,
+            # stav. Dokončení na Immich nečeká a jeho chybu nezaznamená.
+            hlidac.spust(nazev)
         return dict(result, dokonceno=doc["dokonceno"], version=version,
                     export_version=ws.export_version(nazev),
                     index=archive_index.write(ws))

@@ -28,6 +28,13 @@ WORKERS = 4
 INTERVAL = 15 * 60
 RELACE = "immich-sync"
 JMENO = "Immich (synchronizace)"
+# Hlídač po dokončení akce (albums.Hlidac): dotaz na assety po
+# `HLIDAC_INTERVAL` s, celkový limit `HLIDAC_LIMIT` s. V testech
+# zkrátitelné parametry hlídače.
+HLIDAC_INTERVAL = 20
+HLIDAC_LIMIT = 60 * 60
+# Fronty, které musí stát, než lze ohlásit „obličeje rozpoznány“.
+FRONTY_ML = ("faceDetection", "facialRecognition")
 
 # Oprávnění klíče pro alba akcí, sken knihovny, stav rozpoznávání
 # a nástroj pojmenování (klíč s `all` má vše).
@@ -232,6 +239,11 @@ class Client:
                                    "withPeople": True, "withExif": True},
                                   size=size, all_pages=all_pages)
 
+    def album_asset_ids(self, album_id):
+        """Id assetů alba (`AlbumResponseDto` je v Immichi 3 neobsahuje,
+        proto přes vyhledávání s `albumIds`)."""
+        return [a["id"] for a in self._search_paged({"albumIds": [album_id]})]
+
     def search_path(self, original_path, size=PAGE, all_pages=True):
         """Assety, jejichž cesta v Immichi obsahuje `original_path`
         (filtr je podřetězec — výsledek se dofiltruje přes `file_key`)."""
@@ -398,12 +410,15 @@ class Sync:
 
     def __init__(self, ws, locks, settings, known_names, fetch=None,
                  interval=INTERVAL):
+        from . import albums     # albums importuje immich (cyklus jen
+                                 # v modulech, ne při importu)
         self.ws = ws
         self.locks = locks
         self.settings = settings
         self.known_names = known_names
         self.fetch = fetch
         self.interval = interval
+        self.alba = albums.Stavy(ws.work)
         self._running = threading.Lock()
         self._thread = None
         self._start_lock = threading.Lock()
@@ -435,6 +450,10 @@ class Sync:
                              "zmenene": [], "preskocene": []}
                 return self.status()
             changed, skipped = self.write(found)
+            try:
+                self.udrzet_alba(client)
+            except Exception:  # noqa: BLE001 — alba nesmí shodit obličeje
+                log.exception("immich: údržba alb selhala")
             self.last = self.last_ok = {
                 "cas": started, "ok": True, "chyba": None,
                 "zmenene": changed, "preskocene": skipped}
@@ -483,6 +502,26 @@ class Sync:
             finally:
                 self.locks.release(akce, RELACE)
         return changed, skipped
+
+    def udrzet_alba(self, client):
+        """Údržba alb všech dokončených akcí (bez skenu).
+
+        Společná cesta s hlídačem po dokončení (`albums.Hlidac`);
+        chyba u jedné akce nezastaví ostatní ani zápis obličejů.
+        """
+        from . import albums
+        for akce in self.ws.event_names():
+            try:
+                doc, _ = self.ws.load(akce)
+            except KeyError:  # kolize přípony `.ignored`
+                continue
+            if doc is None or not doc.get("dokonceno"):
+                continue
+            try:
+                albums.udrzet_album(client, self.ws, self.alba, akce)
+            except Exception:  # noqa: BLE001 — jiná akce může projít
+                log.warning("immich: údržba alba %s selhala", akce,
+                            exc_info=True)
 
     def trigger(self):
         """Běh na pozadí na požádání; vrátí stav."""

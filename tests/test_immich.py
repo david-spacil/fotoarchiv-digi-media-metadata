@@ -1,10 +1,11 @@
 import json
 import stat
+import time
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from fotoarchiv import immich
+from fotoarchiv import albums, immich
 from fotoarchiv.app import create_app
 from fotoarchiv.archive import SCHEMA
 from .conftest import make_tree
@@ -29,7 +30,11 @@ class FakeImmich:
     """Podvržené API: osoby, assety (id → cesta), obličeje a alba.
 
     Zapisovací dotazy (POST/PUT/DELETE) zaznamenává do `writes` jako
-    (metoda, cesta, tělo).
+    (metoda, cesta, tělo). Asset ze `search/metadata` má `type`
+    a `thumbhash` (None u id ve `bez_nahledu`); album v odpovědi jako
+    v Immichi 3 bez seznamu assetů (členy jen přes `albumIds`),
+    `no_admin` blokuje administrátorské knihovny i fronty (403),
+    `fail` částí URL simuluje chybu (403) i na albích.
     """
 
     def __init__(self):
@@ -41,10 +46,12 @@ class FakeImmich:
         self.writes = []        # (metoda, cesta, tělo) zápisových dotazů
         self.permissions = ["all"]
         self.libraries = [{"id": "lib-1", "name": "Archiv"}]
-        self.no_admin = False   # GET /api/libraries odpovědí 403
+        self.no_admin = False   # GET /api/libraries a fronty odpovědí 403
         self.queues = {}        # název → statistics (default = nuly)
         self.albums = {}        # id → {id, albumName, assetIds}
         self.album_seq = 0
+        self.bez_nahledu = set()  # assety bez zmenšeniny (thumbhash None)
+        self.typy = {}          # id → type (výchozí IMAGE)
 
     def add(self, asset_id, path, *faces):
         self.paths[asset_id] = path
@@ -53,6 +60,12 @@ class FakeImmich:
             p = f["person"]
             if p and p not in self.people:
                 self.people.append(p)
+
+    @staticmethod
+    def _album(album):
+        """`AlbumResponseDto` Immiche 3: bez seznamu assetů."""
+        return {"id": album["id"], "albumName": album["albumName"],
+                "assetCount": len(album["assetIds"])}
 
     def thumbnail(self, method, url, klic):
         """Podvržený binární dotaz (`fetch_bytes`) na zmenšeninu."""
@@ -104,8 +117,11 @@ class FakeImmich:
             chunk = ids[(page - 1) * size:page * size]
             more = page * size < len(ids)
             return {"assets": {
-                "items": [{"id": a, "originalPath": self.paths[a]}
-                          for a in chunk],
+                "items": [{"id": a, "originalPath": self.paths[a],
+                           "type": self.typy.get(a, "IMAGE"),
+                           "resized": True,   # Immich 3.3: vždy true
+                           "thumbhash": None if a in self.bez_nahledu
+                           else "hash"} for a in chunk],
                 "nextPage": str(page + 1) if more else None}}
         if parts.path == "/api/albums":
             if method == "POST":
@@ -114,8 +130,8 @@ class FakeImmich:
                          "albumName": body["albumName"],
                          "assetIds": list(body.get("assetIds") or [])}
                 self.albums[album["id"]] = album
-                return dict(album)
-            return [dict(a) for a in self.albums.values()]
+                return self._album(album)
+            return [self._album(a) for a in self.albums.values()]
         if parts.path.startswith("/api/albums/"):
             rest = parts.path.removeprefix("/api/albums/")
             if rest.endswith("/assets"):
@@ -130,7 +146,7 @@ class FakeImmich:
                 return None
             if rest not in self.albums:
                 raise immich.ImmichError(f"HTTP 404 {url}", status=404)
-            return dict(self.albums[rest])
+            return self._album(self.albums[rest])
         if parts.path == "/api/libraries":
             if self.no_admin:
                 raise immich.ImmichError(f"HTTP 403 {url}", status=403)
@@ -139,6 +155,8 @@ class FakeImmich:
                 and parts.path.endswith("/scan")):
             return None                    # prázdná odpověď (204)
         if parts.path.startswith("/api/queues/"):
+            if self.no_admin:
+                raise immich.ImmichError(f"HTTP 403 {url}", status=403)
             name = parts.path.removeprefix("/api/queues/")
             return {"name": name, "statistics": self.queues.get(
                 name, {"active": 0, "waiting": 0, "completed": 0,
@@ -320,7 +338,7 @@ def test_album_requests(setup):
     albums = client.albums()
     assert [a["id"] for a in albums] == [album["id"]]
     assert albums[0]["albumName"] == EVENT
-    assert albums[0]["assetIds"] == ["a2", "a3"]
+    assert fake.albums[album["id"]]["assetIds"] == ["a2", "a3"]
     with pytest.raises(immich.ImmichError) as e:
         client.album("neexistujici")
     assert e.value.status == 404
@@ -644,3 +662,482 @@ def test_settings_admin_only(tmp_path):
         r = getattr(c, method)(path, json={"adresa": URL, "klic": KEY})
         assert r.status_code == 403, path
     assert not (work / "immich.json").exists()
+
+
+# --- stav akcí ve `.work/immich-alba.json` (2.2) ----------------------------
+
+def test_stavy_round_trip(tmp_path):
+    work = tmp_path / "work"
+    stavy = albums.Stavy(work)
+    assert stavy.polozka(EVENT) is None
+    polo = stavy.nastav(EVENT, stav="nacitani")
+    assert polo["stav"] == "nacitani" and polo["album"] is None
+    assert polo["cas"]
+    stavy.nastav(EVENT, album="alb1")
+    polo = stavy.polozka(EVENT)
+    assert polo["album"] == "alb1" and polo["stav"] == "nacitani"
+    stavy.nastav(EVENT, stav="rozpoznano", chyba=None)
+    polo = stavy.polozka(EVENT)
+    assert polo["stav"] == "rozpoznano" and "chyba" not in polo
+    stavy.nastav(EVENT, chyba="HTTP 403 /api/queues/faceDetection")
+    polo = stavy.polozka(EVENT)
+    assert "403" in polo["chyba"] and polo["stav"] == "rozpoznano"
+    # nezměněný zápis soubor nepřepíše
+    path = work / "immich-alba.json"
+    mtime = path.stat().st_mtime_ns
+    stavy.nastav(EVENT, chyba="HTTP 403 /api/queues/faceDetection")
+    assert path.stat().st_mtime_ns == mtime
+    stavy.nastav(EVENT, chyba=None)
+    assert "chyba" not in stavy.polozka(EVENT)
+    assert json.loads(path.read_text())[EVENT]["album"] == "alb1"
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert not list(work.glob(".immich-alba-*"))      # žádný dočasný soubor
+
+
+def test_stavy_poskozeny_nebo_chybejici_soubor(tmp_path):
+    work = tmp_path / "work"
+    work.mkdir()
+    path = work / "immich-alba.json"
+    path.write_text("{", encoding="utf-8")
+    stavy = albums.Stavy(work)
+    assert stavy.nacti() == {} and stavy.polozka(EVENT) is None
+    path.write_text("[]", encoding="utf-8")          # ne_dict = prázdné
+    assert stavy.nacti() == {}
+    stavy.nastav(EVENT, stav="rozpoznavani")         # přepíše poškozené
+    assert stavy.polozka(EVENT)["stav"] == "rozpoznavani"
+    path.unlink()
+    assert albums.Stavy(work).nacti() == {}
+
+
+def test_stavy_zamek_pod_zatezi(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    stavy = albums.Stavy(tmp_path / "work")
+
+    def zapsat(i):
+        stavy.nastav(f"2026-01-01 Akce {i}", stav="rozpoznavani")
+        stavy.nastav(f"2026-01-01 Akce {i}", album=f"alb{i}")
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(zapsat, range(12)))
+    data = stavy.nacti()
+    assert len(data) == 12
+    for jmeno, entry in data.items():
+        assert entry["stav"] == "rozpoznavani"
+        assert entry["album"] == f"alb{jmeno.split()[-1]}"
+
+
+def test_stavy_cteni_bez_immiche(setup):
+    app, fake = setup
+    stavy = albums.Stavy(app.config["WORKSPACE"].work)
+    pred = len(fake.calls)
+    stavy.nacti()
+    stavy.polozka(EVENT)
+    assert len(fake.calls) == pred
+
+
+# --- údržba alb synchronizací (2.3) -----------------------------------------
+
+def dokoncit(app, akce=EVENT):
+    ws = app.config["WORKSPACE"]
+    doc, version = ws.load(akce)
+    doc["dokonceno"] = "2026-10-01"
+    ws.save(akce, doc, version)
+
+
+def stavy_of(app):
+    return app.config["IMMICH"].alba
+
+
+def test_sync_nedokoncena_akce_album_nedostane(setup):
+    app, fake = setup
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    app.config["IMMICH"].run()
+    assert fake.albums == {}
+    assert stavy_of(app).polozka(EVENT) is None
+
+
+def test_sync_vytvori_album_a_stav_rozpoznano(setup):
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    app.config["IMMICH"].run()
+    album = list(fake.albums.values())
+    assert len(album) == 1
+    assert album[0]["albumName"] == EVENT
+    assert sorted(album[0]["assetIds"]) == ["a1", "a2"]
+    polo = stavy_of(app).polozka(EVENT)
+    assert polo["album"] == album[0]["id"]
+    assert polo["stav"] == "rozpoznano" and polo["cas"]
+    assert "chyba" not in polo
+
+
+def test_sync_immich_fotky_nezna(setup):
+    app, fake = setup
+    dokoncit(app)
+    status = app.config["IMMICH"].run()
+    assert status["posledni"]["ok"] is True
+    assert fake.albums == {}
+    assert stavy_of(app).polozka(EVENT) is None
+
+
+def test_sync_doplni_chybejici_a_odebere_cizi(setup):
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a9", f"{ROOT}/2026-09-20 jina akce/x.jpg", face(None))
+    fake.albums["albx"] = {"id": "albx", "albumName": EVENT,
+                           "assetIds": ["a9"]}
+    app.config["IMMICH"].run()
+    assert fake.albums["albx"]["assetIds"] == ["a1", "a2"]
+    assert stavy_of(app).polozka(EVENT)["album"] == "albx"
+    # maže se jen odebrání assetů z alba, nikdy album nebo asset
+    for method, path, _ in fake.writes:
+        if method == "DELETE":
+            assert path.startswith("/api/albums/") and \
+                path.endswith("/assets"), path
+
+
+def test_sync_album_smazane_v_immichi(setup):
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    sync = app.config["IMMICH"]
+    sync.run()
+    del fake.albums[stavy_of(app).polozka(EVENT)["album"]]
+    sync.run()
+    assert len(fake.albums) == 1
+    polo = stavy_of(app).polozka(EVENT)
+    assert polo["album"] in fake.albums
+    assert sorted(next(iter(fake.albums.values()))["assetIds"]) == \
+        ["a1", "a2"]
+
+
+def test_sync_ztratena_vazba_dohleda_podle_nazvu(setup):
+    """Po ztrátě `.work/immich-alba.json` nesmí vzniknout duplicitní
+    album."""
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    app.config["IMMICH"].run()
+    stavy_of(app).path.unlink()
+    app.config["IMMICH"].run()
+    assert len(fake.albums) == 1
+    assert stavy_of(app).polozka(EVENT)["album"] in fake.albums
+
+
+def test_sync_nova_instace_drovna_po_restartu(setup):
+    """Nová instance Sync (restart serveru, paměť pryč) album dorovná."""
+    app, fake = setup
+    ws = app.config["WORKSPACE"]
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.albums["albX"] = {"id": "albX", "albumName": EVENT,
+                           "assetIds": ["a1"]}
+    stavy_of(app).nastav(EVENT, album="albSmazany", stav="nacitani")
+    druha = immich.Sync(ws, app.config["LOCKS"],
+                        immich.Settings(ws.work), lambda: set(),
+                        fetch=fake)
+    druha.run()
+    assert fake.albums["albX"]["assetIds"] == ["a1", "a2"]
+    polo = stavy_of(app).polozka(EVENT)
+    assert polo["album"] == "albX" and polo["stav"] == "rozpoznano"
+
+
+def test_sync_cizi_akce_se_stejnym_podretezcem(setup):
+    """`originalPath` filtr je podřetězec — `file_key` musí oddělit
+    `… Konference` od `… Konference 2`."""
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("ax", f"{ROOT}/{EVENT} 2/cizak.jpg", face("Cizi, Osoba"))
+    app.config["IMMICH"].run()
+    album = next(iter(fake.albums.values()))
+    assert album["assetIds"] == ["a1"]
+
+
+def test_sync_vyradene_soubory_nejsou_v_albu(setup):
+    app, fake = setup
+    dokoncit(app)
+    ws = app.config["WORKSPACE"]
+    doc, version = ws.load(EVENT)
+    doc["soubory"]["b.jpg"]["vyradit"] = True
+    ws.save(EVENT, doc, version)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    app.config["IMMICH"].run()
+    assert next(iter(fake.albums.values()))["assetIds"] == ["a1"]
+
+
+def test_sync_klic_bez_prav_k_album_obliceje_projdou(setup):
+    """Scénář Klíč bez oprávnění k albům: zápis obličejů proběhne,
+    album ne, chyba se zapíše a stav nevznikne."""
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.fail = "/api/albums"                  # 403 na alba
+    status = app.config["IMMICH"].run()
+    assert status["posledni"]["ok"] is True
+    assert status["posledni"]["zmenene"] == [EVENT]
+    assert faces_of(app, "P9109996.JPG") is not None
+    assert fake.albums == {}
+    polo = stavy_of(app).polozka(EVENT)
+    assert polo["chyba"] and "403" in polo["chyba"]
+    assert polo.get("stav") is None
+
+
+def test_sync_fronta_neprazdna_rozpoznavani(setup):
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.queues["facialRecognition"] = {"active": 0, "waiting": 3}
+    app.config["IMMICH"].run()
+    assert stavy_of(app).polozka(EVENT)["stav"] == "rozpoznavani"
+
+
+def test_sync_asset_bez_zmenseniny_rozpoznavani(setup):
+    """Fotka bez `thumbhash` = zmenšenina ještě není; `resized` je
+    v Immichi 3.3 vždy true, a proto se nepoužívá."""
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.bez_nahledu = {"a2"}
+    app.config["IMMICH"].run()
+    assert stavy_of(app).polozka(EVENT)["stav"] == "rozpoznavani"
+
+
+def test_sync_video_bez_zmenseniny_neblokuje(setup):
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.typy["a2"] = "VIDEO"
+    fake.bez_nahledu = {"a2"}
+    app.config["IMMICH"].run()
+    assert stavy_of(app).polozka(EVENT)["stav"] == "rozpoznano"
+
+
+def test_sync_rozpoznano_necha_pri_cizi_praci_ve_fronte(setup):
+    """Fronty jsou společné: cizí úlohy už rozpoznanou akci nevrátí."""
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    sync = app.config["IMMICH"]
+    sync.run()
+    assert sync.alba.polozka(EVENT)["stav"] == "rozpoznano"
+    fake.queues["faceDetection"] = {"active": 2, "waiting": 40}
+    sync.run()
+    assert sync.alba.polozka(EVENT)["stav"] == "rozpoznano"
+
+
+def test_sync_odebere_cizi_asset_z_existujiciho_alba(setup):
+    """Členy alba se čtou přes `albumIds` (odpověď alba je nemá)."""
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a9", f"{ROOT}/2026-09-20 jina akce/x.jpg", face(None))
+    fake.albums["albY"] = {"id": "albY", "albumName": EVENT,
+                           "assetIds": ["a1", "a9"]}
+    app.config["IMMICH"].run()
+    assert fake.albums["albY"]["assetIds"] == ["a1"]
+    assert not [w for w in fake.writes
+                if w[1] == "/api/albums/albY/assets" and w[0] == "PUT"]
+
+
+def test_sync_fronta_403_stav_rozpoznavani_a_chyba(setup):
+    """Klíč bez role admin: album je udrženo, rozpoznání nelze ověřit
+    → `rozpoznavani` s chybou."""
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.no_admin = True
+    app.config["IMMICH"].run()
+    assert len(fake.albums) == 1
+    polo = stavy_of(app).polozka(EVENT)
+    assert polo["stav"] == "rozpoznavani"
+    assert "403" in polo["chyba"]
+
+
+def test_sync_chyba_fronty_stav_nemini(setup):
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    sync = app.config["IMMICH"]
+    sync.run()
+    assert sync.alba.polozka(EVENT)["stav"] == "rozpoznano"
+    fake.fail = "/api/queues"
+    # nový asset alba vynutí nové ověření front
+    fake.add("a3", f"{ROOT}/{EVENT}/c.jpg", face("Hlava, Miloš"))
+    (app.config["WORKSPACE"].event_dir(EVENT) / "c.jpg").write_bytes(b"x")
+    sync.run()
+    polo = sync.alba.polozka(EVENT)
+    assert polo["stav"] == "rozpoznano" and "403" in polo["chyba"]
+
+
+def test_udrzet_album_chyba_hledani_stav_nemini(setup):
+    """Chyba `search` v `udrzet_album`: stav ani vazba se nezmění,
+    jen se zapíše chyba."""
+    app, fake = setup
+    dokoncit(app)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    sync = app.config["IMMICH"]
+    sync.run()
+    album_id = sync.alba.polozka(EVENT)["album"]
+    fake.fail = "/api/search"
+    assert albums.udrzet_album(sync.client(), app.config["WORKSPACE"],
+                               sync.alba, EVENT) is None
+    polo = sync.alba.polozka(EVENT)
+    assert polo["stav"] == "rozpoznano" and polo["album"] == album_id
+    assert polo["chyba"]
+
+
+# --- hlídač po dokončení (2.4) ----------------------------------------------
+
+def hlidaci_setup(tmp_path, monkeypatch, zapis=False, interval=0.05,
+                  limit=1.0):
+    """Aplikace se zkráceným hlídačem (zkratka konstant HLIDAC_*)."""
+    archiv = tmp_path / "archiv"
+    archiv.mkdir()
+    make_tree(archiv, {f"{EVENT}/": {"P9109996.JPG": "x", "b.jpg": "x"},
+                       f"{OTHER}/": {"c.jpg": "x"}})
+    monkeypatch.setattr("fotoarchiv.scan.run_exiftool", lambda d, n: {})
+    fake = FakeImmich()
+    app = create_app(archiv, tmp_path / "work", zapis, immich_fetch=fake,
+                     prihlaseni=False, immich_hlidac_interval=interval,
+                     immich_hlidac_limit=limit)
+    ws = app.config["WORKSPACE"]
+    ws.save(EVENT, {"schema": SCHEMA, "akce": {"nazev": "Konference"},
+                    "skupiny": {}, "soubory": {"P9109996.JPG": {},
+                                               "b.jpg": {}}}, None)
+    immich.Settings(ws.work).save(URL, KEY, "lib-1")
+    return app, fake
+
+
+def otestuj_dokonceni(app):
+    """Požádá server o dokončení akce; vrátí (odpověď, čas odpovědi)."""
+    app.config["LOCKS"].acquire(EVENT, "r1", "Novák, Jan")
+    _, version = app.config["WORKSPACE"].load(EVENT)
+    start = time.monotonic()
+    r = app.test_client().post(
+        f"/api/akce/{EVENT}/dokoncit",
+        json={"relace": "r1", "version": version})
+    return r, time.monotonic() - start
+
+
+def test_dokonceni_vytvori_album_a_spusti_sync(tmp_path, monkeypatch):
+    """Scénář Dokončení akce (produkce): sken, album, rozpoznání,
+    `Sync.trigger()` — vše na pozadí."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch, zapis=True)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    volani = []
+    monkeypatch.setattr(app.config["IMMICH"], "trigger",
+                        lambda: volani.append(1))
+    r, cas = otestuj_dokonceni(app)
+    assert r.status_code == 200 and r.json["dokonceno"]
+    assert cas < 2                        # na Immich se nečekalo
+    hlidac = app.config["IMMICH_HLIDAC"]
+    assert hlidac.cekat(5)
+    album = next(iter(fake.albums.values()))
+    assert album["albumName"] == EVENT
+    assert sorted(album["assetIds"]) == ["a1", "a2"]
+    assert app.config["IMMICH"].alba.polozka(EVENT)["stav"] == "rozpoznano"
+    assert volani == [1]
+    scan_i = next(i for i, w in enumerate(fake.writes)
+                  if w[1] == "/api/libraries/lib-1/scan")
+    album_i = next(i for i, w in enumerate(fake.writes)
+                   if w[1] == "/api/albums" and w[0] == "POST")
+    assert scan_i < album_i               # nejdřív sken, pak album
+
+
+def test_dokonceni_neceka_na_immich(tmp_path, monkeypatch):
+    """Nedostupný Immich: dokončení proběhne jako dosud a rychle,
+    alba se chopí až pozdější synchronizace."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch)
+    fake.fail = "/api"
+    r, cas = otestuj_dokonceni(app)
+    assert r.status_code == 200 and r.json["dokonceno"]
+    assert r.json["chyby"] == []
+    assert cas < 2
+    hlidac = app.config["IMMICH_HLIDAC"]
+    assert hlidac.cekat(5)                # hlídač doběhl s chybami
+    assert fake.albums == {}
+    polo = app.config["IMMICH"].alba.polozka(EVENT)
+    assert polo["chyba"] and "403" in polo["chyba"]
+    assert polo.get("stav") is None       # nic jsme nezjistili
+
+
+def test_dokonceni_vyvojovy_rezim(tmp_path, monkeypatch):
+    """Scénář Vývojový režim: bez skenu, album vznikne, když Immich
+    fotky zná."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    r, _ = otestuj_dokonceni(app)
+    assert r.status_code == 200
+    hlidac = app.config["IMMICH_HLIDAC"]
+    assert hlidac.cekat(5)
+    assert sorted(next(iter(fake.albums.values()))["assetIds"]) == \
+        ["a1", "a2"]
+    assert not any(w[1] == "/api/libraries/lib-1/scan"
+                   for w in fake.writes)
+
+
+def test_hlidac_immich_nenasel_nenalezeno(tmp_path, monkeypatch):
+    """Scénář Immich fotky nenašel: po vypršení hlídání bez jediného
+    assetu je stav `nenalezeno`."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch)
+    hlidac = app.config["IMMICH_HLIDAC"]
+    assert hlidac.spust(EVENT) is True
+    assert hlidac.cekat(5)
+    assert fake.albums == {}
+    assert app.config["IMMICH"].alba.polozka(EVENT)["stav"] == "nenalezeno"
+
+
+def test_hlidac_druha_podminka_hotovo_podle_fronty(tmp_path, monkeypatch):
+    """Immich nikdy nenaimportuje jeden soubor: fronta `library` stojí
+    a počet nalezených se nezměnil → album i tak vznikne."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    hlidac = app.config["IMMICH_HLIDAC"]
+    hlidac.spust(EVENT)
+    assert hlidac.cekat(5)
+    assert next(iter(fake.albums.values()))["assetIds"] == ["a1"]
+    assert app.config["IMMICH"].alba.polozka(EVENT)["stav"] == "rozpoznano"
+
+
+def test_hlidac_opakovany_start_pusti_znovu(tmp_path, monkeypatch):
+    """Nejvýš jeden hlídač na akci; opakované spuštění nesmí zdvojit
+    album."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    hlidac = app.config["IMMICH_HLIDAC"]
+    assert hlidac.spust(EVENT) and hlidac.spust(EVENT)
+    assert hlidac.cekat(5)
+    assert len(fake.albums) == 1
+    assert sorted(next(iter(fake.albums.values()))["assetIds"]) == \
+        ["a1", "a2"]
+
+
+def test_hlidac_bez_nastaveneho_immiche(tmp_path):
+    app = create_app(tmp_path, tmp_path / "work", prihlaseni=False)
+    assert app.config["IMMICH_HLIDAC"].spust(EVENT) is False
+
+
+def test_hlidac_vychozi_konstanty():
+    """Výchozí konstanty `HLIDAC_INTERVAL`/`HLIDAC_LIMIT` (immich.py)."""
+    hlidac = albums.Hlidac(sync=None)
+    assert hlidac.interval == immich.HLIDAC_INTERVAL == 20
+    assert hlidac.limit == immich.HLIDAC_LIMIT == 3600
