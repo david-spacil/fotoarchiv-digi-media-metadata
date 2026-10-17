@@ -26,15 +26,23 @@ a nevidí, kolik osob v akci ještě chybí (issue #35).
   serveru a prohlížeč volá jen endpointy aplikace.
 - Odkazy na nástroj: karta akce v seznamu, plocha akce a chybějící
   údaj „nepojmenované osoby“ v navigátoru.
-- Synchronizace nově vede v Immichi **album pro každou dokončenou akci**
-  (vymezuje fotky akce pro nástroj) a do `.work/` ukládá počty
-  pojmenovaných a nepojmenovaných osob akce.
+- **Album pro každou dokončenou akci** (vymezuje fotky akce pro
+  nástroj): dokončení akce spustí sken knihovny Immiche a na pozadí
+  album založí, jakmile Immich fotky načte. Pravidelná synchronizace
+  album udržuje a do `.work/` ukládá počty pojmenovaných
+  a nepojmenovaných osob akce.
+- **Stav akce v Immichi** (načítá fotky, rozpoznávání obličejů probíhá,
+  obličeje rozpoznány, fotky nenalezeny) vidí každý přihlášený uživatel
+  na kartě i na ploše akce.
+- Admin v nastavení Immiche vybere knihovnu, kterou dokončení skenuje.
 - Osoby se stávají součástí kompletnosti akce: hotovost na kartě
   (`osoby N/M`), štítek „nekompletní“ a chybějící údaje navigátoru.
 - **BREAKING (provoz):** dosud stačil klíč Immiche jen pro čtení. Nově
   potřebuje i oprávnění k zápisu (`person.update`, `person.merge`,
-  `album.create`, `albumAsset.create`, …). Test připojení chybějící
-  oprávnění vypíše. Synchronizace bez nich zakládá alba až po doplnění
+  `album.create`, `albumAsset.create`, …) a pro sken a stav
+  rozpoznávání `library.read`, `library.update` a `queue.read`. Ty
+  Immich povoluje jen klíči uživatele s rolí admin. Test připojení
+  chybějící oprávnění vypíše. Synchronizace bez nich zakládá alba až po doplnění
   práv a nástroj je do té doby nedostupný.
 - **BREAKING (provoz):** aplikace začne v Immichi zakládat alba
   (pojmenovaná podle akcí) a měnit osoby (jména, skrytí, sloučení),
@@ -48,26 +56,32 @@ a nevidí, kolik osob v akci ještě chybí (issue #35).
   odložení, skrytí, oprávnění).
 
 ### Modified Capabilities
-- `immich-people`: test připojení ověřuje i oprávnění k zápisu;
-  synchronizace vede album akce a počty osob akce.
+- `immich-people`: test připojení ověřuje i oprávnění k zápisu
+  a ke skenu, nastavení má výběr knihovny; dokončení akce zakládá
+  album, synchronizace ho udržuje a vede stav akce v Immichi a počty
+  osob.
 - `metadata-workspace`: nepojmenované osoby jsou mezi chybějícími údaji
   řádku Akce v navigátoru (dosud výslovně vyloučeny).
 - `archive-browsing`: hotovost akce uvádí osoby, štítek „nekompletní“
-  počítá i nepojmenované osoby, karta nabízí nástroj.
+  počítá i nepojmenované osoby, karta ukazuje stav v Immichi a nabízí
+  nástroj.
 
 ## Impact
 
 - `fotoarchiv/immich.py`: zapisující volání klienta (osoby, sloučení,
-  alba, náhledy, oprávnění klíče); alba a počty osob v synchronizaci.
+  alba, náhledy, oprávnění klíče, knihovny, sken, fronty); hlídač akce
+  po dokončení; alba, stav akce a počty osob v synchronizaci.
 - Nový modul `fotoarchiv/naming.py`: výběr osob akce, kolo a odložené
   osoby ve `.work/`.
 - `fotoarchiv/app.py`: endpointy `/api/akce/<nazev>/osoby…` (archivář
-  a výš, mimo `ADMIN_PREFIXES`).
+  a výš, mimo `ADMIN_PREFIXES`), `GET /api/akce/<nazev>/immich` (stav,
+  každý přihlášený), spuštění hlídače v `akce_finish`.
 - `fotoarchiv/archive.py`, `fotoarchiv/model.py`: osoby v hotovosti
   a ve štítku „nekompletní“.
 - Klient: nový modul `fotoarchiv/static/naming.js` (překryv), odkazy
   v `app.js`, styl překryvu v `style.css`.
-- Nové soubory ve `.work/`: `immich-alba.json` (akce → id alba),
+- Nové soubory ve `.work/`: `immich-alba.json` (akce → id alba a stav
+  v Immichi), v `immich.json` přibude id knihovny,
   `immich-osoby.json` (počty osob akce), `pojmenovani.json`
   (odložené osoby podle uživatele a akce).
 - README (Datový model, Aplikace → Immich), AGENTS.md (nový invariant:

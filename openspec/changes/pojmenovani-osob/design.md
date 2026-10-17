@@ -20,7 +20,8 @@ vychází:
 - Dialogy klienta jsou `<dialog>` + `showModal()` s barevným
   `::backdrop` (`style.css:392`); rozmazání pozadí zatím nikde není.
 - Nedokončené akce mají v produkci příponu `.ignored`, Immich je tedy
-  nevidí (`event-visibility`).
+  nevidí (`event-visibility`). `akce_finish` (app.py:372) příponu
+  odebere, ale Immich složku načte až při svém příštím skenu knihovny.
 
 API Immiche, ze kterého návrh vychází, je ověřené ve spec v3.3.3
 (`open-api/immich-openapi-specs.json` @ tag v3.3.3, staženo 2026-10-17):
@@ -35,6 +36,14 @@ API Immiche, ze kterého návrh vychází, je ověřené ve spec v3.3.3
 | jméno, skrytí | `PUT /api/people` (hromadně; `PUT /api/people/{id}` je deprecated) | `person.update` |
 | sloučení | `POST /api/people/merge` (`ids`, první = cíl; `/{id}/merge` je deprecated) | `person.merge` |
 | alba | `GET/POST /api/albums`, `GET /api/albums/{id}`, `PUT`/`DELETE /api/albums/{id}/assets` | `album.read`, `album.create`, `albumAsset.create`, `albumAsset.delete` |
+| knihovny | `GET /api/libraries` | `library.read`, jen admin |
+| sken knihovny | `POST /api/libraries/{id}/scan` (asynchronní, celá knihovna) | `library.update`, jen admin |
+| fronty úloh | `GET /api/queues/{name}` (`statistics.active`, `waiting`, …) | `queue.read`, jen admin |
+
+Asset nemá příznak „obličeje zpracovány“. Má jen `resized` (zmenšenina
+hotová), a ta je vstupem detekce obličejů. Rozpoznání proto jde
+poznat jen nepřímo, z `resized` a z front `faceDetection`
+a `facialRecognition`.
 
 ## Goals / Non-Goals
 
@@ -59,24 +68,96 @@ Pojmenování shluku je záměr: jedno jméno pokryje i fotky mimo akci.
 Alternativa „obličej po obličeji“ by vyžadovala přeřazování obličejů
 (`PUT /api/faces/{id}`) a dělala by z nástroje opravu shlukování.
 
-### Fotky akce vymezuje album, které vede synchronizace
-Synchronizace najde assety akce přes `POST /api/search/metadata`
-s `originalPath` = název akce, výsledek dofiltruje přes `file_key`
-(filtr je podřetězec `ILIKE %…%`, takže název akce, který je částí
-jiného, vrátí i cizí fotky). Pak album založí nebo doplní. Nástroj
-i počty osob pak čtou jen `albumIds` + `withPeople`, což je jeden
-stránkovaný dotaz na akci.
+### Fotky akce vymezuje album
+Assety akce se hledají přes `POST /api/search/metadata` s `originalPath`
+= název akce. Výsledek se dofiltruje přes `file_key`, protože filtr je
+podřetězec `ILIKE %…%` a název akce, který je částí jiného, by vrátil
+i cizí fotky. Do alba patří spárované soubory kořene kromě označených
+k vyřazení (stejně jako hotovost). Nástroj i počty osob pak čtou jen
+`albumIds` + `withPeople`, což je jeden stránkovaný dotaz na akci.
 
-Album vzniká v synchronizaci, ne při dokončení: ve chvíli dokončení
-složka teprve ztrácí `.ignored` a Immich ji ještě neproskenoval.
-Vazba akce → id alba je ve `.work/immich-alba.json`. Při ztrátě
-souboru se album dohledá podle názvu, takže se nezakládá duplicitní.
+Album nemá popis a nesdílí se s dalšími uživateli Immiche. Patří
+uživateli klíče. Vazba akce → id alba je ve `.work/immich-alba.json`.
+Při ztrátě souboru se album dohledá podle názvu, takže nevznikne
+duplicitní.
 
-Alternativa „bez alba, vždy `originalPath`“ zamítnuta: stejný dotaz
-s dofiltrováním by se opakoval při každém otevření nástroje a album
-je navíc v Immichi užitečné samo o sobě. Uživatel si provedení alb
-vyhradil k podrobnému rozmyšlení, až na ně přijde řada (úkol 2.1);
-tento oddíl je výchozí návrh.
+Alternativa „bez alba, vždy `originalPath`“ zamítnuta: dotaz
+s dofiltrováním by se opakoval při každém otevření nástroje. Album je
+navíc v Immichi užitečné samo o sobě.
+
+### Album zakládá dokončení akce, synchronizace ho udržuje
+Po úspěšném zveřejnění složky (odebrání `.ignored`) spustí
+`akce_finish` hlídač akce na pozadí a hned odpoví. Dokončení na Immich
+nikdy nečeká a chyba Immiche dokončení neshodí. Hlídač:
+
+1. spustí sken knihovny vybrané v nastavení
+   (`POST /api/libraries/{id}/scan`);
+2. po `HLIDAC_INTERVAL` (20 s) se ptá `search/metadata` na assety akce.
+   Hotovo je, když Immich zná všechny soubory alba. Druhá možnost:
+   fronta `library` je prázdná a počet nalezených se mezi dvěma dotazy
+   nezměnil (soubory, které Immich nenaimportuje, by jinak hlídače
+   držely do vypršení);
+3. založí album, nebo doplní a odebere assety, je-li už vazba;
+4. sleduje rozpoznávání: hotovo je, když mají všechny assety alba
+   `resized` a fronty `faceDetection` i `facialRecognition` nemají
+   aktivní ani čekající úlohy. Pak spustí `Sync.trigger()` (obličeje,
+   počty osob);
+5. po `HLIDAC_LIMIT` (60 min) skončí a další práci převezme pravidelná
+   synchronizace.
+
+Na akci běží nejvýš jeden hlídač. Opakované dokončení ho pustí znovu,
+což je žádoucí: sken načte i nové sidecary. Pravidelná synchronizace
+dělá kroky 2–4 pro každou dokončenou akci (bez skenu), takže album
+dorovná i po restartu serveru, po smazání alba v Immichi nebo po změně
+složky. Hlídač je jen zrychlení, ne jediná cesta.
+
+Fronty jsou společné celému Immichi, takže rozpoznávání cizích fotek
+ohlášení „rozpoznáno“ jen oddálí, nikdy neuspíší. Rozpoznávání krátce
+po vzniku assetu ještě nemusí být ve frontě. Tento závod pokrývá
+podmínka `resized`: detekce se zařazuje až po zmenšenině
+(pravděpodobné podle chování Immiche, v API neověřené; ověří ruční
+zkouška 7.2). Obličeje pod prahem „minimum recognized faces“ Immich
+přiřadí k osobám až nočním během. Stav „rozpoznáno“ proto neznamená, že
+počet osob už se nezmění. Pravidelná synchronizace počty dorovná.
+
+Ve vývojovém režimu se `.ignored` neodebírá a sken nic nového nenajde,
+proto se nespouští. Kroky 2–4 proběhnou, pokud Immich fotky akce už
+zná.
+
+Zamítnuto: jen spustit sken a nechat album pravidelné synchronizaci
+(album až po 15 min a déle, uživatel neví kdy); konec podle fronty
+`library` jako jediné kritérium (fronta je společná všem knihovnám);
+čekat v požadavku dokončení (minuty, timeout).
+
+### Stav akce v Immichi, viditelný všem
+Stav je ve `.work/immich-alba.json`:
+`{akce: {album, stav, cas, chyba?}}`. Zapisuje ho hlídač
+i synchronizace (atomicky, pod zámkem v paměti):
+
+| stav | význam | uživatel vidí |
+|---|---|---|
+| `nacitani` | sken spuštěn, Immich fotky akce ještě nezná všechny | „Immich načítá fotky“ |
+| `rozpoznavani` | album je, obličeje se zpracovávají | „Rozpoznávání obličejů probíhá“ |
+| `rozpoznano` | rozpoznávání doběhlo (s časem) | „Obličeje rozpoznány (datum)“ |
+| `nenalezeno` | hlídač vypršel a Immich fotky nezná | „Immich fotky akce zatím nenašel“ |
+
+Chybějící oprávnění nebo nedostupný Immich stav nemění. Zapíšou se do
+`chyba` a ukážou se jen na stránce nastavení. Stav vidí každý
+přihlášený uživatel na kartě akce a na ploše akce. Výpis akcí ho čte ze
+`.work/`, Immiche se neptá. Plocha během `nacitani` a `rozpoznavani`
+stav obnovuje přes `GET /api/akce/<nazev>/immich` (jen tento soubor,
+bez dotazu na Immich). Bez nastaveného Immiche se stav nezobrazuje.
+
+Nástroj pojmenování jde otevřít od stavu `rozpoznavani`. Do
+`rozpoznano` ale ukazuje upozornění, že seznam osob ještě není úplný.
+Počty osob na kartě se do `rozpoznano` neuvádějí, aby akce nevypadala
+jako hotová, dokud Immich obličeje teprve hledá.
+
+### Knihovnu vybírá admin
+Nastavení Immiche dostane výběr knihovny ze `GET /api/libraries`.
+Id se uloží do `immich.json`. Odvodit knihovnu z cesty archivu nejde,
+protože cesta v kontejneru Immiche je jiná. Bez vybrané knihovny se
+sken nespouští, kroky 2–4 běží dál. Test připojení na to upozorní.
 
 ### Počty osob ve `.work/immich-osoby.json`
 Hotovost se nesmí ptát Immiche (seznam akcí musí zůstat rychlý), proto
@@ -153,9 +234,12 @@ plochy nástroj otevře. Klient nástroje je nový ES modul
 
 ### Test oprávnění klíče
 `test_connection` přidá krok `GET /api/api-keys/me` a porovná
-`permissions` se seznamem potřebným pro alba a nástroj. Chybějící
-oprávnění je varování, ne chyba: čtecí synchronizace funguje dál.
-Klíč s `all` má vše.
+`permissions` se seznamem potřebným pro alba, sken, fronty a nástroj.
+Chybějící oprávnění je varování, ne chyba: čtecí synchronizace funguje
+dál. Klíč s `all` má vše. Sken a fronty jsou v Immichi jen pro admina,
+takže klíč musí patřit uživateli s rolí admin. Test to pozná podle
+odpovědi `GET /api/libraries` (403) a vypíše to. Varuje i tehdy, když
+není vybraná knihovna.
 
 ## Risks / Trade-offs
 
@@ -177,13 +261,24 @@ Klíč s `all` má vše.
   postupně, akce bez zjištění osoby v hotovosti nemají.
 - [Uživatel smaže album v Immichi] → synchronizace ho založí znovu
   (scénář v `immich-people`).
+- [Sken je vždy pro celou knihovnu a u archivu na SMB může trvat
+  dlouho] → spouští se jen při dokončení (ne v pravidelné
+  synchronizaci). Hlídač má limit a pak práci převezme synchronizace.
+- [Klíč admina Immiche má širší práva, než aplikace potřebuje] →
+  oprávnění klíče se omezí na seznam z tabulky. Klíč zůstává jen
+  ve `.work/immich.json`.
+- [„Obličeje rozpoznány“ se ohlásí dřív, než Immich doplní noční
+  přiřazení] → stav znamená „hlavní zpracování doběhlo“. Počty osob
+  dorovnává pravidelná synchronizace.
 
 ## Migration Plan
 
-1. Admin rozšíří klíč Immiche o oprávnění z tabulky. Test připojení
-   chybějící vypíše.
+1. Admin vytvoří klíč pod uživatelem s rolí admin v Immichi
+   s oprávněními z tabulky a v nastavení vybere knihovnu archivu. Test
+   připojení vypíše, co chybí.
 2. Po nasazení první běh synchronizace založí alba všem dokončeným
-   akcím, které Immich zná, a uloží počty osob. Akce bez zjištění
+   akcím, které Immich zná. Jejich stav je rovnou `rozpoznano`, pokud
+   fronty rozpoznávání stojí. Uloží i počty osob. Akce bez zjištění
    zůstávají bez osob v hotovosti.
 3. Návrat: stará verze `.work/immich-alba.json`, `immich-osoby.json`
    ani `pojmenovani.json` nečte. Alba v Immichi zůstanou a jdou smazat
@@ -196,6 +291,5 @@ Klíč s `all` má vše.
   přenést.)
 - Výsledná sada polí metadat zdrojové fotky (uživatel ji chce doladit
   na prototypu). Spec určuje minimum.
-- Přesná podoba alb (úkol 2.1): popis alba, sdílení s dalšími
-  uživateli Immiche (`albumUsers`), zahrnout soubory označené
-  k vyřazení?
+- Délka `HLIDAC_INTERVAL` a `HLIDAC_LIMIT` se doladí podle ruční
+  zkoušky na skutečném archivu (7.2).

@@ -48,8 +48,10 @@ Seznam SHALL u akce s `_metadata.json` uvádět hotovost po polích
 autoři, datum a místo: počet souborů v kořeni (bez označených
 k vyřazení), které mají pole po zdědění vyplněné, z jejich celkového
 počtu. Pravidla dědění MUST být stejná jako u chybějících údajů na
-ploše. Má-li akce zjištěné osoby (viz `immich-people`), SHALL hotovost
-uvádět i osoby: pojmenované ze všech neskrytých. Při nepojmenovaných
+ploše. Má-li akce zjištěné osoby a stav *obličeje rozpoznány* (viz
+`immich-people`), SHALL hotovost uvádět i osoby: pojmenované ze všech
+neskrytých. Dokončená akce SHALL na kartě uvádět stav v Immichi
+(viz `immich-people`) pro každého přihlášeného uživatele. Při nepojmenovaných
 osobách SHALL karta archiváři a adminovi nabídnout nástroj pojmenování
 osob. U akce *hotovo* SHALL hotovost uvádět i stav exportu (aktuální,
 nebo „změněno po exportu“). Akce *nezpracováno* hotovost nemá; karta
@@ -74,6 +76,10 @@ spustí průvodce). Výpočet MUST NOT číst soubory archivu kromě
 - **WHEN** u akce je uloženo 4 pojmenované z 6 osob a kartu vidí
   archivář
 - **THEN** karta uvádí osoby 4/6 a odkaz na nástroj pojmenování osob
+
+#### Scenario: Rozpoznávání probíhá
+- **WHEN** dokončená akce je ve stavu „Rozpoznávání obličejů probíhá“
+- **THEN** karta ukáže tento stav a osoby do hotovosti nepočítá
 
 #### Scenario: Akce bez zjištěných osob
 - **WHEN** akce nemá album v Immichi

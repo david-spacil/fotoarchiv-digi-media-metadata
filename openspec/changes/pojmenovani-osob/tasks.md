@@ -7,32 +7,65 @@
   `merge_people` (`POST /api/people/merge`), `albums`/`album`/
   `create_album`/`add_album_assets`/`remove_album_assets`,
   `search_album` (`albumIds`, `withPeople`, `withExif`, stránkování),
-  `thumbnail` (`size=preview`, binární odpověď). `FakeImmich`
+  `thumbnail` (`size=preview`, binární odpověď), `libraries`
+  (`GET /api/libraries`), `scan_library` (`POST …/{id}/scan`), `queue`
+  (`GET /api/queues/{name}`). `FakeImmich`
   v `tests/test_immich.py` rozšířit o tytéž endpointy a záznam zápisů.
   Ověření: unit testy na tvar požadavků (metoda, cesta, tělo, cíl
   sloučení = první id).
 - [ ] 1.2 `test_connection`: krok oprávnění porovná `permissions` se
-  seznamem pro alba a nástroj (`all` = vše) a chybějící vrátí jako
-  varování. Ověření: testy „klíč jen pro čtení“ (varování se seznamem,
-  test projde) a „klíč s `all`“. Stránka nastavení (`app.js`) varování
+  seznamem pro alba, sken, fronty a nástroj (`all` = vše) a chybějící
+  vrátí jako varování. Varuje i při 403 na `GET /api/libraries` (klíč
+  bez role admin) a při nevybrané knihovně. Ověření: testy „klíč jen
+  pro čtení“ (varování se seznamem, test projde), „klíč s `all`“
+  a „klíč bez role admin“. Stránka nastavení (`app.js`) varování
   zobrazí. README, Aplikace → Immich: potřebná oprávnění klíče
   a varování.
+- [ ] 1.3 Výběr knihovny v nastavení: `GET /api/immich/knihovny`
+  (admin) vrátí knihovny Immiche, uložení přidá `knihovna` do
+  `immich.json` (`Settings`). Ověření: testy uložení a načtení id,
+  scénář Výběr knihovny; stránka nastavení výběr ukáže.
 
-## 2. Alba akcí v synchronizaci
+## 2. Alba a stav akcí v Immichi
 
-- [ ] 2.1 Projít s uživatelem provedení alb (design.md, „Fotky akce
+- [x] 2.1 Projít s uživatelem provedení alb (design.md, „Fotky akce
   vymezuje album“ a Open Questions) a případné změny zapsat do
   design.md a delty `immich-people` jako samostatný commit
   v `openspec/`. Ověření: uživatel provedení odsouhlasí.
-- [ ] 2.2 Synchronizace: pro dokončené akce dohledat assety
-  (`originalPath` + `file_key`), album založit nebo dohledat podle
-  názvu, doplnit chybějící a odebrat cizí assety. Vazba ve
-  `.work/immich-alba.json` (atomický zápis). Nedokončenou akci
-  přeskočit, při chybějícím oprávnění zapsat do stavu běhu. Ověření:
-  testy v `tests/test_immich.py` na scénáře Alba akce (nová akce, Immich
-  fotky nezná, album smazané, cizí akce se stejným podřetězcem cesty,
-  klíč bez práv k albům, synchronizace nikdy nemaže album ani asset).
-  README, Aplikace → Immich: alba akcí.
+- [ ] 2.2 Stav akcí ve `.work/immich-alba.json`
+  (`{akce: {album, stav, cas, chyba?}}`), atomický zápis pod zámkem
+  v paměti, čtení pro výpis akcí bez Immiche. Ověření: unit testy
+  zápisu a načtení, poškozený nebo chybějící soubor = prázdný stav.
+- [ ] 2.3 Udržení alba (společné pro hlídač i synchronizaci):
+  assety akce přes `originalPath` + `file_key` bez označených
+  k vyřazení, album dohledat podle vazby nebo názvu, jinak založit,
+  doplnit chybějící a odebrat cizí assety, zjistit rozpoznání
+  (`resized` u všech + prázdné fronty `faceDetection`
+  a `facialRecognition`) a zapsat stav. Pravidelná synchronizace to
+  udělá pro každou dokončenou akci, bez skenu. Ověření: testy
+  v `tests/test_immich.py` na scénáře Album akce (Immich fotky nezná,
+  album smazané, cizí akce se stejným podřetězcem cesty, klíč bez práv
+  k albům, nikdy nemaže album ani asset, restart serveru) a Stav akce
+  v Immichi (rozpoznání doběhlo, fronta neprázdná, asset bez
+  `resized`, chyba spojení stav nemění).
+- [ ] 2.4 Hlídač po dokončení: `akce_finish` po úspěšném zveřejnění
+  spustí na pozadí sken vybrané knihovny a hlídání akce
+  (`HLIDAC_INTERVAL`, `HLIDAC_LIMIT`, nejvýš jeden na akci, opakované
+  dokončení ho pustí znovu). Hotovo podle všech souborů alba, nebo
+  podle prázdné fronty `library` a nezměněného počtu nalezených. Po
+  rozpoznání `Sync.trigger()`, po vypršení stav `nenalezeno`. Ve
+  vývojovém režimu bez skenu. Odpověď dokončení na Immich nečeká.
+  Ověření: testy s `FakeImmich` a zkráceným intervalem na scénáře
+  Dokončení akce, Dokončení nečeká na Immich, Vývojový režim, Immich
+  fotky nenašel; test, že chyba Immiche nemění výsledek dokončení.
+- [ ] 2.5 `GET /api/akce/<nazev>/immich` (každý přihlášený, jen ze
+  `.work/`), stav na kartě akce (`app.js`, data z výpisu akcí) a na
+  ploše akce s obnovováním během `nacitani` a `rozpoznavani`.
+  Ověření: test endpointu (bez dotazu na `FakeImmich`), prohlížeč nad
+  testovacím archivem s podvrženým stavem ve `.work/`: karta i plocha,
+  běžný uživatel stav vidí, plocha přejde na další stav bez obnovení
+  stránky.
+  README, Aplikace → Immich: alba akcí, sken po dokončení a stav akce.
 
 ## 3. Osoby akce v synchronizaci
 
@@ -46,7 +79,8 @@
 
 - [ ] 4.1 `archive.py`/`model.py`: hotovost dostane `osoby`
   `[pojmenovane, celkem]` z `.work/immich-osoby.json` (jen když akce
-  má zjištění), `incomplete` vrátí i `osoby` při nepojmenovaných.
+  má zjištění a stav `rozpoznano`), `incomplete` vrátí i `osoby`
+  při nepojmenovaných.
   Výpis akcí se Immiche neptá. Ověření: testy v `tests/test_archive.py`
   (nebo `tests/test_model.py`, podle místa výpočtu) na scénáře Stav
   akce a Hotovost akce s osobami.
@@ -107,11 +141,14 @@
 ## 7. Dokumentace a ruční ověření
 
 - [ ] 7.1 AGENTS.md: invariant „do Immiche zapisuje jen nástroj
-  pojmenování (osoby) a synchronizace (alba)“, soubory nástroje ve
+  pojmenování (osoby), dokončení a synchronizace (alba, sken knihovny
+  jen při dokončení)“, soubory nástroje ve
   `.work/` a role archivář pro nástroj. README, Datový model: osoby
   v kompletnosti a soubory ve `.work/`. Ověření: diff obou souborů
   odpovídá specifikaci.
 - [ ] 7.2 Ruční zkouška uživatele proti skutečnému Immichi: test
-  připojení s rozšířeným klíčem, založené album dokončené akce, průchod
+  připojení s rozšířeným klíčem, výběr knihovny, dokončení akce →
+  stav na ploše → založené album → „obličeje rozpoznány“ (ověřit, že
+  se neohlásí předčasně, a doladit `HLIDAC_*`), průchod
   nástrojem na mobilu i notebooku, převzetí jména do `obliceje` po
   zavření. Ověření: hlášení uživatele.

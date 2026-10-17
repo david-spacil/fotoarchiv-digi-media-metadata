@@ -14,7 +14,9 @@ se otevřít jako překryv nad plochou dané akce, nikoli jako nová stránka:
 plocha pod ním SHALL zůstat vidět rozmazaná a zmatněná. Zavření SHALL
 vrátit uživatele na plochu akce. Odkaz ze seznamu SHALL otevřít plochu
 akce rovnou s nástrojem. Odkazy SHALL být jen u akce, která má album
-v Immichi a aspoň jednu osobu k pojmenování.
+v Immichi a aspoň jednu osobu k pojmenování. Dokud stav akce v Immichi
+není *obličeje rozpoznány* (viz `immich-people`), SHALL nástroj
+upozornit, že seznam osob ještě nemusí být úplný.
 
 #### Scenario: Otevření ze seznamu
 - **WHEN** archivář na kartě akce
@@ -26,6 +28,12 @@ v Immichi a aspoň jednu osobu k pojmenování.
 #### Scenario: Zavření
 - **WHEN** archivář nástroj zavře
 - **THEN** zůstane na ploše téže akce
+
+#### Scenario: Rozpoznávání ještě probíhá
+- **WHEN** archivář otevře nástroj u akce ve stavu „Rozpoznávání
+  obličejů probíhá“
+- **THEN** nástroj nabídne dosud známé osoby a upozorní, že další
+  mohou přibýt
 
 #### Scenario: Akce bez alba
 - **WHEN** akce v Immichi album nemá (např. není dokončená)
