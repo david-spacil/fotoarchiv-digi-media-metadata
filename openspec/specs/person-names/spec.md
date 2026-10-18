@@ -27,7 +27,7 @@ seznamu, která odpovídají vstupu bez ohledu na diakritiku a velikost
 písmen. Účastníci otevřené akce SHALL být nabízeni přednostně.
 
 #### Scenario: Bez diakritiky
-- **WHEN** uživatel napíše `spac`
+- **WHEN** uživatel napíše `prikl`
 - **THEN** formulář nabídne `Příkladný, Daniel`
 
 #### Scenario: Účastník akce první
