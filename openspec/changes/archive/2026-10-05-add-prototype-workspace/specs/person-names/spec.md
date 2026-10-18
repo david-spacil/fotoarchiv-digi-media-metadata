@@ -22,12 +22,12 @@ písmen. Účastníci otevřené akce SHALL být nabízeni přednostně.
 
 #### Scenario: Bez diakritiky
 - **WHEN** uživatel napíše `spac`
-- **THEN** formulář nabídne `Spáčil, David`
+- **THEN** formulář nabídne `Příkladný, Daniel`
 
 #### Scenario: Účastník akce první
-- **WHEN** akce má mezi účastníky `Kopáčová, Zuzana` a uživatel u fotky
+- **WHEN** akce má mezi účastníky `Modelová, Zuzana` a uživatel u fotky
   napíše `k`
-- **THEN** `Kopáčová, Zuzana` je první z návrhů
+- **THEN** `Modelová, Zuzana` je první z návrhů
 
 ### Requirement: Návrh opravy
 Když zadané jméno odpovídá jménu ze seznamu po odstranění diakritiky,
@@ -35,12 +35,12 @@ sjednocení velikosti písmen a seřazení slov, formulář SHALL nabídnout
 „Mysleli jste `…`?“ a kliknutím propsat kanonický tvar.
 
 #### Scenario: Jiné pořadí slov
-- **WHEN** uživatel zadá `David Spáčil` a v seznamu je `Spáčil, David`
-- **THEN** formulář nabídne „Mysleli jste `Spáčil, David`?“
+- **WHEN** uživatel zadá `Daniel Příkladný` a v seznamu je `Příkladný, Daniel`
+- **THEN** formulář nabídne „Mysleli jste `Příkladný, Daniel`?“
 
 #### Scenario: Chybějící diakritika
-- **WHEN** uživatel zadá `Spacil, David`
-- **THEN** formulář nabídne `Spáčil, David`
+- **WHEN** uživatel zadá `Prikladny, Daniel`
+- **THEN** formulář nabídne `Příkladný, Daniel`
 
 ### Requirement: Kanonický tvar
 Nové jméno SHALL být ukládáno ve tvaru `Příjmení, Jméno`. Zadání bez

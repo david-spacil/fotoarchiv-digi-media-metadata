@@ -29,9 +29,9 @@ název akce) a u souboru `skupina` a `sha256`. Název akce proto nejde
 přepsat na úrovni skupiny, jen u souboru.
 
 #### Scenario: Autor přepsaný u fotky
-- **WHEN** skupina má `autori` = [`Spáčil, David`, `Kopáčová, Zuzana`]
-  a jeden soubor má `autori` = [`Kopáčová, Zuzana`]
-- **THEN** výslední autoři toho souboru jsou jen `Kopáčová, Zuzana`
+- **WHEN** skupina má `autori` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
+  a jeden soubor má `autori` = [`Modelová, Zuzana`]
+- **THEN** výslední autoři toho souboru jsou jen `Modelová, Zuzana`
   a ostatních souborů skupiny oba
 
 #### Scenario: Zrušení přepsání
@@ -39,7 +39,7 @@ přepsat na úrovni skupiny, jen u souboru.
 - **THEN** pole zmizí ze záznamu souboru a hodnota se znovu dědí
 
 #### Scenario: Účastníci akce
-- **WHEN** akce má `ucastnici` = [`Spáčil, David`, `Kopáčová, Zuzana`]
+- **WHEN** akce má `ucastnici` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
   a soubor ani jeho skupina nemají `osoby`
 - **THEN** soubor nemá žádné osoby
 

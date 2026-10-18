@@ -19,10 +19,10 @@ do sidecaru MUST NOT zapsat; obličeje jen podle požadavku Obličeje pro
 obnovu.
 
 #### Scenario: Zděděné hodnoty
-- **WHEN** skupina `g9` má autory `Spáčil, David` a `Kopáčová, Zuzana`
+- **WHEN** skupina `g9` má autory `Příkladný, Daniel` a `Modelová, Zuzana`
   a soubor `P1503712.JPG` patří do `g9`
-- **THEN** sidecar `P1503712.JPG.xmp` obsahuje tagy `autor/Spáčil,
-  David` a `autor/Kopáčová, Zuzana`
+- **THEN** sidecar `P1503712.JPG.xmp` obsahuje tagy `autor/Příkladný,
+  Daniel` a `autor/Modelová, Zuzana`
 
 #### Scenario: GPS z místa
 - **WHEN** soubor nemá GPS a jeho místo `Holštejn` má souřadnice

@@ -35,8 +35,8 @@ to upozornit (u nahrávání se jménem souboru a přijatým objemem).
   soubor nejvýš jednou
 
 #### Scenario: Podvržené jméno
-- **WHEN** přihlášený uživatel Kopáčová, Zuzana pošle požadavek na
-  import uživatele Spáčil, David se jménem `Spáčil, David` v požadavku
+- **WHEN** přihlášený uživatel Modelová, Zuzana pošle požadavek na
+  import uživatele Příkladný, Daniel se jménem `Příkladný, Daniel` v požadavku
 - **THEN** server vrátí 404 a import zůstane beze změny
 
 ### Requirement: Volba cíle
@@ -105,10 +105,10 @@ a výsledek SHALL uvést, že soubory jsou bez skupiny a autorů.
 
 #### Scenario: Import do rozpracované akce
 - **WHEN** uživatel v produkčním režimu importuje 30 fotek jako jednu
-  novou skupinu `Workshop` s autorem `Kopáčová, Zuzana` do akce ve
+  novou skupinu `Workshop` s autorem `Modelová, Zuzana` do akce ve
   stavu *rozpracováno*
 - **THEN** po otevření akce je na ploše skupina `Workshop` se 30
-  fotkami a autorkou `Kopáčová, Zuzana` a navigátor je neuvádí jako soubory
+  fotkami a autorkou `Modelová, Zuzana` a navigátor je neuvádí jako soubory
   bez skupiny ani skupinu bez autorů
 
 #### Scenario: Blokovaný soubor bez skupiny

@@ -18,9 +18,9 @@ synchronizace z Immiche. Osoby na fotce jsou jména z `obliceje`. Pole
 odstraněno, stejně jako `obliceje` u akce nebo skupiny.
 
 #### Scenario: Autor přepsaný u fotky
-- **WHEN** skupina má `autori` = [`Spáčil, David`, `Kopáčová, Zuzana`]
-  a jeden soubor má `autori` = [`Kopáčová, Zuzana`]
-- **THEN** výslední autoři toho souboru jsou jen `Kopáčová, Zuzana`
+- **WHEN** skupina má `autori` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
+  a jeden soubor má `autori` = [`Modelová, Zuzana`]
+- **THEN** výslední autoři toho souboru jsou jen `Modelová, Zuzana`
   a ostatních souborů skupiny oba
 
 #### Scenario: Zrušení přepsání
@@ -28,7 +28,7 @@ odstraněno, stejně jako `obliceje` u akce nebo skupiny.
 - **THEN** pole zmizí ze záznamu souboru a hodnota se znovu dědí
 
 #### Scenario: Účastníci akce
-- **WHEN** akce má `ucastnici` = [`Spáčil, David`, `Kopáčová, Zuzana`]
+- **WHEN** akce má `ucastnici` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
   a soubor nemá `obliceje`
 - **THEN** soubor nemá žádné osoby
 

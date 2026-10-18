@@ -21,9 +21,9 @@ písmen. Účastníci otevřené akce SHALL být nabízeni přednostně.
 
 #### Scenario: Bez diakritiky
 - **WHEN** uživatel napíše `spac`
-- **THEN** formulář nabídne `Spáčil, David`
+- **THEN** formulář nabídne `Příkladný, Daniel`
 
 #### Scenario: Účastník akce první
-- **WHEN** akce má mezi účastníky `Kopáčová, Zuzana` a uživatel u autora
+- **WHEN** akce má mezi účastníky `Modelová, Zuzana` a uživatel u autora
   skupiny napíše `k`
-- **THEN** `Kopáčová, Zuzana` je první z návrhů
+- **THEN** `Modelová, Zuzana` je první z návrhů

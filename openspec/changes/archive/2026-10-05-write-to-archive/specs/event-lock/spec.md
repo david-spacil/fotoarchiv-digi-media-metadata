@@ -25,9 +25,9 @@ a čas posledního heartbeatu. Klient SHALL akci otevřít jen ke čtení
 s upozorněním, kdo ji upravuje.
 
 #### Scenario: Druhý uživatel
-- **WHEN** Kopáčová otevře akci, kterou drží Spáčil
-- **THEN** vidí akci jen ke čtení a upozornění „Akci upravuje Spáčil,
-  David“
+- **WHEN** Modelová otevře akci, kterou drží Příkladný
+- **THEN** vidí akci jen ke čtení a upozornění „Akci upravuje Příkladný,
+  Daniel“
 
 ### Requirement: Heartbeat a uvolnění
 Klient SHALL zámek obnovovat zhruba každou minutu, dokud je akce

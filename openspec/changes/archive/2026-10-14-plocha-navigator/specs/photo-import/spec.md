@@ -24,10 +24,10 @@ a výsledek SHALL uvést, že soubory jsou bez skupiny a autorů.
 
 #### Scenario: Import do rozpracované akce
 - **WHEN** uživatel v produkčním režimu importuje 30 fotek jako jednu
-  novou skupinu `Workshop` s autorem `Kopáčová, Zuzana` do akce ve
+  novou skupinu `Workshop` s autorem `Modelová, Zuzana` do akce ve
   stavu *rozpracováno*
 - **THEN** po otevření akce je na ploše skupina `Workshop` se 30
-  fotkami a autorkou `Kopáčová, Zuzana` a navigátor je neuvádí jako soubory
+  fotkami a autorkou `Modelová, Zuzana` a navigátor je neuvádí jako soubory
   bez skupiny ani skupinu bez autorů
 
 #### Scenario: Blokovaný soubor bez skupiny

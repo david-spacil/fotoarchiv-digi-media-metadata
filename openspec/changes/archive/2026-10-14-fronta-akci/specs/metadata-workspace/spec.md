@@ -124,8 +124,8 @@ Akci bez `_metadata.json` stránka SHALL přesměrovat na plochu
 
 #### Scenario: Přímý odkaz bez zámku
 - **WHEN** uživatel otevře `#/akce/<název>/dokonceni` akce, kterou
-  drží Kopáčová, Zuzana
-- **THEN** stránka ukáže kontroly, uvede „upravuje Kopáčová, Zuzana“
+  drží Modelová, Zuzana
+- **THEN** stránka ukáže kontroly, uvede „upravuje Modelová, Zuzana“
   a tlačítko Dokončit je neaktivní
 
 #### Scenario: Nezpracovaná akce

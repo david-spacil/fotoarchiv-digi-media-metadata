@@ -284,8 +284,8 @@ Akci bez `_metadata.json` stránka SHALL přesměrovat na plochu
 
 #### Scenario: Přímý odkaz bez zámku
 - **WHEN** uživatel otevře `#/akce/<název>/dokonceni` akce, kterou
-  drží Kopáčová, Zuzana
-- **THEN** stránka ukáže kontroly, uvede „upravuje Kopáčová, Zuzana“
+  drží Modelová, Zuzana
+- **THEN** stránka ukáže kontroly, uvede „upravuje Modelová, Zuzana“
   a tlačítko Dokončit je neaktivní
 
 #### Scenario: Nezpracovaná akce
@@ -364,7 +364,7 @@ dosud.
 - **WHEN** uživatel otevře existující akci bez `_metadata.json`, do
   které importoval `DOD 2015` s rozdělením „podle podsložek“ a autory
   skupin
-- **THEN** krok skupiny a autoři ukáže skupiny `DOD 2015_Bara Tesar`,
+- **THEN** krok skupiny a autoři ukáže skupiny `DOD 2015_Bara Pokusna`,
   `DOD 2015_Jana`, `DOD 2015_Pavla` a `DOD 2015_Verca` s autory
   zadanými při importu
 
@@ -476,8 +476,8 @@ moci přepsat vlastními. Krok údaje akce pole autorů neukazuje.
 
 #### Scenario: Autoři celé akce
 - **WHEN** uživatel v kroku skupiny a autoři zadá autory celé akce
-  `Spáčil, David` a `Kopáčová, Zuzana`
-- **THEN** akce má `autori` = [`Spáčil, David`, `Kopáčová, Zuzana`]
+  `Příkladný, Daniel` a `Modelová, Zuzana`
+- **THEN** akce má `autori` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
   a skupina `g9` bez vlastních autorů je ukazuje jako zděděné z akce
 
 #### Scenario: Dokončení bez upozornění
@@ -486,9 +486,9 @@ moci přepsat vlastními. Krok údaje akce pole autorů neukazuje.
   a skupiny se uloží bez pole `autori`
 
 #### Scenario: Skupina s vlastními autory
-- **WHEN** akce má autory `Spáčil, David` a skupina `g9` má vlastní
-  autory `Kopáčová, Zuzana`
-- **THEN** skupina `g9` si ponechá `Kopáčová, Zuzana` jako zadané
+- **WHEN** akce má autory `Příkladný, Daniel` a skupina `g9` má vlastní
+  autory `Modelová, Zuzana`
+- **THEN** skupina `g9` si ponechá `Modelová, Zuzana` jako zadané
   u skupiny
 
 #### Scenario: Předvyplnění
@@ -584,7 +584,7 @@ náhledu ikonu, soubor k vyřazení ikonu vyřazení místo nich.
 - **THEN** jeho pruh je šrafovaný a v překryvu je `bez autorů`
 
 #### Scenario: Jiný zápis téže osoby
-- **WHEN** jeden soubor má autora `Spáčil, David` a jiný `spacil, david`
+- **WHEN** jeden soubor má autora `Příkladný, Daniel` a jiný `prikladny, daniel`
 - **THEN** oba pruhy mají tutéž barvu
 
 #### Scenario: Změna autorů skupiny

@@ -36,9 +36,9 @@ synchronizace z Immiche. Osoby na fotce jsou jména z `obliceje`. Pole
 odstraněno, stejně jako `obliceje` u akce nebo skupiny.
 
 #### Scenario: Autor přepsaný u fotky
-- **WHEN** skupina má `autori` = [`Spáčil, David`, `Kopáčová, Zuzana`]
-  a jeden soubor má `autori` = [`Kopáčová, Zuzana`]
-- **THEN** výslední autoři toho souboru jsou jen `Kopáčová, Zuzana`
+- **WHEN** skupina má `autori` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
+  a jeden soubor má `autori` = [`Modelová, Zuzana`]
+- **THEN** výslední autoři toho souboru jsou jen `Modelová, Zuzana`
   a ostatních souborů skupiny oba
 
 #### Scenario: Zrušení přepsání
@@ -46,7 +46,7 @@ odstraněno, stejně jako `obliceje` u akce nebo skupiny.
 - **THEN** pole zmizí ze záznamu souboru a hodnota se znovu dědí
 
 #### Scenario: Účastníci akce
-- **WHEN** akce má `ucastnici` = [`Spáčil, David`, `Kopáčová, Zuzana`]
+- **WHEN** akce má `ucastnici` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
   a soubor nemá `obliceje`
 - **THEN** soubor nemá žádné osoby
 
@@ -162,13 +162,13 @@ ignorovat a vzít `upravili` z uložené verze. Dokument bez `upravili`
 Podle `upravili` se řídí oprávnění k úpravě akce (viz `user-login`).
 
 #### Scenario: První uložení
-- **WHEN** uživatel Spáčil, David 2026-10-14 v 10:15:02 poprvé uloží
+- **WHEN** uživatel Příkladný, Daniel 2026-10-14 v 10:15:02 poprvé uloží
   akci bez `upravili`
 - **THEN** `_metadata.json` obsahuje
-  `"upravili": {"Spáčil, David": "2026-10-14T10:15:02"}`
+  `"upravili": {"Příkladný, Daniel": "2026-10-14T10:15:02"}`
 
 #### Scenario: Druhý uživatel
-- **WHEN** akci pak uloží uživatel Kopáčová, Zuzana
+- **WHEN** akci pak uloží uživatel Modelová, Zuzana
 - **THEN** `upravili` obsahuje obě jména, každé s časem svého
   posledního uložení
 
@@ -178,9 +178,9 @@ Podle `upravili` se řídí oprávnění k úpravě akce (viz `user-login`).
   k uložené verzi
 
 #### Scenario: Import do nové akce
-- **WHEN** uživatel Kopáčová, Zuzana provede import do nové akce
+- **WHEN** uživatel Modelová, Zuzana provede import do nové akce
 - **THEN** založený `_metadata.json` má v `upravili` jen
-  `Kopáčová, Zuzana` s časem zápisu
+  `Modelová, Zuzana` s časem zápisu
 
 #### Scenario: Sidecar
 - **WHEN** se akce s `upravili` exportuje

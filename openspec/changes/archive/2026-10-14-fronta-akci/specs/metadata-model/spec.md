@@ -12,13 +12,13 @@ akce) MUST zůstat platný; pole vznikne prvním uložením. `upravili`
 se MUST NOT exportovat do sidecarů ani indexu a nedědí se.
 
 #### Scenario: První uložení
-- **WHEN** uživatel Spáčil, David 2026-10-14 v 10:15:02 poprvé uloží
+- **WHEN** uživatel Příkladný, Daniel 2026-10-14 v 10:15:02 poprvé uloží
   akci bez `upravili`
 - **THEN** `_metadata.json` obsahuje
-  `"upravili": {"Spáčil, David": "2026-10-14T10:15:02"}`
+  `"upravili": {"Příkladný, Daniel": "2026-10-14T10:15:02"}`
 
 #### Scenario: Druhý uživatel
-- **WHEN** akci pak uloží uživatel Kopáčová, Zuzana
+- **WHEN** akci pak uloží uživatel Modelová, Zuzana
 - **THEN** `upravili` obsahuje obě jména, každé s časem svého
   posledního uložení
 
