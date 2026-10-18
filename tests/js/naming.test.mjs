@@ -3,8 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { OKRAJ, pocetadlo, posunVyberu, poradiOsob, prechod, vyrez,
-  vyrid, zkratka } from "../../fotoarchiv/static/naming.js";
+import { OKRAJ, pocetadlo, posunVyberu, poradiOsob, prechod,
+  volbaEnteru, vyrez, vyrid, zkratka } from "../../fotoarchiv/static/naming.js";
 
 test("výřez: čtverec s okrajem kolem obličeje", () => {
   const q = vyrez({ x1: 100, y1: 100, x2: 200, y2: 250 }, 1600, 1200, 256);
@@ -134,4 +134,13 @@ test("našeptávání: šipky posouvají výběr a přetáčejí se", () => {
   assert.equal(posunVyberu(0, 3, true), 1);
   assert.equal(posunVyberu(2, 3, true), 0);
   assert.equal(posunVyberu(0, 3, false), 2);
+});
+
+test("Enter: návrh z našeptávání, pak sloučení, jinak uložení", () => {
+  const shoda = { id: "p1", jmeno: "Vzorný, Tomáš" };
+  assert.equal(volbaEnteru({}), "ulozit");
+  assert.equal(volbaEnteru({ slouceni: shoda }), "sloucit");
+  assert.equal(volbaEnteru({ vybranyNavrh: true }), "navrh");
+  // vybraný návrh mění jméno, sloučení se tím ruší
+  assert.equal(volbaEnteru({ vybranyNavrh: true, slouceni: shoda }), "navrh");
 });

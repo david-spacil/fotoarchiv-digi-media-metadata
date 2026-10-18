@@ -80,6 +80,14 @@ export function posunVyberu(aktivni, pocet, dolu) {
   return (aktivni + (dolu ? 1 : -1) + pocet) % pocet;
 }
 
+// Co v poli jména udělá Enter: vybraný návrh z našeptávání se převezme
+// a uloží („navrh“), jinak nabídnuté sloučení se potvrdí („sloucit“),
+// jinak se jméno uloží („ulozit“).
+export function volbaEnteru({ vybranyNavrh = false, slouceni = null } = {}) {
+  if (vybranyNavrh) return "navrh";
+  return slouceni ? "sloucit" : "ulozit";
+}
+
 // Počítadlo „Osoba N z M“: `vyslo` = kolik osob uživatel v tomhle
 // sezení už vyřídil, `zbava` = kolik jich zbývá ve frontě.
 export function pocetadlo(vyslo, zbava) {
@@ -285,7 +293,7 @@ export function showNaming(deps) {
 
   // --- jméno: našeptávání a uložení ---------------------------------------
 
-  let input, suggest, zpetna, panelSlouceni, dialog;
+  let input, suggest, zpetna, panelSlouceni, dialog, tlUlozit, tlSloucit;
 
   function jmenovePole() {
     input = h("input", { type: "text", id: "pojm-jmeno",
@@ -313,12 +321,17 @@ export function showNaming(deps) {
         }
         if (e.key === "Enter") {
           e.preventDefault();
-          if (!suggest.hidden && Number(suggest.dataset.active) >= 0
-              && items[Number(suggest.dataset.active)]) {
-            input.value = items[Number(suggest.dataset.active)].textContent;
+          const vybrany = !suggest.hidden
+            && items[Number(suggest.dataset.active)];
+          const volba = volbaEnteru({ vybranyNavrh: !!vybrany,
+            slouceni: s.slouceni });
+          if (volba === "navrh") {
+            input.value = vybrany.textContent;
             skrytNavesty();
+            zrusSlouceni();
           }
-          pokusUlozit();
+          if (volba === "sloucit") sloucit();
+          else pokusUlozit();
         }
       } });
     if (s.os && s.priorJmeno) input.value = s.priorJmeno;
@@ -346,6 +359,27 @@ export function showNaming(deps) {
   function zrusSlouceni() {
     if (panelSlouceni) panelSlouceni.replaceChildren();
     s.slouceni = null;
+    tlSloucit = null;
+    oznacEnter();
+  }
+
+  function sloucit() {
+    if (s.slouceni) zapis({ akce: "sloucit", cil: s.slouceni.id });
+  }
+
+  // Ikonka Enteru u tlačítka, které Enter v poli jména stiskne:
+  // „Sloučit“, je-li sloučení nabídnuté, jinak „Uložit“.
+  function oznacEnter() {
+    const cil = volbaEnteru({ slouceni: s.slouceni }) === "sloucit"
+      ? tlSloucit : tlUlozit;
+    for (const b of [tlUlozit, tlSloucit]) {
+      if (!b) continue;
+      b.querySelector(".icon.enter")?.remove();
+      b.removeAttribute("aria-keyshortcuts");
+    }
+    if (!cil) return;
+    cil.append(icon("enter", "enter"));
+    cil.setAttribute("aria-keyshortcuts", "Enter");
   }
 
   const naseptavani = debounce(async () => {
@@ -468,14 +502,14 @@ export function showNaming(deps) {
         "shoda bez diakritiky, velikosti písmen a pořadí slov. Sloučit " +
         "tuto osobu do ní (obličeje se spojí)?"),
       h("div", { class: "tl" },
-        h("button", { class: "primary",
-          onclick: () => zapis({ akce: "sloucit", cil: shoda.id }) },
-        "Sloučit"),
+        tlSloucit = h("button", { class: "primary",
+          title: "Sloučit (Enter)", onclick: sloucit }, "Sloučit"),
         h("button", {
           onclick: () => zapis({ akce: "pojmenovat",
             jmeno: s.posledniJmeno || input.value.trim(),
             samostatne: true }) },
         "Ponechat samostatně"))));
+    oznacEnter();
   }
 
   function uspesne(typ, r, os) {
@@ -586,8 +620,8 @@ export function showNaming(deps) {
       h("div", { class: "ovladani" },
         h("div", { class: "poloz" }, jmenovePole()),
         h("div", { class: "tl" },
-          h("button", { class: "primary", onclick: () => pokusUlozit() },
-            "Uložit"),
+          tlUlozit = h("button", { class: "primary", title: "Uložit (Enter)",
+            onclick: () => pokusUlozit() }, "Uložit"),
           h("button", { title: "Osoba se v tomto kole už nenabídne",
             onclick: nevime }, "Odložit (PgDn)"),
           h("button", { title: "Skrýt osobu v Immichi (obličeje zůstanou)",
@@ -597,6 +631,8 @@ export function showNaming(deps) {
         "Osoba nemá v albu žádný zobrazitelný výřez."));
     }
     hlavni.append(kont);
+    tlSloucit = null;
+    oznacEnter();
     vykresZpetnou();
     rozmerVyreze(hlavni);
   }

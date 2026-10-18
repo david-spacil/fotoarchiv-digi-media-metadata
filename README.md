@@ -1053,8 +1053,10 @@ zdědění i ze souboru archivu. Osobu lze pojmenovat (do Immiche se
 zapisuje kanonický tvar `Příjmení, Jméno`, u stejnojmenné existující
 osoby nabídne server sloučení), skrýt, nebo odložit; odložené osoby
 jsou per uživatel a akce v `.work/pojmenovani.json`, nové kolo je
-vymaže. Klávesy fungují i v poli jména: Enter uloží, PageDown odloží,
-Alt+Delete skryje, Esc zavře; další volba se neodešle, dokud
+vymaže. Klávesy fungují i v poli jména: Enter uloží, nebo nabídnuté
+sloučení potvrdí (ikonka Enteru je u tlačítka, které Enter stiskne),
+PageDown odloží, Alt+Delete skryje, Esc zavře; další volba se
+neodešle, dokud
 předchozí zápis neskončil. Nástroj zapisuje jen do Immiche (`PUT
 /api/people`, `POST /api/people/merge`), `_metadata.json` nemění
 a nevyžaduje zámek akce. Po každé akci přepočítá počty osob

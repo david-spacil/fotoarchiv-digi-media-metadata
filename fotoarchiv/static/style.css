@@ -465,6 +465,8 @@ dialog.nastroj-osoby > * { min-width: 0; max-width: 100%; }
 .nastroj-osoby .ovladani .tl { display: flex; gap: var(--space-2);
   flex-wrap: wrap; }
 .nastroj-osoby .ovladani button { padding: 6px 14px; }
+.nastroj-osoby button .icon.enter { width: 14px; height: 14px;
+  margin-left: 6px; }
 .nastroj-osoby .slouceni { display: flex; gap: var(--space-4);
   align-items: center; flex-wrap: wrap; background: var(--info-bg);
   border: 1px solid var(--accent); border-radius: var(--radius);
