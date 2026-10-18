@@ -26,15 +26,32 @@ def face(name, box=(252, 296, 293, 352), size=(1000, 750)):
             else None}
 
 
+def osoba(id, jmeno=None, skryta=False):
+    """Podvržená osoba pro `withPeople` (jméno None = nepojmenovaná)."""
+    p = {"id": id, "name": jmeno}
+    if skryta:
+        p["isHidden"] = True
+    return p
+
+
+def oblicej(person):
+    """Obličej s libovolnou osobou (`face()` staví osobu jen ze jména)."""
+    f = face("dočasná")
+    f["person"] = person
+    return f
+
+
 class FakeImmich:
     """Podvržené API: osoby, assety (id → cesta), obličeje a alba.
 
     Zapisovací dotazy (POST/PUT/DELETE) zaznamenává do `writes` jako
     (metoda, cesta, tělo). Asset ze `search/metadata` má `type`
-    a `thumbhash` (None u id ve `bez_nahledu`); album v odpovědi jako
+    a `thumbhash` (None u id ve `bez_nahledu`); při `withPeople` i
+    `people` z obličejů (id, name, isHidden). Album v odpovědi jako
     v Immichi 3 bez seznamu assetů (členy jen přes `albumIds`),
     `no_admin` blokuje administrátorské knihovny i fronty (403),
-    `fail` částí URL simuluje chybu (403) i na albích.
+    `fail` částí URL simuluje chybu (403) i na albích, `fail_osoby`
+    selže jen dotaz s `withPeople` (počty osob).
     """
 
     def __init__(self):
@@ -42,6 +59,7 @@ class FakeImmich:
         self.paths = {}
         self.faces = {}
         self.fail = None        # část URL, na které dotaz selže
+        self.fail_osoby = False  # selže search s withPeople (počty osob)
         self.calls = []
         self.writes = []        # (metoda, cesta, tělo) zápisových dotazů
         self.permissions = ["all"]
@@ -66,6 +84,17 @@ class FakeImmich:
         """`AlbumResponseDto` Immiche 3: bez seznamu assetů."""
         return {"id": album["id"], "albumName": album["albumName"],
                 "assetCount": len(album["assetIds"])}
+
+    def _osoby_assetu(self, asset_id):
+        """Osoby na obličejích assetu (jako odpověď `withPeople`)."""
+        vysledky, videne = [], set()
+        for f in self.faces.get(asset_id, []):
+            p = f["person"]
+            if p and p["id"] not in videne:
+                videne.add(p["id"])
+                vysledky.append({"id": p["id"], "name": p.get("name"),
+                                 "isHidden": bool(p.get("isHidden"))})
+        return vysledky
 
     def thumbnail(self, method, url, klic):
         """Podvržený binární dotaz (`fetch_bytes`) na zmenšeninu."""
@@ -103,6 +132,8 @@ class FakeImmich:
             return {"people": chunk, "total": len(self.people),
                     "hasNextPage": page * size < len(self.people)}
         if parts.path == "/api/search/metadata":
+            if self.fail_osoby and body.get("withPeople"):
+                raise immich.ImmichError(f"HTTP 403 {url}", status=403)
             ids = [a for a in sorted(self.paths) if not body.get("personIds")
                    or any((f["person"] or {}).get("id") in body["personIds"]
                           for f in self.faces[a])]
@@ -116,13 +147,16 @@ class FakeImmich:
             page, size = body["page"], body["size"]
             chunk = ids[(page - 1) * size:page * size]
             more = page * size < len(ids)
-            return {"assets": {
-                "items": [{"id": a, "originalPath": self.paths[a],
-                           "type": self.typy.get(a, "IMAGE"),
-                           "resized": True,   # Immich 3.3: vždy true
-                           "thumbhash": None if a in self.bez_nahledu
-                           else "hash"} for a in chunk],
-                "nextPage": str(page + 1) if more else None}}
+            items = [{"id": a, "originalPath": self.paths[a],
+                      "type": self.typy.get(a, "IMAGE"),
+                      "resized": True,   # Immich 3.3: vždy true
+                      "thumbhash": None if a in self.bez_nahledu
+                      else "hash"} for a in chunk]
+            if body.get("withPeople"):
+                for item in items:
+                    item["people"] = self._osoby_assetu(item["id"])
+            return {"assets": {"items": items,
+                               "nextPage": str(page + 1) if more else None}}
         if parts.path == "/api/albums":
             if method == "POST":
                 self.album_seq += 1
@@ -1002,6 +1036,112 @@ def test_udrzet_album_chyba_hledani_stav_nemini(setup):
     assert polo["chyba"]
 
 
+# --- počty osob v synchronizaci (3.1) ---------------------------------------
+
+def test_pocty_osob_unit():
+    """Čistá funkce: skrytá se nepočítá, prázdné jméno není pojmenovaná,
+    stejná osoba na více assetech jednou, asset bez `people` nevadí."""
+    a1 = {"id": "x1", "people": [
+        {"id": "p1", "name": "Hlava, Miloš"},
+        {"id": "p2"},                                   # nepojmenovaná
+        {"id": "p3", "name": "Skrytý, Kdo", "isHidden": True}]}
+    a2 = {"id": "x2"}                                    # bez lidí
+    a3 = {"id": "x3", "people": [
+        {"id": "p1", "name": "Hlava, Miloš"},            # už napočtená
+        {"id": "p4", "name": "   "}]}                    # prázdné jméno
+    assert albums.pocty_osob([a1, a2, a3]) == {"pojmenovane": 1,
+                                               "celkem": 3}
+    assert albums.pocty_osob([]) == {"pojmenovane": 0, "celkem": 0}
+
+
+def test_osoby_round_trip(tmp_path):
+    """`.work/immich-osoby.json`: atomický zápis, poškozený nebo
+    chybějící soubor = prázdný stav."""
+    work = tmp_path / "work"
+    work.mkdir()
+    path = work / "immich-osoby.json"
+    osoby = albums.Osoby(work)
+    assert osoby.nacti() == {} and osoby.polozka(EVENT) is None
+    path.write_text("{", encoding="utf-8")               # poškozený
+    assert osoby.nacti() == {}
+    path.write_text("[]", encoding="utf-8")              # ne_dict
+    assert osoby.nacti() == {}
+    polo = osoby.nastav(EVENT, 4, 6)
+    assert polo == {"pojmenovane": 4, "celkem": 6, "cas": polo["cas"]}
+    assert osoby.polozka(EVENT) == polo
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert not list(work.glob(".immich-osoby-*"))        # žádný dočasný
+    path.unlink()
+    assert albums.Osoby(work).nacti() == {}
+
+
+def album_a_osoby(app, fake):
+    """Dokončená akce s albem: 4 pojmenované + 2 nepojmenované +
+    1 skrytá osoba na obličejích (scénář Počty osob)."""
+    dokoncit(app)
+    jmen = [osoba("p1", "Hlava, Miloš"), osoba("p2", "Malý, Karel"),
+            osoba("p3", "Velká, Jana"), osoba("p4", "Tichá, Eva"),
+            osoba("p5"), osoba("p6"), osoba("p7", skryta=True)]
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG",
+             *[oblicej(p) for p in jmen[:4]], oblicej(jmen[4]))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", oblicej(jmen[3]),
+             oblicej(jmen[5]), oblicej(jmen[6]))
+    return jmen
+
+
+def test_sync_osoby_pocty_ulozeni(setup):
+    """Scénář Počty osob: 4 pojmenované + 2 nepojmenované + 1 skrytá
+    → uloženo 4 z 6; akce bez alba (`OTHER`) se nezapisuje."""
+    app, fake = setup
+    album_a_osoby(app, fake)
+    app.config["IMMICH"].run()
+    polo = app.config["IMMICH"].osoby.polozka(EVENT)
+    assert polo["pojmenovane"] == 4 and polo["celkem"] == 6
+    assert polo["cas"]
+    assert app.config["IMMICH"].osoby.polozka(OTHER) is None
+
+
+def test_sync_osoby_po_pojmenovani(setup):
+    """Scénář Pojmenování v Immichi: po pojmenování jedné z
+    nepojmenovaných a dalším běhu 5 z 6."""
+    app, fake = setup
+    album_a_osoby(app, fake)
+    sync = app.config["IMMICH"]
+    sync.run()
+    nepojmenovana = next(p for p in fake.people if not p.get("name"))
+    nepojmenovana["name"] = "Nový, Pepa"
+    sync.run()
+    polo = sync.osoby.polozka(EVENT)
+    assert polo["pojmenovane"] == 5 and polo["celkem"] == 6
+
+
+def test_sync_osoby_chyba_dotazu_zachova_stav(setup):
+    """Chyba dotazu na osoby: předchozí stav zůstává, soubor se
+    nepřepíše; ani stav alba se nezmění."""
+    app, fake = setup
+    album_a_osoby(app, fake)
+    sync = app.config["IMMICH"]
+    sync.run()
+    pred = sync.osoby.polozka(EVENT)
+    path = app.config["WORKSPACE"].work / "immich-osoby.json"
+    mtime = path.stat().st_mtime_ns
+    fake.fail_osoby = True
+    status = sync.run()
+    assert status["posledni"]["ok"] is True          # obličeje proběhnou
+    assert sync.osoby.polozka(EVENT) == pred
+    assert path.stat().st_mtime_ns == mtime
+    assert sync.alba.polozka(EVENT)["stav"] == "rozpoznano"
+
+
+def test_sync_osoby_bez_alba_senezapisuji(setup):
+    """Immich fotky nezná → album nevznikne → akce se do počtů
+    nezapíše."""
+    app, _ = setup
+    dokoncit(app)
+    app.config["IMMICH"].run()
+    assert app.config["IMMICH"].osoby.nacti() == {}
+
+
 # --- hlídač po dokončení (2.4) ----------------------------------------------
 
 def hlidaci_setup(tmp_path, monkeypatch, zapis=False, interval=0.05,
@@ -1172,7 +1312,7 @@ def test_api_stav_404_a_bez_nastaveni(setup):
     sync.settings.delete()
     r = app.test_client().get(f"/api/akce/{EVENT}/immich")
     assert r.json == {"nastaveno": False, "stav": None, "cas": None,
-                      "album": False}
+                      "album": False, "osoby": None}
     events = {e["nazev"]: e
               for e in app.test_client().get("/api/akce").json}
     assert "immich" not in events[EVENT]

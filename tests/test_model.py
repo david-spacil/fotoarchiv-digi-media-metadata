@@ -149,6 +149,47 @@ def test_completeness_only_present_files():
         "autori": [0, 1], "datum": [1, 1], "misto": [0, 1]}
 
 
+# --- osoby v hotovosti (4.1) -------------------------------------------------
+
+def test_osoby_jen_pri_albu_a_rozpoznano():
+    """Scénáře Hotovost akce: osoby jsou jen při albu se stavem
+    `rozpoznano` a uložených počtech; jinak None."""
+    alba = {"album": "alb-1", "stav": "rozpoznano", "cas": "cas"}
+    pocty = {"pojmenovane": 4, "celkem": 6, "cas": "cas"}
+    assert model.osoby(alba, pocty) == [4, 6]
+    assert model.osoby(dict(alba, stav="rozpoznavani"), pocty) is None
+    assert model.osoby(dict(alba, album=None), pocty) is None
+    assert model.osoby(dict(alba, album=None), dict(pocty,
+                                                    pojmenovane=6,
+                                                    celkem=6)) is None
+    assert model.osoby(None, pocty) is None
+    assert model.osoby(alba, None) is None
+    # kompletní osoby (6/6) se počítají stejně — rozhodne až `incomplete`
+    assert model.osoby(alba, dict(pocty, pojmenovane=6)) == [6, 6]
+
+
+def test_incomplete_s_osobami():
+    """Nepojmenované osoby přidají `osoby` na konec `chybi`; hotové
+    počty ne; `completeness` sama osoby nezná (nečte `.work/`)."""
+    doc = {"soubory": {"a.jpg": {"autori": ["X"], "datum": "d",
+                                 "misto": "m"}}}
+    present = {"a.jpg"}
+    hotovost = model.completeness(doc, present)
+    assert "osoby" not in hotovost          # completeness osoby nepočítá
+    assert model.incomplete(doc, present, hotovost) == []
+    hotovost["osoby"] = [4, 6]
+    assert model.incomplete(doc, present, hotovost) == ["osoby"]
+    hotovost["osoby"] = [6, 6]              # skrytá = napočtená, hotovo
+    assert model.incomplete(doc, present, hotovost) == []
+    # pořadí: povinná pole první, osoby na konci
+    doc_chybi = {"soubory": {"a.jpg": {}}}
+    hotovost = model.completeness(doc_chybi, present)
+    hotovost["osoby"] = [0, 2]
+    assert model.incomplete(doc_chybi, present,
+                            hotovost) == ["autori", "datum", "misto",
+                                          "osoby"]
+
+
 def test_touch_first_save():
     doc = {"akce": {}}
     model.touch(doc, None, "Spáčil, David", "2026-10-14T10:15:02")

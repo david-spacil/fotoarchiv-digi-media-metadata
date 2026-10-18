@@ -6,9 +6,12 @@ import pytest
 from PIL import Image
 
 from fotoarchiv.__main__ import main
+from fotoarchiv import immich
 from fotoarchiv.app import create_app
+from fotoarchiv.archive import SCHEMA
 from fotoarchiv.lock import Locks
 from .conftest import make_tree, snapshot
+from .test_immich import FakeImmich
 
 EVENT = "2026-04-28 kontrola"
 R1 = {"relace": "r1", "jmeno": "Spáčil, David"}
@@ -1278,3 +1281,137 @@ def test_finish_writes_editors(client):
     assert r.status_code == 200
     stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
     assert list(stored["upravili"]) == ["Spáčil, David"]
+
+
+# --- osoby v hotovosti výpisu (4.1) ------------------------------------------
+
+IMMICH_URL = "http://immich.test:2283"
+IMMICH_KLIC = "tajny-klic-W4No"
+CAS = "2026-10-18T10:00:00"
+
+
+def imich_setup(tmp_path, monkeypatch, vyplneno=True):
+    """Aplikace s podvrženým Immichem a dokončenou akcí `hotovo`;
+    nastavení Immiche zvoli volající (scénář bez nastavení)."""
+    archiv = tmp_path / "archiv"
+    archiv.mkdir()
+    make_tree(archiv, {f"{EVENT}/": {"foto.jpg": "x"}})
+    monkeypatch.setattr("fotoarchiv.scan.run_exiftool", lambda d, n: {})
+    fake = FakeImmich()
+    app = create_app(archiv, tmp_path / "work", immich_fetch=fake,
+                     prihlaseni=False)
+    app.testing = True
+    record = {"autori": ["Spáčil, David"], "datum": "2026-04-28T10:00:00",
+              "misto": "Brno"} if vyplneno else {}
+    app.config["WORKSPACE"].save(
+        EVENT, {"schema": SCHEMA, "dokonceno": "2026-04-28",
+                "akce": {}, "skupiny": {},
+                "soubory": {"foto.jpg": record}}, None)
+    return app, app.test_client(), fake
+
+
+def nastavi_immich(app):
+    immich.Settings(app.config["WORKSPACE"].work).save(IMMICH_URL,
+                                                       IMMICH_KLIC)
+
+
+def napsat_work(app, jmeno, data):
+    """Podvržený soubor ve `.work/` (jako by zapsala synchronizace)."""
+    (app.config["WORKSPACE"].work / jmeno).write_text(
+        json.dumps(data), encoding="utf-8")
+
+
+def vypis_event(c):
+    return {e["nazev"]: e for e in c.get("/api/akce").json}[EVENT]
+
+
+def test_vypis_osoby_pri_rozpoznano(tmp_path, monkeypatch):
+    """Scénář Osoby akce: rozpoznano + 4/6 → `hotovost.osoby` a
+    štítek přes `chybi`; výpis se Immiche neptá."""
+    app, c, fake = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 4, "celkem": 6, "cas": CAS}})
+    event = vypis_event(c)
+    assert event["hotovost"]["osoby"] == [4, 6]
+    assert "osoby" in event["chybi"]      # štítek „nekompletní“
+    assert fake.calls == []                 # jen soubory ve `.work/`
+
+
+def test_vypis_osoby_dle_stavu(tmp_path, monkeypatch):
+    """Do `rozpoznano` osoby nepatří; bez alba taky ne (scénáře
+    Rozpoznávání probíhá, Akce bez zjištěných osob)."""
+    app, c, _ = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 4, "celkem": 6, "cas": CAS}})
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznavani",
+                         "cas": CAS}})
+    event = vypis_event(c)
+    assert "osoby" not in event["hotovost"]
+    assert "osoby" not in event["chybi"]
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": None, "stav": "rozpoznano",
+                         "cas": CAS}})
+    event = vypis_event(c)
+    assert "osoby" not in event["hotovost"]
+    assert "osoby" not in event["chybi"]
+
+
+def test_vypis_osoby_bez_nastaveneho_immiche(tmp_path, monkeypatch):
+    """Bez nastaveného Immiche se počty neuvádějí, ani když soubory
+    ve `.work/` zůstaly."""
+    app, c, _ = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 4, "celkem": 6, "cas": CAS}})
+    immich.Settings(app.config["WORKSPACE"].work).delete()
+    event = vypis_event(c)
+    assert "osoby" not in event["hotovost"]
+    assert "osoby" not in event["chybi"]
+
+
+def test_vypis_osoby_skryta_senepocita(tmp_path, monkeypatch):
+    """Scénář Skryté osoby: 6/6 (skrytá už není mezi počty) —
+    štítek „nekompletní“ kvůli osobám nevznikne."""
+    app, c, _ = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 6, "celkem": 6, "cas": CAS}})
+    event = vypis_event(c)
+    assert event["hotovost"]["osoby"] == [6, 6]
+    assert event["chybi"] == []
+
+
+def test_endpoint_immich_stav_s_osobami(tmp_path, monkeypatch):
+    """`GET /api/akce/<nazev>/immich` vrátí `osoby` [p, c] při albu se
+    stavem `rozpoznano`, jinak null; bez dotazu na Immich."""
+    app, c, fake = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 4, "celkem": 6, "cas": CAS}})
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    r = c.get(f"/api/akce/{EVENT}/immich")
+    assert r.json["nastaveno"] is True and r.json["osoby"] == [4, 6]
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznavani",
+                         "cas": CAS}})
+    assert c.get(f"/api/akce/{EVENT}/immich").json["osoby"] is None
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    (app.config["WORKSPACE"].work / "immich-osoby.json").unlink()
+    assert c.get(f"/api/akce/{EVENT}/immich").json["osoby"] is None
+    assert fake.calls == []

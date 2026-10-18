@@ -419,6 +419,7 @@ class Sync:
         self.fetch = fetch
         self.interval = interval
         self.alba = albums.Stavy(ws.work)
+        self.osoby = albums.Osoby(ws.work)
         self._running = threading.Lock()
         self._thread = None
         self._start_lock = threading.Lock()
@@ -504,7 +505,7 @@ class Sync:
         return changed, skipped
 
     def udrzet_alba(self, client):
-        """Údržba alb všech dokončených akcí (bez skenu).
+        """Údržba alb všech dokončených akcí (bez skenu) + počty osob.
 
         Společná cesta s hlídačem po dokončení (`albums.Hlidac`);
         chyba u jedné akce nezastaví ostatní ani zápis obličejů.
@@ -518,10 +519,29 @@ class Sync:
             if doc is None or not doc.get("dokonceno"):
                 continue
             try:
-                albums.udrzet_album(client, self.ws, self.alba, akce)
+                album_id = albums.udrzet_album(client, self.ws, self.alba,
+                                               akce)
             except Exception:  # noqa: BLE001 — jiná akce může projít
                 log.warning("immich: údržba alba %s selhala", akce,
                             exc_info=True)
+                continue
+            if album_id:
+                self.zapsat_osoby(client, akce, album_id)
+
+    def zapsat_osoby(self, client, akce, album_id):
+        """Uloží počty osob akce z alba; chyba dotazu nic nepíše.
+
+        Předchozí stav v `.work/immich-osoby.json` tak zůstává zachován
+        (specifikace: selže-li zjištění osob, SHALL zůstat předchozí
+        stav). Akce bez alba se nezapisuje.
+        """
+        from . import albums     # cyklus jen v modulech, ne při importu
+        try:
+            pocty = albums.pocty_osob(client.search_album(album_id))
+        except ImmichError as e:
+            log.warning("immich: zjištění osob %s selhalo: %s", akce, e)
+            return
+        self.osoby.nastav(akce, pocty["pojmenovane"], pocty["celkem"])
 
     def trigger(self):
         """Běh na pozadí na požádání; vrátí stav."""

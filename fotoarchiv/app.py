@@ -218,11 +218,17 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         ho drží relace z `?relace=` (relace sama se nevrací). `upravit`
         = smí ji přihlášený uživatel upravit (`model.can_edit`).
         `immich` je stav akce v Immichi (jen s nastaveným Immichem a
-        se záznamem); čteno ze `.work/immich-alba.json`."""
+        se záznamem); čteno ze `.work/immich-alba.json`. Má-li akce
+        album a `rozpoznano`, `hotovost` dostane i `osoby` [p, c] ze
+        `.work/immich-osoby.json` a `chybi` u *hotovo* i `osoby` při
+        nepojmenovaných. Výpis se Immiche neptá — jen soubory ve
+        `.work/`."""
         relace = request.args.get("relace")
         events = ws.list_events()
         # Jedno čtení souboru pro celý výpis; Immiche se neptá.
-        alba = sync.alba.nacti() if immich_settings.load() else {}
+        nastaveno = immich_settings.load() is not None
+        alba = sync.alba.nacti() if nastaveno else {}
+        osoby = sync.osoby.nacti() if nastaveno else {}
         for event in events:
             event["upravit"] = model.can_edit(g.user, event)
             holder = locks.holder(event["nazev"])
@@ -231,6 +237,14 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 "vase": locks.holds(event["nazev"], relace)}
             if event["nazev"] in alba:
                 event["immich"] = immich_stav(alba[event["nazev"]])
+            if event.get("hotovost") is not None:
+                pocty = model.osoby(alba.get(event["nazev"]),
+                                    osoby.get(event["nazev"]))
+                if pocty:
+                    event["hotovost"]["osoby"] = pocty
+                    if event["stav"] == "hotovo" and pocty[0] < pocty[1] \
+                            and "osoby" not in event["chybi"]:
+                        event["chybi"].append("osoby")
         return jsonify(events)
 
     @app.get("/api/akce/<nazev>")
@@ -282,14 +296,19 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     def akce_immich_stav(nazev):
         """Stav akce v Immichi pro každého přihlášeného (není pod
         `/api/immich`, který je jen pro admina). Čte jen
-        `<work>/immich-alba.json`; Immiche se nikdy neptá. Bez
-        nastaveného Immiche se stav neuvádí; `chyba` se nevrací
-        (ukazuje se jen adminovi na Nastavení)."""
+        `<work>/immich-alba.json` a `<work>/immich-osoby.json`;
+        Immiche se nikdy neptá. Bez nastaveného Immiche se stav
+        neuvádí; `chyba` se nevrací (ukazuje se jen adminovi na
+        Nastavení). `osoby` je [pojmenované, celkem] jen při albu se
+        stavem `rozpoznano` a uložených počtech, jinak null."""
         event_dir(nazev)                     # neexistující akce = 404
         if immich_settings.load() is None:
             return {"nastaveno": False, "stav": None, "cas": None,
-                    "album": False}
-        return dict(nastaveno=True, **immich_stav(sync.alba.polozka(nazev)))
+                    "album": False, "osoby": None}
+        alba_polozka = sync.alba.polozka(nazev)
+        return dict(nastaveno=True,
+                    osoby=model.osoby(alba_polozka, sync.osoby.polozka(nazev)),
+                    **immich_stav(alba_polozka))
 
     def body_field(body, key):
         value = body.get(key)

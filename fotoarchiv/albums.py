@@ -11,6 +11,10 @@ Stav akce (`nacitani` | `rozpoznavani` | `rozpoznano` | `nenalezeno`)
 je v `<work>/immich-alba.json` jako {akce: {album, stav, cas, chyba?}}
 — atomický zápis pod zámkem v paměti, čtení funguje i bez Immiche.
 Chyba spojení nebo 403 stav nemění, jen se zapíše do `chyba`.
+
+Počty osob akce (pojm. | celkem) zjišťuje synchronizace a ukládá do
+`<work>/immich-osoby.json` jako {akce: {pojmenovane, celkem, cas}};
+skryté osoby se nepočítají.
 """
 
 import json
@@ -99,11 +103,11 @@ def _bez_casu(entry):
     return {key: value for key, value in entry.items() if key != "cas"}
 
 
-def _zapsat(path, data):
+def _zapsat(path, data, prefix=".immich-alba-"):
     """Atomický zápis JSON (dočasný soubor + `os.replace`, jako
     `Settings.save`)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".immich-alba-",
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=prefix,
                                suffix=".tmp")
     try:
         os.chmod(tmp, 0o600)
@@ -115,6 +119,60 @@ def _zapsat(path, data):
     except BaseException:
         Path(tmp).unlink(missing_ok=True)
         raise
+
+
+# --- počty osob ------------------------------------------------------------
+
+class Osoby:
+    """`<work>/immich-osoby.json` = {akce: {pojmenovane, celkem, cas}}.
+
+    Počty zjišťuje synchronizace (`Sync.udrzet_alba`); čtení pro výpis
+    akcí funguje i bez Immiche (stejně jako `Stavy`).
+    """
+
+    def __init__(self, work):
+        self.path = Path(work) / "immich-osoby.json"
+        self._lock = threading.Lock()
+
+    def nacti(self):
+        """Obsah souboru; poškozený nebo chybějící soubor = prázdný
+        stav."""
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def polozka(self, akce):
+        """Záznam akce {pojmenovane, celkem, cas}, nebo None."""
+        return self.nacti().get(akce)
+
+    def nastav(self, akce, pojmenovane, celkem):
+        """Read-modify-write pod zámkem; vrátí zapsaný záznam."""
+        with self._lock:
+            data = self.nacti()
+            entry = {"pojmenovane": pojmenovane, "celkem": celkem,
+                     "cas": _now()}
+            data[akce] = entry
+            _zapsat(self.path, data, prefix=".immich-osoby-")
+            return entry
+
+
+def pocty_osob(assets):
+    """{pojmenovane, celkem} osob s obličejem v albu.
+
+    `assets` je odpověď `search_album` (`withPeople`): každá osoba má
+    `id`, `name`, `isHidden`. Skryté osoby se nepočítají, pojmenovaná
+    = neprázdné `name`; stejná osoba na více assetech jednou. Čistá
+    funkce bez I/O — používá ji synchronizace i nástroj pojmenování.
+    """
+    jmen = {}
+    for asset in assets:
+        for person in asset.get("people") or []:
+            if not person.get("id") or person.get("isHidden"):
+                continue
+            jmen[person["id"]] = bool((person.get("name") or "").strip())
+    return {"pojmenovane": sum(jmen.values()), "celkem": len(jmen)}
 
 
 # --- obsah alba ------------------------------------------------------------
