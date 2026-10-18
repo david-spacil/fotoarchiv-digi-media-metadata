@@ -93,7 +93,7 @@
 
 ## 5. Server nástroje pojmenování
 
-- [ ] 5.1 Nový modul `fotoarchiv/naming.py` (bez Flasku): ze stránky
+- [x] 5.1 Nový modul `fotoarchiv/naming.py` (bez Flasku): ze stránky
   `search_album` sestaví osoby k pojmenování (nepojmenované, neskryté,
   bez odložených, pořadí podle počtu obličejů v akci) a ke každé až
   3 výřezy z různých assetů s největším obličejem. Připojí metadata
@@ -101,12 +101,12 @@
   Ověření: `tests/test_naming.py` na scénáře Osoby k pojmenování,
   Náhledy obličeje (3 z 5, 1 z 1) a Metadata zdrojové fotky (spárovaná
   i nespárovaná fotka).
-- [ ] 5.2 Odložené osoby: `.work/pojmenovani.json`
+- [x] 5.2 Odložené osoby: `.work/pojmenovani.json`
   `{login: {akce: [id]}}`, atomický zápis, vyřazení id, které mezitím
   dostalo jméno nebo bylo skryto, nové kolo vymaže odložení. Ověření:
   testy na scénáře Odložení osoby (znovuotevření, konec kola, jiný
   uživatel).
-- [ ] 5.3 Endpointy v `app.py`: `GET /api/akce/<nazev>/osoby`,
+- [x] 5.3 Endpointy v `app.py`: `GET /api/akce/<nazev>/osoby`,
   `GET …/osoby/nahled/<asset_id>` (404 mimo album), `POST
   …/osoby/<person_id>` (pojmenovat / sloučit / nevím / skrýt),
   `POST …/osoby/kolo` (nové kolo), `POST …/osoby/hotovo` (při změně
