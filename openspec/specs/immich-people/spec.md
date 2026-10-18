@@ -51,12 +51,12 @@ některého souboru změnily.
 
 #### Scenario: Nově pojmenovaný obličej
 - **WHEN** uživatel v Immichi pojmenuje obličej na `P9109996.JPG`
-  jako `Hlava, Miloš` a proběhne synchronizace
-- **THEN** soubor má v `obliceje` položku s `jmeno` `Hlava, Miloš`
+  jako `Vzorný, Tomáš` a proběhne synchronizace
+- **THEN** soubor má v `obliceje` položku s `jmeno` `Vzorný, Tomáš`
   a oblastí toho obličeje
 
 #### Scenario: Odebraná osoba
-- **WHEN** soubor má jeden obličej `Hlava, Miloš` a v Immichi už na
+- **WHEN** soubor má jeden obličej `Vzorný, Tomáš` a v Immichi už na
   něm žádný pojmenovaný obličej není
 - **THEN** po synchronizaci soubor `obliceje` nemá
 
@@ -121,6 +121,6 @@ být zapsáno v kanonickém tvaru ze seznamu; jinak SHALL být zapsáno, jak
 je v Immichi.
 
 #### Scenario: Obrácené pořadí
-- **WHEN** Immich má osobu `Miloš Hlava` a seznam jmen obsahuje
-  `Hlava, Miloš`
-- **THEN** do `jmeno` se zapíše `Hlava, Miloš`
+- **WHEN** Immich má osobu `Tomáš Vzorný` a seznam jmen obsahuje
+  `Vzorný, Tomáš`
+- **THEN** do `jmeno` se zapíše `Vzorný, Tomáš`

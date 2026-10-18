@@ -7,7 +7,7 @@ Ověřeno proti Immichi 3.3.0-rc2 (6. 10. 2026) na knihovně
   `name: ""`.
 - `GET /api/faces?id=<asset>` vrací obličeje s `boundingBoxX1..Y2`,
   `imageWidth`, `imageHeight`, `sourceType` a `person {id, name}`.
-- Jména zadávají lidé v Immichi, tvar nevynucuje (`Lečbychová, Olga`
+- Jména zadávají lidé v Immichi, tvar nevynucuje (`Ukázková, Věra`
   i `Rudolf Tichý`). Immich vidí archiv pod jiným kořenem (`/mnt/media/…`).
 
 Z GitHubu (immich-app/immich):

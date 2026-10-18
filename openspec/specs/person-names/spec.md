@@ -18,8 +18,8 @@ být přijato a od té doby SHALL být v seznamu.
 - **THEN** jméno se uloží a příště se nabízí
 
 #### Scenario: Jméno z Immiche
-- **WHEN** synchronizace zapíše obličej `Hlava, Miloš`
-- **THEN** `Hlava, Miloš` se nabízí při zadávání autorů
+- **WHEN** synchronizace zapíše obličej `Vzorný, Tomáš`
+- **THEN** `Vzorný, Tomáš` se nabízí při zadávání autorů
 
 ### Requirement: Našeptávání
 Při psaní do pole autora nebo účastníka SHALL formulář nabízet jména ze

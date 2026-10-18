@@ -27,7 +27,7 @@ obnovu.
   `akce/2026-04-28 kontrola Stezky`
 
 #### Scenario: Osoby se běžně neexportují
-- **WHEN** soubor má obličej `Hlava, Miloš` a exportuje se bez volby
+- **WHEN** soubor má obličej `Vzorný, Tomáš` a exportuje se bez volby
   pro obnovu
 - **THEN** jeho sidecar neobsahuje tag `osoba/…` ani oblasti obličejů
 
@@ -66,10 +66,10 @@ jako obličej přiřazený osobě daného jména. Soubory bez obličejů SHALL
 dostat běžný sidecar.
 
 #### Scenario: Export pro obnovu
-- **WHEN** soubor 2736 × 3648 má obličej `Hlava, Miloš` s oblastí
+- **WHEN** soubor 2736 × 3648 má obličej `Vzorný, Tomáš` s oblastí
   `[0.5, 0.4, 0.08, 0.06]` a spustí se `exportovat --obliceje`
 - **THEN** sidecar obsahuje `mwg-rs:Regions` s rozměry 2736 × 3648
-  a oblastí `Face` jménem `Hlava, Miloš` se středem 0.5, 0.4 a velikostí
+  a oblastí `Face` jménem `Vzorný, Tomáš` se středem 0.5, 0.4 a velikostí
   0.08 × 0.06
 
 #### Scenario: Kontrola po exportu pro obnovu

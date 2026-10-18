@@ -51,7 +51,7 @@ ukazovat, kolikátá osoba z kolika zbývajících je.
 - **THEN** nástroj tu osobu nabídne
 
 #### Scenario: Pojmenovaná a skrytá osoba
-- **WHEN** osoba má jméno `Hlava, Miloš`, nebo je v Immichi skrytá
+- **WHEN** osoba má jméno `Vzorný, Tomáš`, nebo je v Immichi skrytá
 - **THEN** nástroj ji nenabídne
 
 #### Scenario: Pořadí
@@ -97,14 +97,14 @@ uživatel potvrdí. Prázdné jméno MUST NOT jít uložit. Po uložení SHALL
 nástroj nabídnout další osobu.
 
 #### Scenario: Jméno ze seznamu
-- **WHEN** archivář napíše `Miloš Hlava` a seznam jmen obsahuje
-  `Hlava, Miloš`
-- **THEN** nástroj nabídne `Hlava, Miloš` a po potvrzení zapíše osobě
-  v Immichi jméno `Hlava, Miloš`
+- **WHEN** archivář napíše `Tomáš Vzorný` a seznam jmen obsahuje
+  `Vzorný, Tomáš`
+- **THEN** nástroj nabídne `Vzorný, Tomáš` a po potvrzení zapíše osobě
+  v Immichi jméno `Vzorný, Tomáš`
 
 #### Scenario: Nové jméno
-- **WHEN** archivář napíše `Olga Lečbychová`, které v seznamu není
-- **THEN** nástroj nabídne převod na `Lečbychová, Olga` a zapíše ho až
+- **WHEN** archivář napíše `Věra Ukázková`, které v seznamu není
+- **THEN** nástroj nabídne převod na `Ukázková, Věra` a zapíše ho až
   po potvrzení
 
 ### Requirement: Sloučení se stejnojmennou osobou
@@ -115,14 +115,14 @@ Po potvrzení SHALL osobu sloučit do existující osoby. Při odmítnutí
 SHALL osobu jen pojmenovat a ponechat jako samostatnou.
 
 #### Scenario: Sloučení
-- **WHEN** archivář zadá `Hlava, Miloš` a Immich už osobu `Hlava, Miloš`
-  má
+- **WHEN** archivář zadá `Vzorný, Tomáš` a Immich už osobu
+  `Vzorný, Tomáš` má
 - **THEN** nástroj nabídne sloučení a po potvrzení zůstane v Immichi
-  jediná osoba `Hlava, Miloš` s obličeji obou
+  jediná osoba `Vzorný, Tomáš` s obličeji obou
 
 #### Scenario: Odmítnuté sloučení
 - **WHEN** archivář sloučení odmítne
-- **THEN** v Immichi jsou dvě osoby se jménem `Hlava, Miloš`
+- **THEN** v Immichi jsou dvě osoby se jménem `Vzorný, Tomáš`
 
 ### Requirement: Odložení osoby
 Volba „nevím“ SHALL osobu odložit: v aktuálním kole se už nenabídne.
