@@ -3,8 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { OKRAJ, pocetadlo, poradiOsob, prechod, vyrez, vyrid }
-  from "../../fotoarchiv/static/naming.js";
+import { OKRAJ, pocetadlo, poradiOsob, prechod, vyrez, vyrid,
+  zkratka } from "../../fotoarchiv/static/naming.js";
 
 test("výřez: čtverec s okrajem kolem obličeje", () => {
   const q = vyrez({ x1: 100, y1: 100, x2: 200, y2: 250 }, 1600, 1200, 256);
@@ -99,4 +99,28 @@ test("vyřízení neexistující id frontu nemění", () => {
 test("počítadlo osob", () => {
   assert.equal(pocetadlo(0, 3), "Osoba 1 z 3");
   assert.equal(pocetadlo(2, 1), "Osoba 3 z 3");
+});
+
+test("zkratky: PageDown odloží, Alt+Delete skryje", () => {
+  assert.equal(zkratka({ key: "PageDown" }), "odlozit");
+  assert.equal(zkratka({ key: "Delete", altKey: true }), "skryt");
+});
+
+test("zkratky: klávesy pro editaci pole a prohlížeč nic nedělají", () => {
+  for (const e of [
+    { key: "Delete" },                              // smaže znak
+    { key: "Delete", ctrlKey: true },               // smaže slovo
+    { key: "Delete", shiftKey: true },              // vyjmout (Windows)
+    { key: "Delete", altKey: true, ctrlKey: true },
+    { key: "ArrowRight", ctrlKey: true },           // skok o slovo
+    { key: "PageDown", ctrlKey: true },             // další panel
+    { key: "PageDown", shiftKey: true },
+    { key: "PageDown", altKey: true },
+    { key: "Enter" }, { key: "Escape" }, { key: "a" },
+  ]) assert.equal(zkratka(e), null, JSON.stringify(e));
+});
+
+test("zkratky: podržená klávesa se neopakuje", () => {
+  assert.equal(zkratka({ key: "PageDown", repeat: true }), null);
+  assert.equal(zkratka({ key: "Delete", altKey: true, repeat: true }), null);
 });

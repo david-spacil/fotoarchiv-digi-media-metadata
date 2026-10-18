@@ -3,7 +3,7 @@
 // čisté funkce s testy v tests/js/naming.test.mjs; překryv a volání
 // API žijí zde, aby `app.js` nerostl. Schválený vzhled = varianta A
 // „Karta“: 3 výřezy vedle sebe nahoře, metadata pod každým, ovládání
-// (pole jména, Uložit, Nevím, Skrýt, počítadlo) dole; stejné rozložení
+// (pole jména, Uložit, Odložit, Skrýt, počítadlo) dole; stejné rozložení
 // i na mobilu. Výřez se kreslí z proxované zmenšeniny na canvas.
 
 import { icon } from "./icons.js";
@@ -58,6 +58,19 @@ export function prechod(fronta, odlozene) {
 // fronta bez ní. Žádná akce sama o sobě frontu neposouvá víc.
 export function vyrid(fronta, id) {
   return fronta.filter((o) => o.id !== id);
+}
+
+// Klávesová zkratka volby z události `keydown` → "odlozit" | "skryt" |
+// null. Platí i s kurzorem v poli jména, proto jen klávesy bez
+// významu pro editaci jednořádkového pole ani pro prohlížeč: PageDown
+// (bez modifikátorů) a Alt+Delete (Ctrl+Delete maže slovo, Shift+Delete
+// na Windows vyjímá). Podržená klávesa (`repeat`) se nepočítá.
+export function zkratka(e) {
+  if (e.repeat) return null;
+  const mod = e.ctrlKey || e.metaKey || e.shiftKey;
+  if (e.key === "PageDown" && !mod && !e.altKey) return "odlozit";
+  if (e.key === "Delete" && e.altKey && !mod) return "skryt";
+  return null;
 }
 
 // Počítadlo „Osoba N z M“: `vyslo` = kolik osob uživatel v tomhle
@@ -150,7 +163,8 @@ export function showNaming(deps) {
   const s = {
     stav: null, uplne: true,
     fronta: [],           // dosud nenabídnuté osoby této chvíle
-    odlozene: 0,          // odložené v kole (ze serveru + „nevím“ navíc)
+    odlozene: 0,          // odložené v kole (ze serveru + „odložit“ navíc)
+    zapisuje: false,      // běží zápis volby (další se neodešle)
     vyslo: 0,             // vyřízeno v tomhle sezení (pro počítadlo)
     os: null,             // aktuální osoba
     prevedeno: false,     // návrh kanonického tvaru už byl nabídnut
@@ -397,12 +411,16 @@ export function showNaming(deps) {
   }
 
   async function zapis(body) {
-    if (!s.os) return;
+    // Jedna volba naráz: druhá (dvojklik, zkratka) by po odpovědi
+    // vyřídila už další, nezobrazenou osobu.
+    if (!s.os || s.zapisuje) return;
+    const os = s.os;
     if (body.akce === "pojmenovat") s.posledniJmeno = body.jmeno;
+    s.zapisuje = true;
     try {
-      const r = await api(url(`/osoby/${encodeURIComponent(s.os.id)}`),
+      const r = await api(url(`/osoby/${encodeURIComponent(os.id)}`),
         { method: "POST", body });
-      uspesne(body.akce, r);
+      uspesne(body.akce, r, os);
     } catch (err) {
       if (err.status === 409 && err.data?.shoda) {
         s.slouceni = err.data.shoda;
@@ -427,6 +445,8 @@ export function showNaming(deps) {
         "Osoba zůstává nabídnutá s vyplněným jménem.";
       s.priorJmeno = input?.value || "";
       vykresZpetnou();
+    } finally {
+      s.zapisuje = false;
     }
   }
 
@@ -450,8 +470,8 @@ export function showNaming(deps) {
         "Ponechat samostatně"))));
   }
 
-  function uspesne(typ, r) {
-    s.fronta = vyrid(s.fronta, s.os.id);
+  function uspesne(typ, r, os) {
+    s.fronta = vyrid(s.fronta, os.id);
     if (typ === "nevim") s.odlozene += 1;
     else s.zmena = true;
     if (Array.isArray(r?.osoby)) s.osoby = r.osoby;
@@ -561,9 +581,9 @@ export function showNaming(deps) {
           h("button", { class: "primary", onclick: () => pokusUlozit() },
             "Uložit"),
           h("button", { title: "Osoba se v tomto kole už nenabídne",
-            onclick: nevime }, "Nevím (odložit)"),
+            onclick: nevime }, "Odložit (PgDn)"),
           h("button", { title: "Skrýt osobu v Immichi (obličeje zůstanou)",
-            onclick: skryt }, "Skrýt"))));
+            onclick: skryt }, "Skrýt (Alt+Del)"))));
     if (!s.os.vyrezy.length) {
       kont.prepend(h("p", { class: "meta" },
         "Osoba nemá v albu žádný zobrazitelný výřez."));
@@ -621,6 +641,15 @@ export function showNaming(deps) {
     h("button", { class: "zavrit", title: "Zavřít",
       "aria-label": "Zavřít", onclick: () => zavrit() }, "✕")),
   h("div", { class: "obsah" }));
+  // Zkratky voleb platí v celém překryvu, i v poli jména (Enter řeší
+  // pole samo, Esc událost `cancel`).
+  dialog.addEventListener("keydown", (e) => {
+    const volba = zkratka(e);
+    if (!volba) return;
+    e.preventDefault();
+    if (volba === "odlozit") nevime();
+    else skryt();
+  });
   dialog.addEventListener("cancel", (e) => {
     e.preventDefault();      // Esc → stejné zavření jako křížek
     zavrit();

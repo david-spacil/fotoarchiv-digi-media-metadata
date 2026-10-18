@@ -3097,10 +3097,12 @@ function renderOsobyActs() {
   if (!slot) return;
   const o = state.immich?.osoby;
   const nepoj = Array.isArray(o) ? o[1] - o[0] : 0;
-  slot.replaceChildren(state.me?.archivar && canOpenNaming()
-    ? h("button", { onclick: openNaming },
-      nepoj > 0 ? `Pojmenovat osoby… (${nepoj})` : "Pojmenovat osoby…")
-    : null);
+  // Bez tlačítka prázdný slot: `replaceChildren(null)` by vložil text
+  // „null“.
+  slot.replaceChildren(...(state.me?.archivar && canOpenNaming()
+    ? [h("button", { onclick: openNaming },
+      nepoj > 0 ? `Pojmenovat osoby… (${nepoj})` : "Pojmenovat osoby…")]
+    : []));
 }
 
 // Překryv nástroje nad plochou; po zavření pryč `#osoby` z adresy,

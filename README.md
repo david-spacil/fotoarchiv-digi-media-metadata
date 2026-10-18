@@ -482,7 +482,7 @@ přístroje a vzoru názvu, uživatel je může upravit.
   `immich.json` (adresa, klíč, knihovna; 0600), `immich-alba.json`
   `{akce: {album, stav, cas, chyba?}}` (vazba na album a stav akce
   v Immichi) a `pojmenovani.json` `{login: {akce: [id osoby]}}`
-  (osoby odložené volbou „nevím“ v aktuálním kole).
+  (osoby odložené volbou „odložit“ v aktuálním kole).
 - Originály se nemění.
 
 ## Jména osob
@@ -1051,9 +1051,11 @@ U každé ukáže až 3 výřezy z různých fotek (zmenšeniny proxyuje
 server — klíč Immiche neopouští server) s metadaty z Immiche a po
 zdědění i ze souboru archivu. Osobu lze pojmenovat (do Immiche se
 zapisuje kanonický tvar `Příjmení, Jméno`, u stejnojmenné existující
-osoby nabídne server sloučení), skrýt, nebo odložit volbou „nevím“;
-odložené osoby jsou per uživatel a akce v `.work/pojmenovani.json`,
-nové kolo je vymaže. Nástroj zapisuje jen do Immiche (`PUT
+osoby nabídne server sloučení), skrýt, nebo odložit; odložené osoby
+jsou per uživatel a akce v `.work/pojmenovani.json`, nové kolo je
+vymaže. Klávesy fungují i v poli jména: Enter uloží, PageDown odloží,
+Alt+Delete skryje, Esc zavře; další volba se neodešle, dokud
+předchozí zápis neskončil. Nástroj zapisuje jen do Immiche (`PUT
 /api/people`, `POST /api/people/merge`), `_metadata.json` nemění
 a nevyžaduje zámek akce. Po každé akci přepočítá počty osob
 do `.work/immich-osoby.json`; zavření nástroje po změně spustí
