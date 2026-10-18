@@ -344,6 +344,8 @@ main.list, main.loading, main.wizard { padding: var(--space-4)
   grid-template-columns: 4.2em 1fr 4.8em; gap: var(--space-3); }
 .hotovost.pole .zlomek { text-align: right; color: var(--text-muted); }
 .hotovost.pole .castecne .zlomek { color: var(--warn); }
+.hotovost .pojmenovani { font-size: 12px; text-wrap: nowrap; }
+.hotovost.pole .pojmenovani { grid-column: 1 / -1; }
 @media (max-width: 760px) {
   .karty.radky .karta { grid-template-columns: 1fr; }
   /* kontrolní stránka na telefonu: hlavička se stavem uložení se zalomí */
@@ -400,6 +402,85 @@ dialog .buttons { display: flex; gap: var(--space-3);
 dialog.sample { padding: var(--space-3); cursor: zoom-out; }
 dialog.sample img { display: block; max-width: 90vw; max-height: 80vh; }
 dialog.sample p { margin: 6px 0 0; }
+
+/* --- nástroj pojmenování osob (překryv nad plochou akce) --------------
+   Schválený vzhled = varianta A „Karta“: 3 výřezy vedle sebe nahoře,
+   metadata pod každým, ovládání dole; stejné rozložení i na mobilu.
+   Bez podpory `backdrop-filter` zůstane jen barevné pozadí. */
+dialog.nastroj-osoby { width: min(980px, 96vw); max-width: 96vw;
+  max-height: 94vh; overflow: auto; padding: var(--space-4) var(--space-5);
+  display: flex; flex-direction: column; gap: var(--space-3); }
+dialog.nastroj-osoby::backdrop { background: var(--backdrop);
+  backdrop-filter: blur(7px); }
+dialog.nastroj-osoby > * { min-width: 0; max-width: 100%; }
+.nastroj-osoby .hl { display: flex; gap: var(--space-4);
+  align-items: flex-start; flex-wrap: wrap; }
+.nastroj-osoby .hl h2 { margin: 0; }
+.nastroj-osoby .hl .zavrit { margin-left: auto; }
+.nastroj-osoby .obsah { display: flex; flex-direction: column;
+  gap: var(--space-3); min-width: 0; }
+.nastroj-osoby .stavka { display: flex; flex-wrap: wrap;
+  gap: var(--space-2); align-items: center; }
+.nastroj-osoby .stavka .notice { flex: 1 1 100%; }
+.nastroj-osoby .vyrovn { margin-left: auto; }
+.nastroj-osoby .badge.odlozeno { border: 1px solid var(--warn);
+  color: var(--warn); }
+.nastroj-osoby .radek { display: flex; gap: var(--space-2);
+  flex-wrap: wrap; }
+/* varianta A: výřezy + metadata v jednom sloupci, ovládání dole */
+.nastroj-osoby .va { display: grid; gap: var(--space-3); min-width: 0; }
+.nastroj-osoby .vl { display: grid; grid-template-columns: repeat(3,
+  minmax(0, 1fr)); gap: var(--space-3); min-width: 0; }
+.nastroj-osoby figure.vyrez { margin: 0; min-width: 0; display: flex;
+  flex-direction: column; }
+.nastroj-osoby .vyrez-box { aspect-ratio: 1; width: 100%; min-width: 0;
+  border: 2px solid var(--border); border-radius: var(--radius);
+  overflow: hidden; background: var(--loupe-bg); }
+.nastroj-osoby .vyrez-cv { width: 100%; height: 100%; display: block; }
+.nastroj-osoby figure.vyrez figcaption { font-size: 12px; margin-top: 3px;
+  display: flex; gap: 4px; align-items: baseline; flex-wrap: wrap; }
+.nastroj-osoby figure.vyrez .soub { font-weight: 600;
+  word-break: break-all; }
+.nastroj-osoby figure.vyrez .bez-archivu { font-size: 11px;
+  color: var(--warn); border: 1px solid var(--warn);
+  border-radius: var(--radius-pill); padding: 0 6px; }
+.nastroj-osoby .mdet ul { list-style: none; margin: 4px 0 0; padding: 0;
+  min-width: 0; }
+.nastroj-osoby .mdet li { font-size: 12px; color: var(--text-muted);
+  display: flex; gap: 6px; min-width: 0; }
+.nastroj-osoby .mdet li + li { margin-top: 3px; }
+.nastroj-osoby .mdet li span { overflow-wrap: anywhere; min-width: 0; }
+.nastroj-osoby .mdet li b { color: var(--text); font-weight: 500;
+  flex: none; }
+.nastroj-osoby .mdet li .icon { width: 12px; height: 12px;
+  margin-top: 2px; color: var(--text-muted); }
+.nastroj-osoby .mdet .in { border-left: 3px solid var(--src-inherited);
+  padding-left: 6px; }
+.nastroj-osoby .mdet .imm { border-left: 3px solid var(--text-muted);
+  padding-left: 6px; }
+.nastroj-osoby .ovladani { display: flex; gap: var(--space-3);
+  flex-wrap: wrap; align-items: flex-start; border-top: 1px solid
+  var(--border); padding-top: var(--space-3); }
+.nastroj-osoby .ovladani .poloz { flex: 1 1 240px; min-width: 0; }
+.nastroj-osoby .ovladani .tl { display: flex; gap: var(--space-2);
+  flex-wrap: wrap; }
+.nastroj-osoby .ovladani button { padding: 6px 14px; }
+.nastroj-osoby .slouceni { display: flex; gap: var(--space-4);
+  align-items: center; flex-wrap: wrap; background: var(--info-bg);
+  border: 1px solid var(--accent); border-radius: var(--radius);
+  padding: var(--space-3); margin-top: var(--space-2); }
+.nastroj-osoby .slouceni img.nahled { width: 84px; height: 84px;
+  object-fit: cover; flex: none; border: 2px solid var(--accent);
+  border-radius: var(--radius); background: var(--thumb-bg); }
+.nastroj-osoby .slouceni .tl { display: flex; gap: var(--space-3);
+  flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .nastroj-osoby .vl { gap: 6px; }
+  .nastroj-osoby .mdet li { font-size: 11px; flex-wrap: wrap;
+    column-gap: 4px; }
+  .nastroj-osoby .mdet li .icon { display: none; }
+  .nastroj-osoby .ovladani button { flex: 1 1 auto; }
+}
 
 /* --- pracovní plocha ------------------------------------------------- */
 

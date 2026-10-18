@@ -587,8 +587,13 @@ po široké monitory.
    autoři, datum, místo počet souborů kořene (bez označených
    k vyřazení), které ho mají po zdědění vyplněné, z jejich počtu;
    počítá ji server při výpisu z `_metadata.json` a výpisu složky.
+   Má-li akce zjištěné osoby a stav *obličeje rozpoznány*, hotovost
+   uvádí i osoby: pojmenované ze všech neskrytých (`osoby 4/6`); při
+   nepojmenovaných karta nabídne archiváři a adminovi odkaz na nástroj
+   pojmenování osob (otevře plochu akce rovnou s nástrojem).
    Nezpracovaná akce místo hotovosti nabízí zahájení zpracování.
-   Dokončená akce, jejímž souborům chybí autoři, datum nebo místo, má
+   Dokončená akce, jejímž souborům chybí autoři, datum nebo místo,
+   nebo která má podle posledního zjištění nepojmenované osoby, má
    štítek „nekompletní“, upravená po exportu „změněno po exportu“;
    akce s nálezem kontroly (viz Kontrola akce) „k vyřešení“.
    Karty jsou **dlaždice** (náhledy 2 × 2, souhrnný pruh hotovosti)
@@ -640,7 +645,10 @@ po široké monitory.
    bez data, bez místa (jen má-li akce víc míst) a podle data i bez
    skupiny; skupina bez autorů má místo počtu zvýrazněné „bez autorů“.
    Řádek Akce ukazuje chybějící název či data akce a místa, o jejichž
-   souřadnicích není rozhodnuto. Soubory k vyřazení se nepočítají.
+   souřadnicích není rozhodnuto, a ikonu osoby s počtem nepojmenovaných
+   osob podle posledního zjištění („2 nepojmenované osoby“); klik na
+   něj otevře archiváři a adminovi nástroj pojmenování osob, ostatním
+   údaj jen ukazuje. Soubory k vyřazení se nepočítají.
    Klik na řádek Akce zruší výběr, na skupinu vybere skupinu, na den
    („Bez data“, „Bez skupiny“) jeho soubory, a mřížka na oddíl skočí
    i s předělem nad ním. Klik na chybějící údaj vybere dotčené soubory
@@ -1020,6 +1028,11 @@ obnovu.
 **Nástroj pojmenování osob** (smí admin a archivář, ostatním server
 vrátí 403) prochází po jedné nepojmenované a neskryté osobě Immiche
 s obličejem na fotce v albu akce, seřazené podle počtu obličejů.
+Otevírá se jako překryv nad plochou akce (rozmazané pozadí) tlačítkem
+v liště akce, klikem na nepojmenované osoby v navigátoru a z karty
+odkazem (`#osoby` v adrese plochy); u stavu *rozpoznávání obličejů*
+upozorní, že další osoby mohou přibýt. Zavření vrátí na plochu
+a odstraní `#osoby` z adresy.
 U každé ukáže až 3 výřezy z různých fotek (zmenšeniny proxyuje
 server — klíč Immiche neopouští server) s metadaty z Immiche a po
 zdědění i ze souboru archivu. Osobu lze pojmenovat (do Immiche se
