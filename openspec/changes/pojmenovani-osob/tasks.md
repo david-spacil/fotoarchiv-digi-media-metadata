@@ -69,7 +69,7 @@
 
 ## 3. Osoby akce v synchronizaci
 
-- [ ] 3.1 Synchronizace pro akce s albem spočítá pojmenované a neskryté
+- [x] 3.1 Synchronizace pro akce s albem spočítá pojmenované a neskryté
   nepojmenované osoby s obličejem v albu a uloží je do
   `.work/immich-osoby.json`. Při chybě dotazu nechá předchozí stav.
   Ověření: testy na scénáře Osoby akce (4 z 6, skrytá se nepočítá,
@@ -77,7 +77,7 @@
 
 ## 4. Osoby v kompletnosti akce
 
-- [ ] 4.1 `archive.py`/`model.py`: hotovost dostane `osoby`
+- [x] 4.1 `archive.py`/`model.py`: hotovost dostane `osoby`
   `[pojmenovane, celkem]` z `.work/immich-osoby.json` (jen když akce
   má zjištění a stav `rozpoznano`), `incomplete` vrátí i `osoby`
   při nepojmenovaných.
