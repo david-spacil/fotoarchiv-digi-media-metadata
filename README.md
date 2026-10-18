@@ -471,6 +471,18 @@ přístroje a vzoru názvu, uživatel je může upravit.
   verze. Starší akce pole nemají, vznikne prvním uložením. Nedědí se, do
   sidecaru ani indexu nejde; slouží filtru „Moje rozpracované“, řazení
   seznamu akcí a oprávnění k úpravě akce (viz Přihlášení).
+- **Osoby v kompletnosti akce** nejsou v `_metadata.json` (nejsou to
+  údaje o fotkách a měnily by verzi akce). Počty pojmenovaných
+  a neskrytých osob s obličejem v albu akce ukládá synchronizace (a po
+  každém kroku nástroj pojmenování) do `.work/immich-osoby.json`
+  `{akce: {pojmenovane, celkem, cas}}`. Hotovost je uvádí jen u akce
+  s albem ve stavu *obličeje rozpoznány*; nepojmenované osoby dělají
+  dokončenou akci „nekompletní“ (viz Aplikace, Immich).
+- **Další soubory Immiche ve `.work/`** (nikdy v archivu):
+  `immich.json` (adresa, klíč, knihovna; 0600), `immich-alba.json`
+  `{akce: {album, stav, cas, chyba?}}` (vazba na album a stav akce
+  v Immichi) a `pojmenovani.json` `{login: {akce: [id osoby]}}`
+  (osoby odložené volbou „nevím“ v aktuálním kole).
 - Originály se nemění.
 
 ## Jména osob
