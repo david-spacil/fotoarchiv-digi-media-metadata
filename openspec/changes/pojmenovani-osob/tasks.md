@@ -137,6 +137,14 @@
   s podvrženým Immichem: screenshot rozmazaného pozadí, průchod
   pojmenovat → sloučit → nevím → skrýt → konec kola, běžný uživatel
   odkazy nevidí.
+- [x] 6.3 Klávesové zkratky a přejmenování: tlačítko „Nevím
+  (odložit)“ → „Odložit“, PageDown odloží, Alt+Delete skryje (Enter
+  a Esc beze změny), zkratky v popiscích tlačítek; volba se neodešle
+  znovu, dokud předchozí zápis neskončil (podržená klávesa, dvojklik).
+  Hodnota `nevim` v API zůstává. Rozpoznání zkratky je čistá funkce.
+  Ověření: `tests/js/naming.test.mjs` (zkratky a kolize s editací
+  pole), headless prohlížeč s podvrženým Immichem: PageDown a
+  Alt+Delete v poli jména posunou nástroj o jednu osobu.
 
 ## 7. Dokumentace a ruční ověření
 
@@ -146,9 +154,18 @@
   `.work/` a role archivář pro nástroj. README, Datový model: osoby
   v kompletnosti a soubory ve `.work/`. Ověření: diff obou souborů
   odpovídá specifikaci.
-- [ ] 7.2 Ruční zkouška uživatele proti skutečnému Immichi: test
+- [x] 7.2 Ruční zkouška uživatele proti skutečnému Immichi: test
   připojení s rozšířeným klíčem, výběr knihovny, dokončení akce →
   stav na ploše → založené album → „obličeje rozpoznány“ (ověřit, že
   se neohlásí předčasně, a doladit `HLIDAC_*`), průchod
-  nástrojem na mobilu i notebooku, převzetí jména do `obliceje` po
-  zavření. Ověření: hlášení uživatele.
+  nástrojem na notebooku (mobil vyřazen, není cílová platforma),
+  převzetí jména do `obliceje` po zavření. Ověření: hlášení uživatele.
+  Výsledek (18. 10. 2026): test připojení, výběr knihovny, stav
+  obličejů u dokončených akcí, založení alb všech dokončených akcí,
+  průchod nástrojem na PC a převzetí jména do `obliceje` (ruční
+  synchronizací z Nastavení po zavření) v pořádku. Text „null“
+  v liště nedokončené akce opraven v 6.3. **Netestováno:** celý
+  průběh od dokončení akce přes stav na ploše po „obličeje
+  rozpoznány“ v jednom běhu, tedy ani předčasné ohlášení
+  rozpoznání; `HLIDAC_*` zůstávají výchozí, nedoladěné. Chyby se
+  opraví v patch verzích.

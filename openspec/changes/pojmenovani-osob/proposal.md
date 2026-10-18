@@ -17,7 +17,7 @@ a nevidí, kolik osob v akci ještě chybí (issue #35).
   - **Pojmenovat:** jméno v kanonickém tvaru `Příjmení, Jméno`
     s návrhy ze seznamu jmen; při shodě s jinou osobou Immiche navrhne
     sloučení.
-  - **Nevím:** odloží osobu do dalšího kola (stav ve `.work/`).
+  - **Odložit:** odloží osobu do dalšího kola (stav ve `.work/`).
   - **Skrýt:** osobu skryje v Immichi, takže se v nástroji ani
     v kompletnosti už neobjeví.
 - Nástroj pojmenovává celý shluk v Immichi, tedy i fotky mimo akci;

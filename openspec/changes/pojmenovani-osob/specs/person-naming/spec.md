@@ -125,15 +125,15 @@ SHALL osobu jen pojmenovat a ponechat jako samostatnou.
 - **THEN** v Immichi jsou dvě osoby se jménem `Vzorný, Tomáš`
 
 ### Requirement: Odložení osoby
-Volba „nevím“ SHALL osobu odložit: v aktuálním kole se už nenabídne.
+Volba „odložit“ SHALL osobu odložit: v aktuálním kole se už nenabídne.
 Odložené osoby SHALL být uložené v pracovním adresáři zvlášť pro
 každého uživatele a akci a MUST NOT jít do archivu ani do Immiche.
 Kolo SHALL skončit, když nezbývá žádná neodložená osoba. Nástroj pak
 SHALL nabídnout projít odložené znovu (nové kolo, odložení se
 vymaže). Zavření nástroje a nové otevření kolo neukončí.
 
-#### Scenario: Nevím
-- **WHEN** archivář u osoby zvolí „nevím“
+#### Scenario: Odložit
+- **WHEN** archivář u osoby zvolí „odložit“
 - **THEN** nástroj nabídne další osobu a odloženou v tomto kole už ne
 
 #### Scenario: Znovuotevření
@@ -158,6 +158,27 @@ do osob akce v kompletnosti.
 - **WHEN** archivář skryje osobu z davu v pozadí
 - **THEN** osoba je v Immichi skrytá a nástroj ani hotovost akce ji
   nepočítají
+
+### Requirement: Klávesové zkratky nástroje
+Volby nástroje SHALL jít ovládat z klávesnice i s kurzorem v poli
+jména: Enter uloží jméno, PageDown osobu odloží, Alt+Delete ji skryje
+a Esc nástroj zavře. Zkratky MUST NOT kolidovat s editací jména
+v poli ani se zkratkami prohlížeče a tlačítka je SHALL uvádět
+v popisku. Dokud se zápis volby nevyřídí, další volba MUST NOT
+odejít (podržená klávesa ani dvojklik nevyřídí víc osob).
+
+#### Scenario: Odložení klávesou
+- **WHEN** archivář s kurzorem v poli jména stiskne PageDown
+- **THEN** osoba se odloží stejně jako tlačítkem „Odložit“
+
+#### Scenario: Skrytí klávesou
+- **WHEN** archivář stiskne Alt+Delete
+- **THEN** osoba se skryje stejně jako tlačítkem „Skrýt“; klávesa
+  v poli jména nic nesmaže
+
+#### Scenario: Podržená klávesa
+- **WHEN** archivář podrží PageDown
+- **THEN** odloží se jen nabídnutá osoba, další se nabídne a nic víc
 
 ### Requirement: Oprávnění nástroje
 Nástroj i jeho endpointy MUST server povolit jen adminovi a archiváři;
