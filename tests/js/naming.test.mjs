@@ -3,8 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { OKRAJ, pocetadlo, poradiOsob, prechod, vyrez, vyrid,
-  zkratka } from "../../fotoarchiv/static/naming.js";
+import { OKRAJ, pocetadlo, posunVyberu, poradiOsob, prechod, vyrez,
+  vyrid, zkratka } from "../../fotoarchiv/static/naming.js";
 
 test("výřez: čtverec s okrajem kolem obličeje", () => {
   const q = vyrez({ x1: 100, y1: 100, x2: 200, y2: 250 }, 1600, 1200, 256);
@@ -123,4 +123,15 @@ test("zkratky: klávesy pro editaci pole a prohlížeč nic nedělají", () => {
 test("zkratky: podržená klávesa se neopakuje", () => {
   assert.equal(zkratka({ key: "PageDown", repeat: true }), null);
   assert.equal(zkratka({ key: "Delete", altKey: true, repeat: true }), null);
+});
+
+test("našeptávání: šipky posouvají výběr a přetáčejí se", () => {
+  // bez výběru: dolů první, nahoru poslední
+  assert.equal(posunVyberu(-1, 3, true), 0);
+  assert.equal(posunVyberu(-1, 3, false), 2);
+  // chybějící výběr (NaN) se chová stejně
+  assert.equal(posunVyberu(NaN, 3, true), 0);
+  assert.equal(posunVyberu(0, 3, true), 1);
+  assert.equal(posunVyberu(2, 3, true), 0);
+  assert.equal(posunVyberu(0, 3, false), 2);
 });

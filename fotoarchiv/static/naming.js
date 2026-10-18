@@ -73,6 +73,13 @@ export function zkratka(e) {
   return null;
 }
 
+// Posun zvýraznění v našeptávání šipkou: z žádného výběru (-1) šipka
+// dolů vybere první a nahoru poslední položku, na konci se přetáčí.
+export function posunVyberu(aktivni, pocet, dolu) {
+  if (!(aktivni >= 0 && aktivni < pocet)) return dolu ? 0 : pocet - 1;
+  return (aktivni + (dolu ? 1 : -1) + pocet) % pocet;
+}
+
 // Počítadlo „Osoba N z M“: `vyslo` = kolik osob uživatel v tomhle
 // sezení už vyřídil, `zbava` = kolik jich zbývá ve frontě.
 export function pocetadlo(vyslo, zbava) {
@@ -298,15 +305,15 @@ export function showNaming(deps) {
         if ((e.key === "ArrowDown" || e.key === "ArrowUp")
             && !suggest.hidden && items.length) {
           e.preventDefault();
-          const act = (Number(suggest.dataset.active) + items.length
-            + (e.key === "ArrowDown" ? 1 : -1)) % items.length;
+          const act = posunVyberu(Number(suggest.dataset.active ?? -1),
+            items.length, e.key === "ArrowDown");
           suggest.dataset.active = String(act);
           items.forEach((li, i) => li.classList.toggle("active", i === act));
           return;
         }
         if (e.key === "Enter") {
           e.preventDefault();
-          if (!suggest.hidden && suggest.dataset.active >= 0
+          if (!suggest.hidden && Number(suggest.dataset.active) >= 0
               && items[Number(suggest.dataset.active)]) {
             input.value = items[Number(suggest.dataset.active)].textContent;
             skrytNavesty();
@@ -358,6 +365,7 @@ export function showNaming(deps) {
         pokusUlozit();
       },
     }, n)));
+    suggest.dataset.active = "-1";
     suggest.hidden = !suggest.children.length;
   }, 150);
 
