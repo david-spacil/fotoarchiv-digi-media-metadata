@@ -161,11 +161,24 @@ do osob akce v kompletnosti.
 
 ### Requirement: Klávesové zkratky nástroje
 Volby nástroje SHALL jít ovládat z klávesnice i s kurzorem v poli
-jména: Enter uloží jméno, PageDown osobu odloží, Alt+Delete ji skryje
-a Esc nástroj zavře. Zkratky MUST NOT kolidovat s editací jména
-v poli ani se zkratkami prohlížeče a tlačítka je SHALL uvádět
-v popisku. Dokud se zápis volby nevyřídí, další volba MUST NOT
+jména: Enter uloží jméno, a je-li nabídnuté sloučení, potvrdí ho;
+PageDown osobu odloží, Alt+Delete ji skryje a Esc nástroj zavře.
+Zkratky MUST NOT kolidovat s editací jména v poli ani se zkratkami
+prohlížeče a tlačítka je SHALL uvádět v popisku; Enter SHALL ukazovat
+ikonka u tlačítka, které právě stiskne („Sloučit“, je-li sloučení
+nabídnuté, jinak „Uložit“). Dokud se zápis volby nevyřídí, další volba MUST NOT
 odejít (podržená klávesa ani dvojklik nevyřídí víc osob).
+
+#### Scenario: Sloučení Enterem
+- **WHEN** nástroj po uložení jména nabídne sloučení a archivář
+  v poli jména stiskne Enter
+- **THEN** osoba se sloučí stejně jako tlačítkem „Sloučit“; ikonka
+  Enteru je u „Sloučit“, ne u „Uložit“
+
+#### Scenario: Úprava jména ruší sloučení
+- **WHEN** archivář po nabídce sloučení jméno v poli upraví
+- **THEN** nabídka sloučení zmizí a Enter jméno znovu uloží; ikonka
+  Enteru je zpět u „Uložit“
 
 #### Scenario: Odložení klávesou
 - **WHEN** archivář s kurzorem v poli jména stiskne PageDown
