@@ -4,17 +4,17 @@
     "schema": "fotoarchiv-digi-media-metadata/1",
     "akce": {
       "nazev": "kontrola",
-      "ucastnici": ["Spáčil, David", "Kopáčová, Zuzana"],
-      "obliceje": [{"jmeno": "Spáčil, David", "oblast": [0.5, 0.5, 0.1, 0.1]}]
+      "ucastnici": ["Příkladný, Daniel", "Modelová, Zuzana"],
+      "obliceje": [{"jmeno": "Příkladný, Daniel", "oblast": [0.5, 0.5, 0.1, 0.1]}]
     },
-    "skupiny": {"s": {"nazev": "S", "osoby": ["Spáčil, David"]}},
+    "skupiny": {"s": {"nazev": "S", "osoby": ["Příkladný, Daniel"]}},
     "soubory": {
       "a.jpg": {"skupina": "s"},
       "b.jpg": {
         "skupina": "s",
-        "osoby": ["Kopáčová, Zuzana"],
+        "osoby": ["Modelová, Zuzana"],
         "obliceje": [
-          {"jmeno": "Kopáčová, Zuzana", "oblast": [0.2, 0.3, 0.05, 0.07]}
+          {"jmeno": "Modelová, Zuzana", "oblast": [0.2, 0.3, 0.05, 0.07]}
         ]
       },
       "c.jpg": {}

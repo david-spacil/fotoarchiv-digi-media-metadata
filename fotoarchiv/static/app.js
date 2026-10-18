@@ -16,6 +16,8 @@ import {
   ratio, visibleEvents,
 } from "./fronta.js";
 import { icon } from "./icons.js";
+import { immichStav } from "./immichstav.js";
+import { showNaming } from "./naming.js";
 import {
   byDay, dayLabel, personIndex, sectionInfo, stripeSegments, stripeStops,
 } from "./sections.js";
@@ -162,7 +164,8 @@ const KOLIZE = "Akce má v archivu dvě složky, s příponou .ignored i bez " +
   "neodstraní nebo nesloučí.";
 
 // Pole, která chybí dokončené akci (`chybi` v seznamu akcí).
-const CHYBI = { autori: "autoři", datum: "data", misto: "místa" };
+const CHYBI = { autori: "autoři", datum: "data", misto: "místa",
+  osoby: "nepojmenované osoby" };
 
 // Nálezy kontroly akce (issue #11): tvary podle počtu a dovětek.
 const NALEZY = {
@@ -471,7 +474,8 @@ document.addEventListener("keydown", (e) => {
 
 async function route() {
   if (state.dirty && state.mode === "workspace") await save();
-  const m = location.hash.match(/^#\/akce\/([^/]+)(\/dokonceni)?$/);
+  const m = location.hash.match(
+    /^#\/akce\/([^/#]+)(\/dokonceni)?(#osoby)?$/);
   const im = location.hash.match(/^#\/import(?:\/([^?]*))?(?:\?(.*))?$/);
   const name = m ? decodeURIComponent(m[1]) : null;
   if (state.locked && state.locked !== name) releaseLock();
@@ -482,8 +486,12 @@ async function route() {
   } else if (im) {
     await openImport(im[1] ? decodeURIComponent(im[1]) : null,
       new URLSearchParams(im[2] || ""));
-  } else if (name) await openEvent(name, !!m[2]);
-  else await showList();
+  } else if (name) {
+    await openEvent(name, !!m[2]);
+    // Odkaz ze seznamu s `#osoby`: otevře plochu akce rovnou s nástrojem.
+    if (m[3] && state.mode === "workspace" && state.me?.archivar
+        && canOpenNaming()) openNaming();
+  } else await showList();
 }
 
 function header(...right) {
@@ -654,6 +662,10 @@ function eventBadges(e) {
     e.upravit === false ? h("span", { class: "badge jen-cteni",
       title: "Akci upravují jen ti, kdo ji importovali nebo upravovali, " +
         "archivář a admin." }, "jen ke čtení") : null,
+    // Stav v Immichi jen u dokončené akce se záznamem; bez nastaveného
+    // Immichu výpis pole `immich` nevrací.
+    e.stav === "hotovo" && e.immich?.stav
+      ? h("span", { class: "badge immich" }, immichStav(e.immich)) : null,
   ];
 }
 
@@ -680,6 +692,21 @@ function progress(vyplneno, celkem) {
     h("i", { style: `width: ${celkem ? 100 * vyplneno / celkem : 100}%` }));
 }
 
+// Osoby akce v hotovosti: pojmenované z neskrytých (jen při albu se
+// stavem *obličeje rozpoznány*); u nepojmenovaných nabídne archiváři
+// a adminovi nástroj (URL plochy s `#osoby`).
+function eventOsoby(e) {
+  const o = e.hotovost?.osoby;
+  if (!o) return null;
+  const link = o[0] < o[1] && state.me?.archivar
+    ? h("a", { class: "pojmenovani",
+      href: `#/akce/${encodeURIComponent(e.nazev)}#osoby`,
+      title: "Otevřít nástroj pojmenování osob" }, "Pojmenovat osoby…")
+    : null;
+  return { text: `osoby ${o.join("/")}`, zlomek: o.join("/"), link,
+    frac: progress(o[0], o[1]), necela: o[0] < o[1] };
+}
+
 // Akce bez metadat hotovost nemá; nabídne zahájení zpracování.
 function startLink(e) {
   return e.stav === "nezpracovano" ? h("a", { class: "zahajit",
@@ -692,10 +719,13 @@ function eventTile(e) {
   let done = startLink(e);
   if (e.hotovost) {
     const r = ratio(e);
+    const os = eventOsoby(e);
     done = h("div", { class: "hotovost" },
       progress(Math.round(r * 1000), 1000),
       h("span", { class: "meta" }, POLE.map((k) =>
-        `${POLE_POPISKY[k]} ${e.hotovost[k].join("/")}`).join(" · ")));
+        `${POLE_POPISKY[k]} ${e.hotovost[k].join("/")}`).join(" · ")
+        + (os ? ` · ${os.text}` : "")),
+      os?.link);
   }
   return h("article", { class: `karta stav-${e.stav}` },
     eventThumbs(e) || h("div", { class: "nahledy prazdne" }),
@@ -711,7 +741,14 @@ function eventRow(e) {
       return h("div", { class: vyplneno < celkem ? "castecne" : null },
         h("span", {}, POLE_POPISKY[k]), progress(vyplneno, celkem),
         h("span", { class: "zlomek" }, `${vyplneno}/${celkem}`));
-    }))
+    }), (() => {
+      const os = eventOsoby(e);
+      return os
+        ? [h("div", { class: os.necela ? "castecne" : null },
+          h("span", {}, "osoby"), os.frac,
+          h("span", { class: "zlomek" }, os.zlomek)),
+        os.link] : null;
+    })())
     : h("div", { class: "hotovost" }, startLink(e));
   return h("article", { class: `karta stav-${e.stav}` },
     eventThumbs(e) || h("div", { class: "nahledy prazdne" }),
@@ -912,6 +949,7 @@ async function openEvent(name, finish = false) {
     conflict: false, view: "grid", current: null, readonly: null,
     placeOpen: null, exporting: false, exportVersion: null, exportNote: "",
     exportStale: true, exportErrors: [], finishResult: null,
+    immich: null,
   });
   // Stav akce se mohl změnit u jiného uživatele.
   const events = state.events = await api("/api/akce");
@@ -920,6 +958,10 @@ async function openEvent(name, finish = false) {
     app.replaceChildren(header(), h("main", {}, "Akce nenalezena."));
     return;
   }
+  // Stav v Immichi z výpisu akcí (ze `.work/`, bez dotazu na Immich);
+  // při záznamu doplníme i počty osob (`/immich` čte jen `.work/`).
+  state.immich = entry.immich || null;
+  if (entry.immich) await loadImmichStav(name);
   if (entry.stav === "kolize") {
     app.replaceChildren(header(), h("main", {}, KOLIZE));
     return;
@@ -1662,9 +1704,17 @@ function renderNav(secs) {
   const m = state.navMissing = missing(state.doc, state.present);
   const places = Object.keys(m.mistaBezSouradnic)
     .sort((a, b) => a.localeCompare(b, "cs"));
+  const nepoj = state.immich?.album && Array.isArray(state.immich.osoby)
+    ? state.immich.osoby[1] - state.immich.osoby[0] : 0;
   const akceMiss = [
     m.akce.length ? h("span", { class: "nm strong" },
       `chybí ${m.akce.map((k) => AKCE_POLE[k]).join(", ")}`) : null,
+    nepoj > 0 ? h("button", { class: "nm", dataset: { osoby: "1" },
+      title: plural(nepoj, "nepojmenovaná osoba", "nepojmenované osoby",
+        "nepojmenovaných osob"),
+      "aria-label": plural(nepoj, "nepojmenovaná osoba",
+        "nepojmenované osoby", "nepojmenovaných osob") },
+    icon("osoba"), String(nepoj)) : null,
     ...places.map((misto) => h("button", { class: "nm",
       dataset: { place: misto },
       title: `${misto}: ${nFiles(m.mistaBezSouradnic[misto].length)} bez ` +
@@ -1775,9 +1825,14 @@ function setupNav(nav) {
     if (!row) return;
     const place = e.target.closest("[data-place]")?.dataset.place;
     const miss = e.target.closest("[data-miss]")?.dataset.miss;
+    const nepojmene = e.target.closest("[data-osoby]");
     if (place) openPlace(place, state.navMissing.mistaBezSouradnic[place]);
     else if (miss) clickMissing(row, miss);
-    else clickNavRow(row);
+    // Nepojmenované osoby: klik otevře nástroj (archivář/admin),
+    // ostatním údaj jen ukazuje (bez zámku, `_metadata.json` nemění).
+    else if (nepojmene) {
+      if (state.me?.archivar) openNaming();
+    } else clickNavRow(row);
   });
   // Tažení přijme jen řádek skutečné skupiny.
   const target = (e) => {
@@ -2963,6 +3018,12 @@ async function finishEvent() {
   } finally {
     state.exporting = false;
   }
+  if (state.finishResult?.dokonceno && name === state.name) {
+    // Hlídač začíná na serveru až po dokončení; načti stav hned a
+    // čekej na první zápis do `.work/immich-alba.json`.
+    await loadImmichStav(name);
+    if (name === state.name) pollImmichStav(name, IMMICH_ZAPIS_POKUSU);
+  }
   refreshFinish();
   if (state.dirty && !state.conflict) scheduleSave();
 }
@@ -2972,6 +3033,99 @@ async function finishEvent() {
 function refreshFinish() {
   if (state.mode === "finish") renderFinish();
   else renderExportStatus();
+}
+
+// --- stav akce v Immichi ----------------------------------------------------
+
+// Plocha obnovuje stav přes `GET /api/akce/<název>/immich` (čte jen
+// `.work/immich-alba.json`), dokud je stav průběhový; po dokončení
+// počká i na první zápis hlídače, který může chvíli trvat.
+const IMMICH_POLL_MS = 10000;
+const IMMICH_ZAPIS_POKUSU = 6;
+let immichTimer = null;
+
+function renderImmichStav() {
+  const el = document.getElementById("immich-stav");
+  // Jen u dokončené akce; bez záznamu nebo bez Immiche prázdné.
+  if (el) el.textContent = state.doc?.dokonceno
+    ? immichStav(state.immich) : "";
+}
+
+async function loadImmichStav(name) {
+  try {
+    const r = await api(eventUrl(name, "/immich"));
+    if (name !== state.name) return;
+    state.immich = r.nastaveno ? r : null;
+    renderImmichStav();
+  } catch { /* jen informativní údaj; zkusí se příští tik */ }
+}
+
+// `pockat` = kolik tiků zbývá, než hlídač první záznam zapíše (0 =
+// obnovovat jen když už stav známe a je průběhový).
+function pollImmichStav(name, pockat) {
+  clearTimeout(immichTimer);
+  const probiha = state.immich?.stav === "nacitani"
+    || state.immich?.stav === "rozpoznavani";
+  if (!probiha && pockat <= 0) return;
+  immichTimer = setTimeout(async () => {
+    // Úklid po navigaci: plocha už může být jiná akce nebo zavřená.
+    if (name !== state.name
+        || (state.mode !== "workspace" && state.mode !== "finish")) return;
+    await loadImmichStav(name);
+    // Se záznamem rozhoduje jen stav (průběhový = dál), bez něj
+    // ubývají pokusy čekání na první zápis hlídače.
+    pollImmichStav(name, state.immich ? 0 : pockat - 1);
+  }, IMMICH_POLL_MS);
+}
+
+// --- nástroj pojmenování osob ----------------------------------------------
+
+// Nástroj se nabízí jen při albu v Immichi a buď osobách k pojmenování,
+// nebo alespoň rozjetém rozpoznávání obličejů (stav ≥ rozpoznavani);
+// do `rozpoznano` mohou osoby ještě přibývat (upozornění v nástroji).
+function canOpenNaming() {
+  const im = state.immich;
+  if (!im?.album) return false;
+  if (im.stav === "rozpoznavani" || im.stav === "rozpoznano") return true;
+  return !!(im.osoby && im.osoby[0] < im.osoby[1]);
+}
+
+// Tlačítko nástroje v liště akce (archivář a admin; s počtem
+// nepojmenovaných).
+function renderOsobyActs() {
+  const slot = document.getElementById("osoby-acts");
+  if (!slot) return;
+  const o = state.immich?.osoby;
+  const nepoj = Array.isArray(o) ? o[1] - o[0] : 0;
+  // Bez tlačítka prázdný slot: `replaceChildren(null)` by vložil text
+  // „null“.
+  slot.replaceChildren(...(state.me?.archivar && canOpenNaming()
+    ? [h("button", { onclick: openNaming },
+      nepoj > 0 ? `Pojmenovat osoby… (${nepoj})` : "Pojmenovat osoby…")]
+    : []));
+}
+
+// Překryv nástroje nad plochou; po zavření pryč `#osoby` z adresy,
+// obnovit počty osob v navigátoru i liště a oznámit synchronizaci.
+function openNaming() {
+  if (state.mode !== "workspace") return;
+  showNaming({
+    nazev: state.name,
+    naZavreni: async (vysledek) => {
+      if (location.hash.endsWith("#osoby")) {
+        history.replaceState(null, "", eventHash(state.name));
+      }
+      await loadImmichStav(state.name);
+      if (state.mode !== "workspace") return;
+      renderNav();
+      renderOsobyActs();
+      if (vysledek?.synchronizace) {
+        const el = document.getElementById("immich-stav");
+        if (el) el.textContent = "⟳ Server spouští synchronizaci — " +
+          "jména se přenesou do „obliceje“ a počtů osob.";
+      }
+    },
+  });
 }
 
 // --- kontrolní stránka dokončení -------------------------------------------
@@ -3066,6 +3220,10 @@ function renderWorkspace() {
     h("div", { class: "eventbar" }, back,
       h("h1", {}, state.name),
       h("span", { class: "paths" }, d.pracovni_soubor),
+      // Stav v Immichi (jen u dokončené akce se záznamem); vidí ho i
+      // běžný uživatel a bez zámku. `paths` by byl skrytý, `meta` je
+      // viditelný slabý text.
+      h("span", { class: "meta", id: "immich-stav" }),
       h("span", { class: "views" },
         h("button", { dataset: { view: "grid" }, class: "ico",
           title: "Mřížka (Esc)", "aria-label": "Mřížka",
@@ -3089,6 +3247,7 @@ function renderWorkspace() {
       // Nálezy a počty (renderBar): zalamují se, akce vpravo ne.
       h("div", { id: "bar", class: "bar" }),
       h("span", { class: "acts" },
+        h("span", { id: "osoby-acts" }),
         h("button", { disabled: !!state.readonly,
           title: "Nahrát do akce další fotky a videa", onclick: () => {
             location.hash = `#/import?cil=${encodeURIComponent(state.name)}`;
@@ -3119,6 +3278,9 @@ function renderWorkspace() {
   renderPanel();
   setStatus();
   renderExportStatus();
+  renderImmichStav();
+  renderOsobyActs();
+  pollImmichStav(state.name, 0);   // obnovuje jen během načítání
   if (state.dirty) scheduleSave();
 }
 
@@ -5079,7 +5241,21 @@ async function showSettings() {
   }
   const [s, nominatim] = await Promise.all([api("/api/immich"),
     api("/api/nominatim")]);
+  let knihovny = [];
+  if (s.nastaveno) {
+    // Uložená knihovna zůstane volbou i bez spojení, jinak by ji
+    // uložení nastavení smazalo.
+    try {
+      knihovny = (await api("/api/immich/knihovny")).knihovny || [];
+    } catch {
+      knihovny = []; // Immich nedostupný
+    }
+    if (s.knihovna && !knihovny.some((k) => k.id === s.knihovna)) {
+      knihovny.push({ id: s.knihovna, name: s.knihovna });
+    }
+  }
   const msg = h("p", { class: "status" });
+  const varovani = h("div", {});
   const say = (text, error = false) => {
     msg.textContent = text;
     msg.className = error ? "status error" : "status";
@@ -5088,7 +5264,11 @@ async function showSettings() {
     placeholder: "http://10.10.1.51:2283" });
   const klic = h("input", { type: "password", autocomplete: "off",
     placeholder: s.nastaveno ? `klíč nastaven (${s.klic}) – vyplňte jen ` +
-      "pro změnu" : "API klíč (jen pro čtení)" });
+      "pro změnu" : "API klíč (osoby, assety, obličeje)" });
+  const knihovna = h("select", {},
+    h("option", { value: "" }, "— není vybrána —"),
+    ...knihovny.map((k) => h("option", {
+      value: k.id, selected: k.id === s.knihovna }, k.name || k.id)));
   const refresh = async () => {
     state.info = await api("/api/info");
     await showSettings();
@@ -5096,7 +5276,8 @@ async function showSettings() {
   const saveSettings = async () => {
     try {
       await api("/api/immich", { method: "PUT",
-        body: { adresa: adresa.value, klic: klic.value } });
+        body: { adresa: adresa.value, klic: klic.value,
+          knihovna: knihovna.value } });
       await refresh();
     } catch (err) {
       say({ klic_povinny: "Při změně adresy zadejte klíč znovu.",
@@ -5106,9 +5287,12 @@ async function showSettings() {
   };
   const test = async () => {
     say("Zkouším připojení…");
+    varovani.replaceChildren();
     try {
       const r = await api("/api/immich/test", { method: "POST" });
       say(`Připojení funguje: Immich ${r.verze}, osob ${r.osob}.`);
+      varovani.replaceChildren(...(r.varovani || []).map(
+        (w) => h("p", { class: "warn" }, w)));
     } catch (err) {
       say(`Připojení nefunguje: ${err.data?.chyba || err.message}`, true);
     }
@@ -5125,15 +5309,28 @@ async function showSettings() {
     h("h1", {}, "Nastavení"),
     h("h2", {}, "Immich"),
     h("p", {}, "Osoby na fotkách se přebírají z pojmenovaných obličejů " +
-      "v Immichi. Stačí klíč jen pro čtení (osoby, assety, obličeje)."),
+      "v Immichi. Klíč potřebuje čtení osob, assetů a obličejů; pro " +
+      "alba akcí, sken knihovny a nástroj pojmenování i práva k zápisu " +
+      "a uživatele s rolí admin. Test připojení vypíše, co chybí."),
     h("div", { class: "field" }, h("label", {}, "Adresa serveru"), adresa),
     h("div", { class: "field" }, h("label", {}, "API klíč"), klic),
+    s.nastaveno ? h("div", { class: "field" },
+      h("label", {}, "Knihovna archivu (sken po dokončení akce)"),
+      knihovna) : null,
     h("div", { class: "row" },
       h("button", { class: "primary", onclick: saveSettings }, "Uložit"),
       s.nastaveno ? h("button", { onclick: test }, "Otestovat") : null,
       s.nastaveno ? h("button", { onclick: remove }, "Smazat") : null),
     msg,
+    varovani,
     s.nastaveno ? syncBlock(s.synchronizace, sync) : null,
+    // Chyby alba (spojení, oprávnění) stav akce nemění; alb se ujme
+    // až další synchronizace. Ukazují se jen adminovi.
+    s.nastaveno && s.alba_chyby?.length
+      ? h("section", {}, h("h2", {}, "Alba akcí"),
+          ...s.alba_chyby.map((a) => h("p", { class: "warn" },
+            `${a.akce}: ${a.chyba}`)))
+      : null,
     contactBlock(nominatim, refresh)));
   if (s.synchronizace.bezi) {
     settingsTimer = setTimeout(() => {

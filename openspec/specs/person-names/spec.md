@@ -18,8 +18,8 @@ být přijato a od té doby SHALL být v seznamu.
 - **THEN** jméno se uloží a příště se nabízí
 
 #### Scenario: Jméno z Immiche
-- **WHEN** synchronizace zapíše obličej `Hlava, Miloš`
-- **THEN** `Hlava, Miloš` se nabízí při zadávání autorů
+- **WHEN** synchronizace zapíše obličej `Vzorný, Tomáš`
+- **THEN** `Vzorný, Tomáš` se nabízí při zadávání autorů
 
 ### Requirement: Našeptávání
 Při psaní do pole autora nebo účastníka SHALL formulář nabízet jména ze
@@ -27,13 +27,13 @@ seznamu, která odpovídají vstupu bez ohledu na diakritiku a velikost
 písmen. Účastníci otevřené akce SHALL být nabízeni přednostně.
 
 #### Scenario: Bez diakritiky
-- **WHEN** uživatel napíše `spac`
-- **THEN** formulář nabídne `Spáčil, David`
+- **WHEN** uživatel napíše `prikl`
+- **THEN** formulář nabídne `Příkladný, Daniel`
 
 #### Scenario: Účastník akce první
-- **WHEN** akce má mezi účastníky `Kopáčová, Zuzana` a uživatel u autora
+- **WHEN** akce má mezi účastníky `Modelová, Zuzana` a uživatel u autora
   skupiny napíše `k`
-- **THEN** `Kopáčová, Zuzana` je první z návrhů
+- **THEN** `Modelová, Zuzana` je první z návrhů
 
 ### Requirement: Návrh opravy
 Když zadané jméno odpovídá jménu ze seznamu po odstranění diakritiky,
@@ -41,12 +41,12 @@ sjednocení velikosti písmen a seřazení slov, formulář SHALL nabídnout
 „Mysleli jste `…`?“ a kliknutím propsat kanonický tvar.
 
 #### Scenario: Jiné pořadí slov
-- **WHEN** uživatel zadá `David Spáčil` a v seznamu je `Spáčil, David`
-- **THEN** formulář nabídne „Mysleli jste `Spáčil, David`?“
+- **WHEN** uživatel zadá `Daniel Příkladný` a v seznamu je `Příkladný, Daniel`
+- **THEN** formulář nabídne „Mysleli jste `Příkladný, Daniel`?“
 
 #### Scenario: Chybějící diakritika
-- **WHEN** uživatel zadá `Spacil, David`
-- **THEN** formulář nabídne `Spáčil, David`
+- **WHEN** uživatel zadá `Prikladny, Daniel`
+- **THEN** formulář nabídne `Příkladný, Daniel`
 
 ### Requirement: Kanonický tvar
 Nové jméno SHALL být ukládáno ve tvaru `Příjmení, Jméno`. Zadání bez

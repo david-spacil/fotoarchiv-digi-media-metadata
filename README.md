@@ -76,9 +76,10 @@ a role); aplikace ho jen čte, změna platí bez restartu a odebraný
 uživatel přijde o přístup při dalším požadavku:
 
 ```json
-{"spacil": {"jmeno": "Spáčil, David", "email": "…", "role": "admin"},
+{"prikladny": {"jmeno": "Příkladný, Daniel", "email": "…",
+               "role": "admin"},
  "novak": {"jmeno": "Novák, Petr", "role": "archivar"},
- "kopacova": {"jmeno": "Kopáčová, Zuzana"}}
+ "modelova": {"jmeno": "Modelová, Zuzana"}}
 ```
 
 Role je `"admin"`, `"archivar"`, nebo chybí (běžný uživatel).
@@ -394,7 +395,7 @@ přístroje a vzoru názvu, uživatel je může upravit.
     "datum_od": "2026-04-28",
     "datum_do": "2026-04-28",
     "mista": ["Vysočany", "Holštejn"],
-    "ucastnici": ["Spáčil, David", "Kopáčová, Zuzana"]
+    "ucastnici": ["Příkladný, Daniel", "Modelová, Zuzana"]
   },
   "souradnice_mist": {
     "Vysočany": {"gps": [49.43, 16.804],
@@ -404,7 +405,7 @@ přístroje a vzoru názvu, uživatel je může upravit.
   },
   "skupiny": {
     "g9": {
-      "autori": ["Spáčil, David", "Kopáčová, Zuzana"],
+      "autori": ["Příkladný, Daniel", "Modelová, Zuzana"],
       "pristroj": "Panasonic DC-G9"
     }
   },
@@ -415,13 +416,13 @@ přístroje a vzoru názvu, uživatel je může upravit.
       "gps": null,
       "misto": "Holštejn",
       "popis": "…",
-      "obliceje": [{"jmeno": "Hlava, Miloš",
+      "obliceje": [{"jmeno": "Vzorný, Tomáš",
                     "oblast": [0.2725, 0.432, 0.041, 0.0747]}],
       "sha256": "…"
     },
     "P1503713.JPG": {"skupina": "g9", "vyradit": true}
   },
-  "upravili": {"Spáčil, David": "2026-10-14T10:15:02"}
+  "upravili": {"Příkladný, Daniel": "2026-10-14T10:15:02"}
 }
 ```
 
@@ -470,6 +471,18 @@ přístroje a vzoru názvu, uživatel je může upravit.
   verze. Starší akce pole nemají, vznikne prvním uložením. Nedědí se, do
   sidecaru ani indexu nejde; slouží filtru „Moje rozpracované“, řazení
   seznamu akcí a oprávnění k úpravě akce (viz Přihlášení).
+- **Osoby v kompletnosti akce** nejsou v `_metadata.json` (nejsou to
+  údaje o fotkách a měnily by verzi akce). Počty pojmenovaných
+  a neskrytých osob s obličejem v albu akce ukládá synchronizace (a po
+  každém kroku nástroj pojmenování) do `.work/immich-osoby.json`
+  `{akce: {pojmenovane, celkem, cas}}`. Hotovost je uvádí jen u akce
+  s albem ve stavu *obličeje rozpoznány*; nepojmenované osoby dělají
+  dokončenou akci „nekompletní“ (viz Aplikace, Immich).
+- **Další soubory Immiche ve `.work/`** (nikdy v archivu):
+  `immich.json` (adresa, klíč, knihovna; 0600), `immich-alba.json`
+  `{akce: {album, stav, cas, chyba?}}` (vazba na album a stav akce
+  v Immichi) a `pojmenovani.json` `{login: {akce: [id osoby]}}`
+  (osoby odložené volbou „odložit“ v aktuálním kole).
 - Originály se nemění.
 
 ## Jména osob
@@ -480,8 +493,9 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
 - Kanonický tvar `Příjmení, Jméno`.
 - Při zadání jména formulář porovná vstup se seznamem bez ohledu na
   diakritiku, velikost písmen a pořadí slov. Při shodě nabídne
-  „Mysleli jste `Spáčil, David`?“ a kliknutím opravený tvar propíše do
-  pole (např. pro `Spacil, David` nebo `David Spáčil`).
+  „Mysleli jste `Příkladný, Daniel`?“ a kliknutím opravený tvar
+  propíše do pole (např. pro `Prikladny, Daniel` nebo
+  `Daniel Příkladný`).
 - Nové jméno, které nic nepřipomíná, se přijme a od té doby je
   v seznamu.
 - Platí pro autory a účastníky. Jména obličejů z Immiche jsou
@@ -587,8 +601,13 @@ po široké monitory.
    autoři, datum, místo počet souborů kořene (bez označených
    k vyřazení), které ho mají po zdědění vyplněné, z jejich počtu;
    počítá ji server při výpisu z `_metadata.json` a výpisu složky.
+   Má-li akce zjištěné osoby a stav *obličeje rozpoznány*, hotovost
+   uvádí i osoby: pojmenované ze všech neskrytých (`osoby 4/6`); při
+   nepojmenovaných karta nabídne archiváři a adminovi odkaz na nástroj
+   pojmenování osob (otevře plochu akce rovnou s nástrojem).
    Nezpracovaná akce místo hotovosti nabízí zahájení zpracování.
-   Dokončená akce, jejímž souborům chybí autoři, datum nebo místo, má
+   Dokončená akce, jejímž souborům chybí autoři, datum nebo místo,
+   nebo která má podle posledního zjištění nepojmenované osoby, má
    štítek „nekompletní“, upravená po exportu „změněno po exportu“;
    akce s nálezem kontroly (viz Kontrola akce) „k vyřešení“.
    Karty jsou **dlaždice** (náhledy 2 × 2, souhrnný pruh hotovosti)
@@ -640,7 +659,10 @@ po široké monitory.
    bez data, bez místa (jen má-li akce víc míst) a podle data i bez
    skupiny; skupina bez autorů má místo počtu zvýrazněné „bez autorů“.
    Řádek Akce ukazuje chybějící název či data akce a místa, o jejichž
-   souřadnicích není rozhodnuto. Soubory k vyřazení se nepočítají.
+   souřadnicích není rozhodnuto, a ikonu osoby s počtem nepojmenovaných
+   osob podle posledního zjištění („2 nepojmenované osoby“); klik na
+   něj otevře archiváři a adminovi nástroj pojmenování osob, ostatním
+   údaj jen ukazuje. Soubory k vyřazení se nepočítají.
    Klik na řádek Akce zruší výběr, na skupinu vybere skupinu, na den
    („Bez data“, „Bez skupiny“) jeho soubory, a mřížka na oddíl skočí
    i s předělem nad ním. Klik na chybějící údaj vybere dotčené soubory
@@ -937,13 +959,54 @@ popisovalo jen to, co se opravdu přenese.
 
 ### Immich
 
-Stránka **Nastavení** (odkaz v hlavičce) drží adresu serveru Immich
-a API klíč. Stačí klíč jen pro čtení s oprávněními ke čtení osob,
-assetů a obličejů (`face.read`). Ukládá se do `.work/immich.json`
-(práva 0600), nikdy do archivu; klíč se do prohlížeče nevrací (jen
-„klíč nastaven (…W4No)“) a změna adresy vyžaduje zadat ho znovu.
-Otestovat ověří verzi, osoby a čtení obličejů. Nastavení
-(i synchronizaci na požádání) smí jen admin.
+Stránka **Nastavení** (odkaz v hlavičce) drží adresu serveru Immich,
+API klíč a výběr knihovny archivu. Klíč potřebuje čtení osob, assetů
+a obličejů (`person.read`, `asset.read`, `face.read`, `asset.view`);
+pro alba akcí, sken knihovny, stav rozpoznávání a nástroj pojmenování
+osob i práva k zápisu a čtení front (`person.update`, `person.merge`,
+`album.read`, `album.create`, `albumAsset.create`, `albumAsset.delete`,
+`library.read`, `library.update`, `queue.read`) — klíč s `all` kryje
+vše. Sken knihovny a fronty jsou v Immichi jen pro admina, klíč musí
+patřit uživateli s rolí admin. Nastavení se ukládá do
+`.work/immich.json` (práva 0600), nikdy do archivu; klíč se do
+prohlížeče nevrací (jen „klíč nastaven (…W4No)“) a změna adresy
+vyžaduje zadat ho znovu; výběr knihovny se uloží i bez nového klíče
+(`knihovna` v `immich.json`, nabídne ho `GET /api/immich/knihovny`).
+Otestovat ověří verzi, osoby a čtení obličejů a navíc porovná
+oprávnění klíče: chybějící oprávnění, klíč uživatele bez role admin
+(odpověď `GET /api/libraries` je 403) a nevybranou knihovnu vypíše
+jako varování — čtení obličejů funguje i bez nich, alba akcí, sken
+a nástroj pojmenování ne. Nastavení (i synchronizaci na požádání)
+smí jen admin.
+
+**Alba dokončených akcí** vymezují fotky akce v Immichi (pro nástroj
+pojmenování osob i pro prohlížení). Po dokončení (odebrání přípony
+`.ignored`) spustí server hlídače na pozadí: spustí sken knihovny
+vybrané v nastavení a pak co 20 s zjišťuje, zda Immich zná všechny
+soubory akce; jakmile ano, založí album pojmenované jako akce a později
+do něj doplňuje přibývající assety a cizí z alba odebírá. Album ani
+asset se nikdy nemažou. Pravidelná synchronizace totéž opakuje pro
+každou dokončenou akci (bez skenu), takže album dorovná i po restartu
+serveru nebo smazání alba v Immichi; hlídač je jen zrychlení. Vazba
+akce → id alba je v `.work/immich-alba.json`; při ztrátě souboru se
+album dohledá podle názvu, takže nevznikne duplicitní.
+
+**Stav akce v Immichi** vidí každý přihlášený uživatel na kartě akce
+a na ploše akce; bez nastaveného Immiche se nezobrazuje. Hlídač
+i synchronizace zapisují do `.work/immich-alba.json` stavy:
+`nacitani` („Immich načítá fotky“), `rozpoznavani` („Rozpoznávání
+obličejů probíhá“), `rozpoznano` („Obličeje rozpoznány (datum)“)
+a `nenalezeno` („Immich fotky akce zatím nenašel“ — hlídač vypršel
+a Immich žádné soubory akce nezná). Zobrazení se Immiche neptá:
+výpis akcí čte stav ze souboru a plocha jej během načítání
+a rozpoznávání obnovuje přes `GET /api/akce/<název>/immich` (ten čte
+taky jen soubor; není pod `/api/immich`, který je jen pro admina).
+Rozpoznání se pozná jen nepřímo: Immich nemá příznak „obličeje
+zpracovány“ — hotovo je, když mají všechny fotky alba zmenšeninu
+(`thumbhash`; videa se nepočítají) a fronty `faceDetection`
+i `facialRecognition` nemají aktivní ani čekající úlohy. Chyba spojení
+nebo chybějící oprávnění stav nemění: zapíše se do `chyba` a vypíše
+na stránce Nastavení (jen admin).
 
 **Synchronizace obličejů** běží v serveru po startu, pak každých
 15 minut a na tlačítko Načíst osoby:
@@ -975,6 +1038,28 @@ ukládání neposílá, server je převezme z uložené verze.
 Přejmenování nebo přesun souboru je v Immichi nový asset bez obličejů;
 záloha v `_metadata.json` jde s přejmenováním a obnoví se exportem pro
 obnovu.
+
+**Nástroj pojmenování osob** (smí admin a archivář, ostatním server
+vrátí 403) prochází po jedné nepojmenované a neskryté osobě Immiche
+s obličejem na fotce v albu akce, seřazené podle počtu obličejů.
+Otevírá se jako překryv nad plochou akce (rozmazané pozadí) tlačítkem
+v liště akce, klikem na nepojmenované osoby v navigátoru a z karty
+odkazem (`#osoby` v adrese plochy); u stavu *rozpoznávání obličejů*
+upozorní, že další osoby mohou přibýt. Zavření vrátí na plochu
+a odstraní `#osoby` z adresy.
+U každé ukáže až 3 výřezy z různých fotek (zmenšeniny proxyuje
+server — klíč Immiche neopouští server) s metadaty z Immiche a po
+zdědění i ze souboru archivu. Osobu lze pojmenovat (do Immiche se
+zapisuje kanonický tvar `Příjmení, Jméno`, u stejnojmenné existující
+osoby nabídne server sloučení), skrýt, nebo odložit; odložené osoby
+jsou per uživatel a akce v `.work/pojmenovani.json`, nové kolo je
+vymaže. Klávesy fungují i v poli jména: Enter uloží, PageDown odloží,
+Alt+Delete skryje, Esc zavře; další volba se neodešle, dokud
+předchozí zápis neskončil. Nástroj zapisuje jen do Immiche (`PUT
+/api/people`, `POST /api/people/merge`), `_metadata.json` nemění
+a nevyžaduje zámek akce. Po každé akci přepočítá počty osob
+do `.work/immich-osoby.json`; zavření nástroje po změně spustí
+synchronizaci, takže se jména brzy objeví v `obliceje`.
 
 ### Ukládání a export
 

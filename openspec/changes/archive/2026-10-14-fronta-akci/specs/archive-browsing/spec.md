@@ -144,8 +144,8 @@ uvést jméno držitele. Zámek vlastní relace uživatele SHALL být
 odlišený („otevřeno u vás“). Seznam MUST neuvádět identifikátor relace.
 
 #### Scenario: Akce u kolegy
-- **WHEN** akci drží zámek uživatele Kopáčová, Zuzana
-- **THEN** karta uvádí „upravuje Kopáčová, Zuzana“
+- **WHEN** akci drží zámek uživatele Modelová, Zuzana
+- **THEN** karta uvádí „upravuje Modelová, Zuzana“
 
 #### Scenario: Volná akce
 - **WHEN** akce nemá platný zámek
@@ -166,7 +166,7 @@ diakritiku a velikost písmen a kombinuje se s filtrem. Zvolený filtr,
 hledání a řazení SHALL zůstat zachované po návratu z plochy akce.
 
 #### Scenario: Moje rozpracované
-- **WHEN** uživatel Spáčil, David uložil akce A a B, A je
+- **WHEN** uživatel Příkladný, Daniel uložil akce A a B, A je
   *rozpracováno* a B *hotovo* bez změn po exportu
 - **THEN** filtr Moje rozpracované ukáže jen A
 

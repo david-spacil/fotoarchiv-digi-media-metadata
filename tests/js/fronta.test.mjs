@@ -7,7 +7,7 @@ import {
   filterCounts, listHash, matchesSearch, parseListHash, visibleEvents,
 } from "../../fotoarchiv/static/fronta.js";
 
-const ME = "Spáčil, David";
+const ME = "Příkladný, Daniel";
 const full = { autori: [38, 38], datum: [38, 38], misto: [38, 38] };
 const gaps = { autori: [38, 38], datum: [30, 38], misto: [10, 38] };
 
@@ -25,7 +25,7 @@ test("Moje rozpracované: rozpracovaná ano, hotová beze změn ne", () => {
     ev("2026-01-01 A", { upravili: { [ME]: "2026-10-12T10:00:00" } }),
     ev("2026-01-02 B", { stav: "hotovo", hotovost: full,
       upravili: { [ME]: "2026-10-13T10:00:00" } }),
-    ev("2026-01-03 C", { upravili: { "Kopáčová, Zuzana": "2026-10-13" } }),
+    ev("2026-01-03 C", { upravili: { "Modelová, Zuzana": "2026-10-13" } }),
     ev("2026-01-04 D", { drzitel: { jmeno: ME, vase: true } }),
     ev("2026-01-05 E", { stav: "hotovo", zmeneno_po_exportu: true,
       upravili: { [ME]: "2026-10-13T10:00:00" } }),

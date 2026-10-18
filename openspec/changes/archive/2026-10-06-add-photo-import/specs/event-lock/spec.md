@@ -26,12 +26,12 @@ MUST server uvolnit, když se provedení přeruší dřív, než klient dostal
 výsledek.
 
 #### Scenario: Druhý uživatel
-- **WHEN** Kopáčová otevře akci, kterou drží Spáčil
-- **THEN** vidí akci jen ke čtení a upozornění „Akci upravuje Spáčil,
-  David“
+- **WHEN** Modelová otevře akci, kterou drží Příkladný
+- **THEN** vidí akci jen ke čtení a upozornění „Akci upravuje Příkladný,
+  Daniel“
 
 #### Scenario: Vlastní jiná záložka
-- **WHEN** Spáčil otevře akci, kterou drží jeho jiná záložka
+- **WHEN** Příkladný otevře akci, kterou drží jeho jiná záložka
 - **THEN** vidí upozornění „Akci máte otevřenou v jiné záložce. Pokud
   chcete pokračovat v práci zde, zavřete původní záložku.“
 

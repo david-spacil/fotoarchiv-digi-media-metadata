@@ -11,7 +11,7 @@ def users(work, data):
     return path
 
 
-SPACIL = {"spacil": {"jmeno": "Spáčil, David", "role": "admin"}}
+PRIKLADNY = {"prikladny": {"jmeno": "Příkladný, Daniel", "role": "admin"}}
 
 
 class Clock:
@@ -23,27 +23,27 @@ class Clock:
 
 
 def test_hash_not_password_in_file(tmp_path):
-    users(tmp_path, SPACIL)
+    users(tmp_path, PRIKLADNY)
     a = auth.Auth(tmp_path)
-    a.passwords.set("spacil", "tajne-heslo-1")
+    a.passwords.set("prikladny", "tajne-heslo-1")
     path = tmp_path / "hesla.json"
     assert "tajne-heslo-1" not in path.read_text(encoding="utf-8")
     assert os.stat(path).st_mode & 0o777 == 0o600
-    user, err = a.login("Spacil ", "tajne-heslo-1")
+    user, err = a.login("Prikladny ", "tajne-heslo-1")
     assert err is None
-    assert user == {"login": "spacil", "jmeno": "Spáčil, David",
+    assert user == {"login": "prikladny", "jmeno": "Příkladný, Daniel",
                     "email": None, "role": "admin"}
 
 
 def test_removed_user_loses_access(tmp_path):
-    path = users(tmp_path, SPACIL)
+    path = users(tmp_path, PRIKLADNY)
     a = auth.Auth(tmp_path)
-    a.passwords.set("spacil", "tajne-heslo-1")
-    assert a.users.get("spacil")
+    a.passwords.set("prikladny", "tajne-heslo-1")
+    assert a.users.get("prikladny")
     path.write_text("{}", encoding="utf-8")
     os.utime(path, ns=(1, 1))  # jiný mtime i při rychlém přepisu
-    assert a.users.get("spacil") is None
-    assert a.login("spacil", "tajne-heslo-1") == (None, "neplatne")
+    assert a.users.get("prikladny") is None
+    assert a.login("prikladny", "tajne-heslo-1") == (None, "neplatne")
 
 
 def test_roles(tmp_path):
@@ -59,91 +59,91 @@ def test_roles(tmp_path):
 
 
 def test_old_admin_key_and_unknown_role_refused(tmp_path):
-    users(tmp_path, {"spacil": {"jmeno": "Spáčil, David", "admin": True},
-                     "kopacova": {"jmeno": "Kopáčová, Jana",
+    users(tmp_path, {"prikladny": {"jmeno": "Příkladný, Daniel", "admin": True},
+                     "modelova": {"jmeno": "Modelová, Jana",
                                   "role": "spravce"},
                      "novak": {"jmeno": "Novák, Petr"}})
     u = auth.Users(tmp_path)
     assert u.problems() == [
-        ("spacil", 'klíč "admin" (dřívější zápis role)'),
-        ("kopacova", 'neznámá role "spravce"')]
-    assert u.get("spacil") is None and u.get("kopacova") is None
+        ("prikladny", 'klíč "admin" (dřívější zápis role)'),
+        ("modelova", 'neznámá role "spravce"')]
+    assert u.get("prikladny") is None and u.get("modelova") is None
     assert u.get("novak")["role"] is None
     text = auth.problems_message(u)
-    assert "spacil" in text and '"role": "admin"' in text
+    assert "prikladny" in text and '"role": "admin"' in text
 
 
 def test_bad_record_at_runtime(tmp_path, caplog):
-    path = users(tmp_path, dict(SPACIL, novak={"jmeno": "Novák, Petr"}))
+    path = users(tmp_path, dict(PRIKLADNY, novak={"jmeno": "Novák, Petr"}))
     a = auth.Auth(tmp_path)
     a.passwords.set("novak", "tajne-heslo-1")
-    a.passwords.set("spacil", "tajne-heslo-1")
+    a.passwords.set("prikladny", "tajne-heslo-1")
     assert a.users.get("novak")
     path.write_text(json.dumps(dict(
-        SPACIL, novak={"jmeno": "Novák, Petr", "role": "spravce"})),
+        PRIKLADNY, novak={"jmeno": "Novák, Petr", "role": "spravce"})),
         encoding="utf-8")
     os.utime(path, ns=(1, 1))
     with caplog.at_level("WARNING"):
         assert a.login("novak", "tajne-heslo-1") == (None, "neplatne")
     assert "novak" in caplog.text
-    assert a.login("spacil", "tajne-heslo-1")[1] is None
+    assert a.login("prikladny", "tajne-heslo-1")[1] is None
 
 
 def test_change_password_changes_fingerprint(tmp_path):
-    users(tmp_path, SPACIL)
+    users(tmp_path, PRIKLADNY)
     a = auth.Auth(tmp_path)
-    a.passwords.set("spacil", "tajne-heslo-1")
-    before = a.passwords.fingerprint("spacil")
-    assert a.change("spacil", "spatne", "nove-heslo-22") == "spatne_heslo"
-    assert a.change("spacil", "tajne-heslo-1", "kratke") == "kratke_heslo"
-    assert a.change("spacil", "tajne-heslo-1",
+    a.passwords.set("prikladny", "tajne-heslo-1")
+    before = a.passwords.fingerprint("prikladny")
+    assert a.change("prikladny", "spatne", "nove-heslo-22") == "spatne_heslo"
+    assert a.change("prikladny", "tajne-heslo-1", "kratke") == "kratke_heslo"
+    assert a.change("prikladny", "tajne-heslo-1",
                     "tajne-heslo-1") == "stejne_heslo"
-    assert a.passwords.fingerprint("spacil") == before
-    assert a.change("spacil", "tajne-heslo-1", "nove-heslo-22") is None
-    assert a.passwords.fingerprint("spacil") != before
-    assert a.login("spacil", "tajne-heslo-1")[1] == "neplatne"
-    assert a.login("spacil", "nove-heslo-22")[1] is None
+    assert a.passwords.fingerprint("prikladny") == before
+    assert a.change("prikladny", "tajne-heslo-1", "nove-heslo-22") is None
+    assert a.passwords.fingerprint("prikladny") != before
+    assert a.login("prikladny", "tajne-heslo-1")[1] == "neplatne"
+    assert a.login("prikladny", "nove-heslo-22")[1] is None
 
 
 def test_one_time_password_must_change(tmp_path):
-    users(tmp_path, SPACIL)
+    users(tmp_path, PRIKLADNY)
     a = auth.Auth(tmp_path)
     assert a.issue("nikdo") is None
-    heslo = a.issue("spacil")
-    assert a.passwords.must_change("spacil")
-    assert a.login("spacil", heslo)[1] is None
-    assert a.change("spacil", heslo, "vlastni-heslo") is None
-    assert not a.passwords.must_change("spacil")
+    heslo = a.issue("prikladny")
+    assert a.passwords.must_change("prikladny")
+    assert a.login("prikladny", heslo)[1] is None
+    assert a.change("prikladny", heslo, "vlastni-heslo") is None
+    assert not a.passwords.must_change("prikladny")
 
 
 def test_unknown_login_same_error(tmp_path):
-    users(tmp_path, SPACIL)
+    users(tmp_path, PRIKLADNY)
     a = auth.Auth(tmp_path)
-    a.passwords.set("spacil", "tajne-heslo-1")
-    assert a.login("nikdo", "x") == a.login("spacil", "x") == \
+    a.passwords.set("prikladny", "tajne-heslo-1")
+    assert a.login("nikdo", "x") == a.login("prikladny", "x") == \
         (None, "neplatne")
 
 
 def test_throttle_after_failures(tmp_path):
-    users(tmp_path, SPACIL)
+    users(tmp_path, PRIKLADNY)
     clock = Clock()
     a = auth.Auth(tmp_path, clock=clock)
-    a.passwords.set("spacil", "tajne-heslo-1")
+    a.passwords.set("prikladny", "tajne-heslo-1")
     for _ in range(auth.FREE_ATTEMPTS - 1):
-        assert a.login("spacil", "x") == (None, "neplatne")
-    assert a.login("spacil", "x") == (None, "neplatne")
+        assert a.login("prikladny", "x") == (None, "neplatne")
+    assert a.login("prikladny", "x") == (None, "neplatne")
     # Po pátém chybném pokusu se čeká, i se správným heslem.
-    assert a.login("spacil", "tajne-heslo-1") == (None, 1)
+    assert a.login("prikladny", "tajne-heslo-1") == (None, 1)
     clock.t += 1
-    assert a.login("spacil", "x") == (None, "neplatne")
-    assert a.login("spacil", "x") == (None, 2)
+    assert a.login("prikladny", "x") == (None, "neplatne")
+    assert a.login("prikladny", "x") == (None, 2)
     # Neexistující login se zdržuje stejně.
     for _ in range(auth.FREE_ATTEMPTS):
         a.login("nikdo", "x")
     assert a.login("nikdo", "x") == (None, 1)
     clock.t += 2
-    assert a.login("spacil", "tajne-heslo-1")[1] is None
-    assert a.throttle.wait("spacil") == 0
+    assert a.login("prikladny", "tajne-heslo-1")[1] is None
+    assert a.throttle.wait("prikladny") == 0
 
 
 def test_secret_key_persists(tmp_path):

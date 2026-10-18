@@ -49,9 +49,9 @@ login MUST NOT mít přístup (401) a server SHALL chybu zapsat do logu.
 
 #### Scenario: Starý zápis admina při startu
 - **WHEN** `uzivatele.json` obsahuje
-  `{"spacil": {"jmeno": "Spáčil, David", "admin": true}}` a server se
+  `{"prikladny": {"jmeno": "Příkladný, Daniel", "admin": true}}` a server se
   spouští
-- **THEN** server nenastartuje a vypíše login `spacil` s návodem
+- **THEN** server nenastartuje a vypíše login `prikladny` s návodem
   nahradit `"admin": true` za `"role": "admin"`
 
 #### Scenario: Chybný záznam za běhu
@@ -173,7 +173,7 @@ v ní akce, které ji mění. Bez přihlášení (vývojový režim) smí upravi
 každý všechno.
 
 #### Scenario: Vlastní import
-- **WHEN** uživatel Kopáčová, Zuzana bez role naimportuje novou akci
+- **WHEN** uživatel Modelová, Zuzana bez role naimportuje novou akci
   a otevře ji
 - **THEN** získá zámek a může akci upravovat
 
@@ -187,6 +187,6 @@ každý všechno.
 - **THEN** získá zámek a může ji upravit i dokončit
 
 #### Scenario: Jméno bez diakritiky
-- **WHEN** v `upravili` je `Kopacova, Zuzana` a přihlášený uživatel má
-  jméno `Kopáčová, Zuzana`
+- **WHEN** v `upravili` je `Modelova, Zuzana` a přihlášený uživatel má
+  jméno `Modelová, Zuzana`
 - **THEN** akci smí upravit

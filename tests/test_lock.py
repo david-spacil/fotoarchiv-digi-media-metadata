@@ -16,19 +16,19 @@ def locks():
 
 def test_free_event_acquired():
     l, _ = locks()
-    ok, info = l.acquire("A", "r1", "Spáčil, David")
-    assert ok and info["jmeno"] == "Spáčil, David"
+    ok, info = l.acquire("A", "r1", "Příkladný, Daniel")
+    assert ok and info["jmeno"] == "Příkladný, Daniel"
     assert l.holds("A", "r1") and not l.holds("A", "r2")
     assert not l.holds("A", None)
 
 
 def test_busy_event_returns_holder():
     l, clock = locks()
-    l.acquire("A", "r1", "Spáčil, David")
+    l.acquire("A", "r1", "Příkladný, Daniel")
     clock.t += 42
-    ok, info = l.acquire("A", "r2", "Kopáčová, Jana")
+    ok, info = l.acquire("A", "r2", "Modelová, Jana")
     assert not ok
-    assert info["jmeno"] == "Spáčil, David"
+    assert info["jmeno"] == "Příkladný, Daniel"
     assert info["heartbeat_pred_s"] == 42
     assert l.holds("A", "r1")
 
@@ -86,14 +86,14 @@ def test_release_only_by_holder():
 
 def test_force_release_by_admin():
     l, _ = locks()
-    l.acquire("A", "r1", "Kopáčová, Jana")
-    info = l.force_release("A", "Spáčil, David")
-    assert info["jmeno"] == "Kopáčová, Jana"
+    l.acquire("A", "r1", "Modelová, Jana")
+    info = l.force_release("A", "Příkladný, Daniel")
+    assert info["jmeno"] == "Modelová, Jana"
     assert l.holder("A") is None
     assert not l.heartbeat("A", "r1") and not l.holds("A", "r1")
-    assert l.forced("r1") == "Spáčil, David"
-    assert l.acquire("A", "r2", "Spáčil, David")[0]
-    assert l.force_release("B", "Spáčil, David") is None
+    assert l.forced("r1") == "Příkladný, Daniel"
+    assert l.acquire("A", "r2", "Příkladný, Daniel")[0]
+    assert l.force_release("B", "Příkladný, Daniel") is None
 
 
 def test_release_login():

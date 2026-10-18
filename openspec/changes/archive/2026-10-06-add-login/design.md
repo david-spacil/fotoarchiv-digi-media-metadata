@@ -27,7 +27,7 @@ přechod na A/B vymění jen ověření hesla.
 **Dva soubory v pracovním adresáři, oba s právy jen pro vlastníka:**
 - `uzivatele.json` píše ručně správce, aplikace ho jen čte:
   ```json
-  {"spacil": {"jmeno": "Spáčil, David", "admin": true}}
+  {"prikladny": {"jmeno": "Příkladný, Daniel", "admin": true}}
   ```
 - `hesla.json` píše jen aplikace: login → hash, příznak „změnit při
   přihlášení“. Oddělené, aby aplikace nepřepisovala ručně editovaný

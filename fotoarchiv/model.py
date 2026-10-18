@@ -65,7 +65,8 @@ def completeness(doc, present):
 
     `present` = názvy souborů v kořeni akce; soubory označené k vyřazení
     (`vyradit`) se nepočítají. Pole je vyplněné, má-li po zdědění
-    neprázdnou hodnotu.
+    neprázdnou hodnotu. Osoby sem nepatří — čtou se ze `.work/`
+    (`osoby`), ne z `_metadata.json`.
     """
     filled = dict.fromkeys(REQUIRED_KEYS, 0)
     total = 0
@@ -80,15 +81,43 @@ def completeness(doc, present):
     return {key: [filled[key], total] for key in REQUIRED_KEYS}
 
 
+def osoby(alba_polozka, osoby_polozka):
+    """[pojmenované, celkem] osob akce, nebo None.
+
+    Osoby patří do hotovosti jen tehdy, když má akce album, obličeje
+    byly rozpoznány (`rozpoznano` v `.work/immich-alba.json`) a
+    synchronizace uložila počty (`.work/immich-osoby.json`). Jinak o
+    počtu osob nic netvrdíme — do `rozpoznano` může Immich ještě
+    doplňovat.
+    """
+    if not alba_polozka or not alba_polozka.get("album"):
+        return None
+    if alba_polozka.get("stav") != "rozpoznano":
+        return None
+    if not osoby_polozka:
+        return None
+    pojmenovane = osoby_polozka.get("pojmenovane")
+    celkem = osoby_polozka.get("celkem")
+    if pojmenovane is None or celkem is None:
+        return None
+    return [pojmenovane, celkem]
+
+
 def incomplete(doc, present, hotovost=None):
     """Povinná pole, která po zdědění chybí aspoň jednomu souboru.
 
     Odvozeno z `completeness`; už spočtenou hotovost lze předat.
-    Vrací klíče v pořadí `REQUIRED_KEYS`.
+    Obsahuje-li hotovost i `osoby` ([p, c] z `osoby`) s p < c, je
+    `osoby` na konci seznamu — akce s nepojmenovanými osobami je
+    nekompletní. Vrací klíče v pořadí `REQUIRED_KEYS` (+ `osoby`).
     """
     if hotovost is None:
         hotovost = completeness(doc, present)
-    return [k for k in REQUIRED_KEYS if hotovost[k][0] < hotovost[k][1]]
+    chybi = [k for k in REQUIRED_KEYS if hotovost[k][0] < hotovost[k][1]]
+    pocty = hotovost.get("osoby")
+    if pocty and pocty[0] < pocty[1]:
+        chybi.append("osoby")
+    return chybi
 
 
 def _place_gps(doc, result):

@@ -23,7 +23,7 @@ def doc_with(**soubory):
                  "ucastnici": ["Účastník, Jan"]},
         "souradnice_mist": {"Holštejn": {"gps": [49.4063, 16.7777]}},
         "skupiny": {"g9": {"nazev": "G9",
-                           "autori": ["Spáčil, David", "Kopáčová, Zuzana"],
+                           "autori": ["Příkladný, Daniel", "Modelová, Zuzana"],
                            "pristroj": "Panasonic DC-G9"}},
         "soubory": soubory,
     }
@@ -48,17 +48,17 @@ def test_inherited_authors_place_gps_and_event_tag():
     doc = doc_with(**{"P1503712.JPG": {
         "skupina": "g9", "datum": "2026-04-28T09:44:36",
         "osoby": ["Novák, Petr"],
-        "obliceje": [{"jmeno": "Hlava, Miloš",
+        "obliceje": [{"jmeno": "Vzorný, Tomáš",
                       "oblast": [0.5, 0.4, 0.08, 0.06]}]}})
     text = xmp.sidecar(doc, EVENT, "P1503712.JPG")
     r = parse(text)
-    assert r["tagy"] == [f"akce/{EVENT}", "autor/Spáčil, David",
-                         "autor/Kopáčová, Zuzana"]
+    assert r["tagy"] == [f"akce/{EVENT}", "autor/Příkladný, Daniel",
+                         "autor/Modelová, Zuzana"]
     assert r["gps"] == ("49,24.378000N", "16,46.662000E")
     assert r["datum"] == "2026-04-28T09:44:36+02:00"
     assert r["popis"] is None
     for leaked in ("Holštejn", "Panasonic", "Účastník", "G9", "Novák",
-                   "Hlava", "mwg-rs"):
+                   "Vzorný", "mwg-rs"):
         assert leaked not in text
 
 
@@ -219,7 +219,7 @@ MWG = {"rdf": NS["rdf"],
        "mwg-rs": "http://www.metadataworkinggroup.com/schemas/regions/",
        "stDim": "http://ns.adobe.com/xap/1.0/sType/Dimensions#",
        "stArea": "http://ns.adobe.com/xmp/sType/Area#"}
-FACE = {"jmeno": "Hlava, Miloš", "oblast": [0.5, 0.4, 0.08, 0.06]}
+FACE = {"jmeno": "Vzorný, Tomáš", "oblast": [0.5, 0.4, 0.08, 0.06]}
 
 
 def parse_regions(text):
@@ -245,7 +245,7 @@ def test_regions_for_restore():
     doc = doc_with(**{"a.jpg": {"obliceje": [FACE]}})
     text = xmp.sidecar(doc, EVENT, "a.jpg", (2736, 3648, 1))
     assert parse_regions(text) == {"w": 2736, "h": 3648, "obliceje": [
-        {"jmeno": "Hlava, Miloš", "typ": "Face", "jednotka": "normalized",
+        {"jmeno": "Vzorný, Tomáš", "typ": "Face", "jednotka": "normalized",
          "oblast": [0.5, 0.4, 0.08, 0.06]}]}
     # Zbytek sidecaru stejný jako běžný.
     assert parse(text) == parse(xmp.sidecar(doc, EVENT, "a.jpg"))
@@ -308,7 +308,7 @@ def test_export_with_faces_keeps_record(tmp_path):
     assert result == {"zapsano": 1, "nezmeneno": 2, "chyby": []}
     regions = parse_regions(ws.sidecar_path(EVENT, "f0.jpg").read_text())
     assert regions["w"] == 40 and regions["obliceje"][0]["jmeno"] == \
-        "Hlava, Miloš"
+        "Vzorný, Tomáš"
     assert ws.export_version(EVENT) == version
     # Kontrola nanečisto hlásí sidecar s obličeji jako neaktuální.
     assert xmp.export(ws, EVENT, nanecisto=True)["zapsano"] == 1

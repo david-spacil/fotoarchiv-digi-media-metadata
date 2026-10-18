@@ -85,6 +85,18 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
   Klíč Immiche jen v `.work/immich.json`, nikdy v archivu ani
   v odpovědi API. MWG oblasti v exportu pro obnovu jsou vůči uloženému
   (neotočenému) obrázku, `oblast` v JSONu vůči otočenému.
+- **Do Immiche zapisuje jen nástroj pojmenování** (`naming.py`
+  a endpointy `/api/akce/<nazev>/osoby…`: jméno, skrytí, sloučení vždy
+  jedné osoby), **dokončení a synchronizace** (`albums.py`: alba akcí
+  se jen doplňují a odebírají z nich assety, nikdy se nemaže album ani
+  asset; sken knihovny jen hlídač po dokončení, ne pravidelná
+  synchronizace). Zapisuje se i ve vývojovém režimu, testy jen proti
+  `FakeImmich`. Nástroj smí archivář a admin (`g.user["archivar"]`,
+  ne `ADMIN_PREFIXES`), bez zámku akce a nikdy nemění `_metadata.json`.
+  Stav nástroje a Immiche je jen ve `.work/`: `immich-alba.json` (akce →
+  album a stav), `immich-osoby.json` (počty osob pro hotovost; výpis
+  akcí se Immiche neptá), `pojmenovani.json` (odložené osoby podle
+  loginu a akce).
 - **`upravili` zapisuje jen server** (`model.touch` v `akce_save`,
   `akce_finish` a ve `write_description` po importu) jménem z relace;
   hodnotu od klienta zahazuje. Do sidecarů ani indexu nejde. Řídí

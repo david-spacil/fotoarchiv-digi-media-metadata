@@ -64,7 +64,7 @@ výchozího rozdělení; ruční úpravy ostatních médií MUST zůstat.
 - **THEN** krok ukáže dvě skupiny a každé jde zadat jiné autory
 
 #### Scenario: Autoři celé akce
-- **WHEN** u nové akce uživatel zadá autory celé akce `Spáčil, David`
+- **WHEN** u nové akce uživatel zadá autory celé akce `Příkladný, Daniel`
   a skupinám nic
 - **THEN** import se provede bez upozornění a skupiny autory dědí
   z akce
@@ -208,10 +208,10 @@ a výsledek SHALL uvést, že soubory jsou bez skupiny a autorů.
 
 #### Scenario: Import do rozpracované akce
 - **WHEN** uživatel v produkčním režimu importuje 30 fotek jako jednu
-  novou skupinu `Workshop` s autorem `Kopáčová, Zuzana` do akce ve
+  novou skupinu `Workshop` s autorem `Modelová, Zuzana` do akce ve
   stavu *rozpracováno*
 - **THEN** po otevření akce je na ploše skupina `Workshop` se 30
-  fotkami a autorkou `Kopáčová, Zuzana` a lišta je neuvádí jako soubory
+  fotkami a autorkou `Modelová, Zuzana` a lišta je neuvádí jako soubory
   bez skupiny ani skupinu bez autorů
 
 #### Scenario: Blokovaný soubor bez skupiny

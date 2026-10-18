@@ -3,7 +3,7 @@
   "metadata": {
     "schema": "fotoarchiv-digi-media-metadata/1",
     "akce": {
-      "autori": ["Spáčil, David", "Kopáčová, Zuzana"]
+      "autori": ["Příkladný, Daniel", "Modelová, Zuzana"]
     },
     "skupiny": {
       "g9": {
@@ -12,7 +12,7 @@
       },
       "mobil": {
         "nazev": "Mobil",
-        "autori": ["Kopáčová, Zuzana"]
+        "autori": ["Modelová, Zuzana"]
       }
     },
     "soubory": {
@@ -28,7 +28,7 @@
   "ocekavano": {
     "P1503712.JPG": {
       "autori": {
-        "hodnota": ["Spáčil, David", "Kopáčová, Zuzana"],
+        "hodnota": ["Příkladný, Daniel", "Modelová, Zuzana"],
         "uroven": "akce"
       },
       "pristroj": {
@@ -38,13 +38,13 @@
     },
     "20260428_101500.jpg": {
       "autori": {
-        "hodnota": ["Kopáčová, Zuzana"],
+        "hodnota": ["Modelová, Zuzana"],
         "uroven": "skupina"
       }
     },
     "IMG-20260428-WA0001.jpg": {
       "autori": {
-        "hodnota": ["Spáčil, David", "Kopáčová, Zuzana"],
+        "hodnota": ["Příkladný, Daniel", "Modelová, Zuzana"],
         "uroven": "akce"
       }
     }

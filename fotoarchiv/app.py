@@ -11,15 +11,16 @@ relace stránky přesměruje na přihlášení, API vrátí 401.
 import json
 import math
 import secrets
+import threading
 from datetime import date, datetime
 from pathlib import Path
 
 from flask import (Flask, Response, abort, g, jsonify, make_response,
                    redirect, request, send_file, session)
 
-from . import (auth, cleanup, consistency, geocode, immich, importer,
-               integrity, lock, model, names, scan, thumbs, unsorted,
-               version, xmp)
+from . import (albums, auth, cleanup, consistency, geocode, immich,
+               importer, integrity, lock, model, naming, names, scan,
+               thumbs, unsorted, version, xmp)
 from . import index as archive_index
 from .archive import SCHEMA, UNSORTED, Collision, Conflict, Workspace
 
@@ -38,9 +39,17 @@ NOBODY = dict({"login": None, "jmeno": None, "email": None, "role": "admin",
 
 def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                immich_fetch=None, immich_interval=None, prihlaseni=True,
-               https=False):
+               https=False, immich_hlidac_interval=None,
+               immich_hlidac_limit=None, immich_fetch_bytes=None):
     """`immich_interval` (s) zapne pravidelnou synchronizaci obličejů
     z Immiche, jakmile je nastavené připojení; None = jen na požádání.
+
+    `immich_hlidac_interval` a `immich_hlidac_limit` (s) zkracují
+    hlídání akce po dokončení (`albums.Hlidac`) pro testy; ve výchozím
+    nastavení jsou to konstanty `HLIDAC_INTERVAL` a `HLIDAC_LIMIT`.
+
+    `immich_fetch_bytes` podvrhuje binární dotazy (zmenšeniny) pro
+    testy nástroje pojmenování.
 
     `prihlaseni=False` jen ve vývojovém režimu (hlídá CLI); `https`
     posílá cookie relace jen přes HTTPS.
@@ -59,14 +68,26 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     imports = importer.Imports(ws.work, source_root=unsorted_root)
     immich_settings = immich.Settings(ws.work)
     sync = immich.Sync(ws, locks, immich_settings, name_index.names,
-                       fetch=immich_fetch, interval=immich_interval)
+                       fetch=immich_fetch, fetch_bytes=immich_fetch_bytes,
+                       interval=immich_interval)
+    # Hlídač alba a rozpoznávání po dokončení akce (na pozadí).
+    hlidac = albums.Hlidac(
+        sync,
+        interval=immich_hlidac_interval or immich.HLIDAC_INTERVAL,
+        limit=immich_hlidac_limit or immich.HLIDAC_LIMIT)
     if immich_interval and immich_settings.load():
         sync.start()
+    # Nástroj pojmenování osob: odložené osoby per login+akce a příznak,
+    # že relace v nástroji něco změnila (po zavření spustí synchronizaci).
+    odlozene = naming.Odlozene(ws.work)
+    jmena_zmeny = set()          # (login, akce)
+    jmena_lock = threading.Lock()
     app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
     app.config["WORKSPACE"] = ws
     app.config["LOCKS"] = locks
     app.config["IMPORTS"] = imports
     app.config["IMMICH"] = sync
+    app.config["IMMICH_HLIDAC"] = hlidac
     app.config["AUTH"] = accounts
     app.config.update(SECRET_KEY=auth.secret_key(ws.work),
                       SESSION_COOKIE_NAME="fotoarchiv",
@@ -193,19 +214,47 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 "import_limit": importer.MAX_FILE,
                 "verze": verze}
 
+    def immich_stav(polozka):
+        """{stav, cas, album} ze záznamu `.work/immich-alba.json`; bez
+        `chyba` (ta se ukazuje jen adminovi na Nastavení) a bez id alba
+        (vrací se jen bool, že album existuje)."""
+        entry = polozka or {}
+        return {"stav": entry.get("stav"), "cas": entry.get("cas"),
+                "album": bool(entry.get("album"))}
+
     @app.get("/api/akce")
     def akce_list():
         """Výpis akcí; `drzitel` je jméno z platného zámku a `vase`, zda
         ho drží relace z `?relace=` (relace sama se nevrací). `upravit`
-        = smí ji přihlášený uživatel upravit (`model.can_edit`)."""
+        = smí ji přihlášený uživatel upravit (`model.can_edit`).
+        `immich` je stav akce v Immichi (jen s nastaveným Immichem a
+        se záznamem); čteno ze `.work/immich-alba.json`. Má-li akce
+        album a `rozpoznano`, `hotovost` dostane i `osoby` [p, c] ze
+        `.work/immich-osoby.json` a `chybi` u *hotovo* i `osoby` při
+        nepojmenovaných. Výpis se Immiche neptá — jen soubory ve
+        `.work/`."""
         relace = request.args.get("relace")
         events = ws.list_events()
+        # Jedno čtení souboru pro celý výpis; Immiche se neptá.
+        nastaveno = immich_settings.load() is not None
+        alba = sync.alba.nacti() if nastaveno else {}
+        osoby = sync.osoby.nacti() if nastaveno else {}
         for event in events:
             event["upravit"] = model.can_edit(g.user, event)
             holder = locks.holder(event["nazev"])
             event["drzitel"] = holder and {
                 "jmeno": holder["jmeno"],
                 "vase": locks.holds(event["nazev"], relace)}
+            if event["nazev"] in alba:
+                event["immich"] = immich_stav(alba[event["nazev"]])
+            if event.get("hotovost") is not None:
+                pocty = model.osoby(alba.get(event["nazev"]),
+                                    osoby.get(event["nazev"]))
+                if pocty:
+                    event["hotovost"]["osoby"] = pocty
+                    if event["stav"] == "hotovo" and pocty[0] < pocty[1] \
+                            and "osoby" not in event["chybi"]:
+                        event["chybi"].append("osoby")
         return jsonify(events)
 
     @app.get("/api/akce/<nazev>")
@@ -252,6 +301,227 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 "version": ws.export_version(nazev),
             },
         }
+
+    @app.get("/api/akce/<nazev>/immich")
+    def akce_immich_stav(nazev):
+        """Stav akce v Immichi pro každého přihlášeného (není pod
+        `/api/immich`, který je jen pro admina). Čte jen
+        `<work>/immich-alba.json` a `<work>/immich-osoby.json`;
+        Immiche se nikdy neptá. Bez nastaveného Immiche se stav
+        neuvádí; `chyba` se nevrací (ukazuje se jen adminovi na
+        Nastavení). `osoby` je [pojmenované, celkem] jen při albu se
+        stavem `rozpoznano` a uložených počtech, jinak null."""
+        event_dir(nazev)                     # neexistující akce = 404
+        if immich_settings.load() is None:
+            return {"nastaveno": False, "stav": None, "cas": None,
+                    "album": False, "osoby": None}
+        alba_polozka = sync.alba.polozka(nazev)
+        return dict(nastaveno=True,
+                    osoby=model.osoby(alba_polozka, sync.osoby.polozka(nazev)),
+                    **immich_stav(alba_polozka))
+
+    # --- nástroj pojmenování osob -------------------------------------------
+
+    def jmena_klient(nazev):
+        """(client, album_id) pro nástroj; smí jen archivář a výš.
+
+        403 bez role, 404 pro neexistující akci, nenastavený Immich
+        nebo akci bez alba. Zámek akce se nevyžaduje: nástroj
+        `_metadata.json` nemění.
+        """
+        if not g.user["archivar"]:
+            abort(make_response({"chyba": "jen_archivar"}, 403))
+        event_dir(nazev)
+        client = sync.client()
+        if client is None:
+            abort(make_response({"chyba": "immich_nenastaven"}, 404))
+        album = (sync.alba.polozka(nazev) or {}).get("album")
+        if not album:
+            abort(make_response({"chyba": "bez_alba"}, 404))
+        return client, album
+
+    def jmena_assets(client, album):
+        """Assety alba; chyba Immiche = 502 s textem."""
+        try:
+            return client.search_album(album)
+        except immich.ImmichError as e:
+            abort(make_response({"chyba": str(e)}, 502))
+
+    def jmena_obraz(nahled):
+        """Binární odpověď Immiche jako odpověď aplikace (502 při
+        chybě); klíč Immiche ani adresa serveru ven neuniknou."""
+        try:
+            data, content_type = nahled()
+        except immich.ImmichError as e:
+            abort(make_response({"chyba": str(e)}, 502))
+        return Response(data, mimetype=content_type or "image/jpeg")
+
+    def jmena_precti(client, album, nazev):
+        """Přepočte počty osob akce do `.work/immich-osoby.json`.
+
+        Chyba přepočtu zápis osob do Immiche nevadí — vrátí None.
+        """
+        try:
+            pocty = albums.pocty_osob(client.search_album(album))
+        except immich.ImmichError:
+            return None
+        try:
+            sync.osoby.nastav(nazev, pocty["pojmenovane"], pocty["celkem"])
+        except OSError:
+            return None
+        return [pocty["pojmenovane"], pocty["celkem"]]
+
+    @app.get("/api/akce/<nazev>/osoby")
+    def osoby_list(nazev):
+        """Osoby k pojmenování s výřezy a metadaty (jen archivář).
+
+        Před výběrem vyřadí odložené, které mezitím dostaly jméno
+        nebo byly skryty; přepočte a uloží počty osob akce. `stav`
+        a `uplne` = stav akce v Immichi (nástroj upozorní, dokud
+        nejsou obličeje rozpoznány). `odlozene` je počet odložených
+        osob, které jsou v akci stále nepojmenované a neskryté.
+        """
+        client, album = jmena_klient(nazev)
+        assets = jmena_assets(client, album)
+        login = g.user["login"] or ""
+        nezname = naming.nepojmene_ids(assets)
+        seznam = odlozene.seznam(login, nazev)
+        k_vyradeni = [i for i in seznam if i not in nezname]
+        if k_vyradeni:
+            odlozene.vyradit(login, nazev, k_vyradeni)
+        platne = [i for i in seznam if i in nezname]
+        doc, _ = ws.load(nazev)
+        pocty = albums.pocty_osob(assets)
+        try:
+            sync.osoby.nastav(nazev, pocty["pojmenovane"], pocty["celkem"])
+        except OSError:
+            pass
+        stav = (sync.alba.polozka(nazev) or {}).get("stav")
+        return {"stav": stav, "uplne": stav == "rozpoznano",
+                "odlozene": len(platne),
+                "osoby": naming.osoby_k_pojmenovani(client, assets, doc,
+                                                    platne)}
+
+    @app.get("/api/akce/<nazev>/osoby/nahled/<asset_id>")
+    def osoby_nahled(nazev, asset_id):
+        """Proxy zmenšeniny fotky z alba akce (klíč Immiche zůstává
+        na serveru); asset mimo album = 404."""
+        client, album = jmena_klient(nazev)
+        if asset_id not in naming.assety_alba(
+                jmena_assets(client, album)):
+            abort(404)
+        return jmena_obraz(lambda: client.thumbnail(asset_id))
+
+    @app.get("/api/akce/<nazev>/osoby/osoba/<person_id>/nahled")
+    def osoby_osoba_nahled(nazev, person_id):
+        """Proxy náhledu existující osoby (náhled při nabídce sloučení);
+        povolen jen pro pojmenovanou osobu = cíl sloučení."""
+        client, album = jmena_klient(nazev)
+        try:
+            people, _ = client.people()
+        except immich.ImmichError as e:
+            abort(make_response({"chyba": str(e)}, 502))
+        osoba = next((p for p in people if p.get("id") == person_id
+                      and (p.get("name") or "").strip()), None)
+        if osoba is None:
+            abort(404)
+        return jmena_obraz(lambda: client.person_thumbnail(person_id))
+
+    @app.post("/api/akce/<nazev>/osoby/<person_id>")
+    def osoby_jednat(nazev, person_id):
+        """Jedna volba nástroje: pojmenovat / sloučit / nevim / skryt.
+
+        Zápis jde jen do Immiche; `_metadata.json` se nemění. Po
+        zápisu se přepočtou počty osob a poznamená změna (`hotovo`
+        pak spustí synchronizaci). Chyba Immiche = 502 a nic se
+        neodloží ani nezapíše. Odložení per login z relace.
+        """
+        client, album = jmena_klient(nazev)
+        body = request.get_json(force=True, silent=True) or {}
+        akce = body.get("akce")
+        if akce not in ("pojmenovat", "sloucit", "nevim", "skryt"):
+            abort(400)
+        # Osoba musí mít obličej v albu akce.
+        assets = jmena_assets(client, album)
+        if person_id not in {p["id"] for a in assets
+                             for p in a.get("people") or []
+                             if p.get("id")}:
+            abort(404)
+        login = g.user["login"] or ""
+        if akce == "nevim":
+            odlozene.odlozit(login, nazev, person_id)
+            return {"ok": True, "osoby": None}
+        jmeno = None
+        if akce == "pojmenovat":
+            jmeno = str(body.get("jmeno") or "").strip()
+            if not jmeno:
+                return {"chyba": "jmeno_povinne"}, 400
+            kontrola = names.check(jmeno, name_index.names())
+            if kontrola["prevod"]:
+                # Klient převod potvrdí a pošle kanonický tvar.
+                return {"chyba": "kanonicky_tvar",
+                        "navrh": kontrola["prevod"]}, 400
+            if not body.get("samostatne"):
+                # Shoda s jinou osobou (bez diakritiky, velikosti písmen
+                # a pořadí slov) → cíl nabídky sloučení.
+                try:
+                    people, _ = client.people()
+                except immich.ImmichError as e:
+                    return {"chyba": str(e)}, 502
+                klic = names.normalize(jmeno)
+                shoda = next((p for p in people
+                              if p.get("id") != person_id
+                              and (p.get("name") or "").strip()
+                              and names.normalize(p["name"]) == klic),
+                             None)
+                if shoda:
+                    return {"shoda": {"id": shoda["id"],
+                                      "jmeno": shoda["name"]}}, 409
+        if akce == "sloucit":
+            # Cíl = existující jiná osoba s jménem.
+            cil = body.get("cil")
+            try:
+                people, _ = client.people()
+            except immich.ImmichError as e:
+                return {"chyba": str(e)}, 502
+            existujici = next((p for p in people
+                               if p.get("id") == cil
+                               and (p.get("name") or "").strip()), None)
+            if not cil or cil == person_id or existujici is None:
+                return {"chyba": "cil_slouceni"}, 400
+        try:
+            if akce == "pojmenovat":
+                client.update_people([{"id": person_id, "name": jmeno}])
+            elif akce == "sloucit":
+                client.merge_people(body["cil"], [person_id])
+            else:
+                client.update_people([{"id": person_id,
+                                       "isHidden": True}])
+        except immich.ImmichError as e:
+            return {"chyba": str(e)}, 502
+        with jmena_lock:
+            jmena_zmeny.add((login, nazev))
+        return {"ok": True, "osoby": jmena_precti(client, album, nazev)}
+
+    @app.post("/api/akce/<nazev>/osoby/kolo")
+    def osoby_kolo(nazev):
+        """Nové kolo: vymaže odložení uživatele v akci."""
+        jmena_klient(nazev)
+        odlozene.nove_kolo(g.user["login"] or "", nazev)
+        return {"ok": True}
+
+    @app.post("/api/akce/<nazev>/osoby/hotovo")
+    def osoby_hotovo(nazev):
+        """Zavření nástroje; po změně spustí synchronizaci, aby jména
+        šla do `obliceje` a počtů bez čekání na pravidelný běh."""
+        jmena_klient(nazev)
+        klic = (g.user["login"] or "", nazev)
+        with jmena_lock:
+            meneno = klic in jmena_zmeny
+            jmena_zmeny.discard(klic)
+        if meneno:
+            sync.trigger()
+        return {"ok": True, "synchronizace": meneno}
 
     def body_field(body, key):
         value = body.get(key)
@@ -403,6 +673,10 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 version = ws.save(nazev, doc, version)
         except Conflict as e:
             return {"chyba": "konflikt", "version": e.current_version}, 409
+        if result and not result["chyby"] and not result.get("zverejneni"):
+            # Alba a rozpoznávání hlídá pozadí: sken knihovny, album,
+            # stav. Dokončení na Immich nečeká a jeho chybu nezaznamená.
+            hlidac.spust(nazev)
         return dict(result, dokonceno=doc["dokonceno"], version=version,
                     export_version=ws.export_version(nazev),
                     index=archive_index.write(ws))
@@ -960,10 +1234,17 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     def immich_state():
         s = immich_settings.load()
+        # Chyby alba (spojení, oprávnění) — jen na stránku nastavení;
+        # stav akce kvůli nim nemění a běžný uživatel je nevidí.
+        alba_chyby = [{"akce": akce, "chyba": entry["chyba"]}
+                      for akce, entry in sorted(sync.alba.nacti().items())
+                      if entry.get("chyba")]
         return {"nastaveno": s is not None,
                 "adresa": s["adresa"] if s else None,
                 "klic": immich.key_hint(s["klic"]) if s else None,
-                "synchronizace": sync.status()}
+                "knihovna": s["knihovna"] if s else None,
+                "synchronizace": sync.status(),
+                "alba_chyby": alba_chyby}
 
     @app.get("/api/immich")
     def immich_get():
@@ -971,7 +1252,11 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     @app.put("/api/immich")
     def immich_put():
-        """Adresa a klíč; bez klíče jen beze změny adresy (klíč zůstane)."""
+        """Adresa a klíč; bez klíče jen beze změny adresy (klíč zůstane).
+
+        `knihovna` (id) se uloží, jen když je v těle; bez ní zůstane
+        dosavadní výběr.
+        """
         body = request.get_json(force=True)
         adresa = str(body.get("adresa") or "").strip().rstrip("/")
         klic = str(body.get("klic") or "").strip()
@@ -982,7 +1267,11 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             if not current or current["adresa"] != adresa:
                 return {"chyba": "klic_povinny"}, 400
             klic = current["klic"]
-        immich_settings.save(adresa, klic)
+        if "knihovna" in body:
+            knihovna = str(body.get("knihovna") or "").strip() or None
+        else:
+            knihovna = current["knihovna"] if current else None
+        immich_settings.save(adresa, klic, knihovna)
         if immich_interval:
             sync.start()
         return immich_state()
@@ -992,13 +1281,28 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         immich_settings.delete()
         return immich_state()
 
+    @app.get("/api/immich/knihovny")
+    def immich_knihovny():
+        """Knihovny Immiche pro výběr (jen admin; klíč se nevrací)."""
+        client = sync.client()
+        if client is None:
+            return {"chyba": "nenastaveno"}, 409
+        try:
+            libraries = client.libraries() or []
+        except immich.ImmichError as e:
+            return {"ok": False, "chyba": str(e)}, 502
+        return {"knihovny": [{"id": l["id"], "name": l.get("name")}
+                             for l in libraries]}
+
     @app.post("/api/immich/test")
     def immich_test():
         client = sync.client()
         if client is None:
             return {"chyba": "nenastaveno"}, 409
+        s = immich_settings.load() or {}
         try:
-            return dict(immich.test_connection(client), ok=True)
+            return dict(immich.test_connection(client, s.get("knihovna")),
+                        ok=True)
         except immich.ImmichError as e:
             return {"ok": False, "chyba": str(e)}, 502
 

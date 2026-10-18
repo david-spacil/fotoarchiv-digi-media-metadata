@@ -101,7 +101,7 @@ k vyřazení a průvodce značku nemají.
 - **THEN** jeho pruh je šrafovaný a v popisku je `bez autorů`
 
 #### Scenario: Jiný zápis téže osoby
-- **WHEN** jeden soubor má autora `Spáčil, David` a jiný `spacil, david`
+- **WHEN** jeden soubor má autora `Příkladný, Daniel` a jiný `prikladny, daniel`
 - **THEN** oba pruhy mají tutéž barvu
 
 #### Scenario: Změna autorů skupiny

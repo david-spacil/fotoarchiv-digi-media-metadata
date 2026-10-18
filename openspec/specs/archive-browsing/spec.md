@@ -58,8 +58,9 @@ U každé akce SHALL seznam uvádět počet souborů v kořeni (bez
 (`_metadata.json` existuje, akce není dokončená) nebo *hotovo*.
 U akce *hotovo* s neexportovanými změnami SHALL seznam uvést „změněno
 po exportu“. U akce *hotovo*, jejímž souborům v kořeni (kromě
-označených k vyřazení) po zdědění chybí autoři, datum nebo místo,
-SHALL seznam uvést štítek „nekompletní“.
+označených k vyřazení) po zdědění chybí autoři, datum nebo místo, nebo
+která má podle posledního zjištění osob akce nepojmenované osoby, SHALL
+seznam uvést štítek „nekompletní“.
 
 #### Scenario: Akce bez metadat
 - **WHEN** složka akce nemá `_metadata.json`
@@ -83,16 +84,31 @@ SHALL seznam uvést štítek „nekompletní“.
 - **WHEN** dokončené akci 3 soubory nemají místo
 - **THEN** seznam ji ukáže jako *hotovo* se štítkem „nekompletní“
 
+#### Scenario: Dokončená akce s nepojmenovanými osobami
+- **WHEN** dokončená akce má všechna pole vyplněná, ale 2 nepojmenované
+  osoby
+- **THEN** seznam ji ukáže jako *hotovo* se štítkem „nekompletní“
+
+#### Scenario: Skryté osoby
+- **WHEN** dokončená akce má všechna pole vyplněná a jediná
+  nepojmenovaná osoba je v Immichi skrytá
+- **THEN** seznam štítek „nekompletní“ neukáže
+
 ### Requirement: Hotovost akce
 Seznam SHALL u akce s `_metadata.json` uvádět hotovost po polích
 autoři, datum a místo: počet souborů v kořeni (bez označených
 k vyřazení), které mají pole po zdědění vyplněné, z jejich celkového
 počtu. Pravidla dědění MUST být stejná jako u chybějících údajů na
-ploše. U akce *hotovo* SHALL hotovost uvádět i stav exportu (aktuální,
+ploše. Má-li akce zjištěné osoby a stav *obličeje rozpoznány* (viz
+`immich-people`), SHALL hotovost uvádět i osoby: pojmenované ze všech
+neskrytých. Dokončená akce SHALL na kartě uvádět stav v Immichi
+(viz `immich-people`) pro každého přihlášeného uživatele. Při nepojmenovaných
+osobách SHALL karta archiváři a adminovi nabídnout nástroj pojmenování
+osob. U akce *hotovo* SHALL hotovost uvádět i stav exportu (aktuální,
 nebo „změněno po exportu“). Akce *nezpracováno* hotovost nemá; karta
 SHALL místo ní nabídnout zahájení zpracování (odkaz na plochu, která
 spustí průvodce). Výpočet MUST NOT číst soubory archivu kromě
-`_metadata.json` a výpisu složky.
+`_metadata.json` a výpisu složky ani se ptát Immiche.
 
 #### Scenario: Rozpracovaná akce s mezerami
 - **WHEN** akce má 40 souborů, 2 označené k vyřazení, všem autory
@@ -106,6 +122,19 @@ spustí průvodce). Výpočet MUST NOT číst soubory archivu kromě
 #### Scenario: Nezpracovaná akce
 - **WHEN** akce nemá `_metadata.json`
 - **THEN** karta hotovost neuvádí a nabízí zahájení zpracování
+
+#### Scenario: Osoby akce
+- **WHEN** u akce je uloženo 4 pojmenované z 6 osob a kartu vidí
+  archivář
+- **THEN** karta uvádí osoby 4/6 a odkaz na nástroj pojmenování osob
+
+#### Scenario: Rozpoznávání probíhá
+- **WHEN** dokončená akce je ve stavu „Rozpoznávání obličejů probíhá“
+- **THEN** karta ukáže tento stav a osoby do hotovosti nepočítá
+
+#### Scenario: Akce bez zjištěných osob
+- **WHEN** akce nemá album v Immichi
+- **THEN** karta osoby neuvádí a do hotovosti je nepočítá
 
 ### Requirement: Náhledy na kartě
 Karta akce SHALL ukázat pruh až 4 náhledů souborů z kořene akce
@@ -135,8 +164,8 @@ uvést jméno držitele. Zámek vlastní relace uživatele SHALL být
 odlišený („otevřeno u vás“). Seznam MUST neuvádět identifikátor relace.
 
 #### Scenario: Akce u kolegy
-- **WHEN** akci drží zámek uživatele Kopáčová, Zuzana
-- **THEN** karta uvádí „upravuje Kopáčová, Zuzana“
+- **WHEN** akci drží zámek uživatele Modelová, Zuzana
+- **THEN** karta uvádí „upravuje Modelová, Zuzana“
 
 #### Scenario: Volná akce
 - **WHEN** akce nemá platný zámek
@@ -157,7 +186,7 @@ diakritiku a velikost písmen a kombinuje se s filtrem. Zvolený filtr,
 hledání a řazení SHALL zůstat zachované po návratu z plochy akce.
 
 #### Scenario: Moje rozpracované
-- **WHEN** uživatel Spáčil, David uložil akce A a B, A je
+- **WHEN** uživatel Příkladný, Daniel uložil akce A a B, A je
   *rozpracováno* a B *hotovo* bez změn po exportu
 - **THEN** filtr Moje rozpracované ukáže jen A
 

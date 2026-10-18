@@ -57,9 +57,9 @@ const key = (n) => n.normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
   .toLowerCase().match(/[\p{L}\p{N}_]+/gu)?.sort().join(" ") || "";
 
 test("barvy osob: pořadí podle klíče, jiný zápis téže osoby", () => {
-  const idx = personIndex(["Zkušební, Petr", "Spáčil, David",
-    "spacil, david", "David Spáčil", ""], key);
-  assert.deepEqual([...idx], [["david spacil", 0], ["petr zkusebni", 1]]);
+  const idx = personIndex(["Zkušební, Petr", "Příkladný, Daniel",
+    "prikladny, daniel", "Daniel Příkladný", ""], key);
+  assert.deepEqual([...idx], [["daniel prikladny", 0], ["petr zkusebni", 1]]);
 });
 
 test("pruh: jeden, dva a tři úseky", () => {

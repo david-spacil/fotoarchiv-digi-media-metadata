@@ -79,9 +79,9 @@ při shodě podle jména. Soubor s více autory SHALL započítat každému
 z nich. Autor bez souboru MUST NOT být uveden.
 
 #### Scenario: Autor s více fotkami první
-- **WHEN** skupina se 100 soubory má autora `Spáčil, David` a 5 souborů
-  má přepsaného autora `Kopáčová, Zuzana`
-- **THEN** index uvádí `Spáčil D.; Kopáčová Z.`
+- **WHEN** skupina se 100 soubory má autora `Příkladný, Daniel` a 5 souborů
+  má přepsaného autora `Modelová, Zuzana`
+- **THEN** index uvádí `Příkladný D.; Modelová Z.`
 
 ### Requirement: Okamžiky generování
 Aplikace SHALL index přegenerovat po provedení importu, po exportu XMP

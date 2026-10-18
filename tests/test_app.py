@@ -6,13 +6,16 @@ import pytest
 from PIL import Image
 
 from fotoarchiv.__main__ import main
+from fotoarchiv import immich
 from fotoarchiv.app import create_app
+from fotoarchiv.archive import SCHEMA
 from fotoarchiv.lock import Locks
 from .conftest import make_tree, snapshot
+from .test_immich import ROOT, FakeImmich, oblicej, osoba
 
 EVENT = "2026-04-28 kontrola"
-R1 = {"relace": "r1", "jmeno": "Spáčil, David"}
-R2 = {"relace": "r2", "jmeno": "Kopáčová, Jana"}
+R1 = {"relace": "r1", "jmeno": "Příkladný, Daniel"}
+R2 = {"relace": "r2", "jmeno": "Modelová, Jana"}
 
 
 def make_client(tmp_path, monkeypatch, zapis=False, locks=None):
@@ -74,7 +77,7 @@ def test_save_drops_people_and_keeps_stored_faces(tmp_path, client):
     version = c.put(f"/api/akce/{EVENT}/metadata", json={
         "metadata": doc, "version": None, "relace": "r1"}).json["version"]
     # Obličeje zapsala synchronizace; klient je nemá a posílá starší osoby.
-    face = {"jmeno": "Hlava, Miloš", "oblast": [0.5, 0.4, 0.08, 0.06]}
+    face = {"jmeno": "Vzorný, Tomáš", "oblast": [0.5, 0.4, 0.08, 0.06]}
     path = tmp_path / "work" / "metadata" / EVENT / "_metadata.json"
     stored = json.loads(path.read_text())
     stored["soubory"]["foto.jpg"]["obliceje"] = [face]
@@ -160,7 +163,7 @@ def test_lock_api(client):
     assert r.status_code == 200 and r.json["zamek"]["jmeno"] == R1["jmeno"]
     r = c.post(url, json=R2)
     assert r.status_code == 409
-    assert r.json["drzitel"]["jmeno"] == "Spáčil, David"
+    assert r.json["drzitel"]["jmeno"] == "Příkladný, Daniel"
     assert c.get(f"/api/akce/{EVENT}").json["zamek"]["jmeno"] == R1["jmeno"]
     assert c.put(url, json={"relace": "r1"}).status_code == 200
     assert c.put(url, json={"relace": "r2"}).status_code == 409
@@ -213,7 +216,7 @@ def test_prod_saves_into_archive(prod):
               json={"metadata": doc, "version": None, "relace": "r1"})
     assert r.status_code == 200
     stored = json.loads((archiv / EVENT / "_metadata.json").read_text())
-    assert list(stored.pop("upravili")) == ["Spáčil, David"]
+    assert list(stored.pop("upravili")) == ["Příkladný, Daniel"]
     assert stored == doc
     d = c.get(f"/api/akce/{EVENT}").json
     assert not d["novy"]
@@ -632,17 +635,17 @@ def test_discard_execute_requires_lock(prod):
 
 # --- přihlášení ------------------------------------------------------------
 
-USERS = {"spacil": {"jmeno": "Spáčil, David", "role": "admin",
-                    "email": "spacil@example.cz"},
-         "kopacova": {"jmeno": "Kopáčová, Jana"},
+USERS = {"prikladny": {"jmeno": "Příkladný, Daniel", "role": "admin",
+                    "email": "prikladny@example.cz"},
+         "modelova": {"jmeno": "Modelová, Jana"},
          "novak": {"jmeno": "Novák, Petr", "role": "archivar"}}
 HESLO = "tajne-heslo-1"
 
 
 @pytest.fixture
 def login_app(tmp_path, monkeypatch):
-    """(app, archiv) s přihlášením v produkčním režimu; admin `spacil`,
-    běžná `kopacova`, archivář `novak`, všichni s heslem HESLO."""
+    """(app, archiv) s přihlášením v produkčním režimu; admin `prikladny`,
+    běžná `modelova`, archivář `novak`, všichni s heslem HESLO."""
     from fotoarchiv import auth
     work = tmp_path / "work"
     work.mkdir()
@@ -686,13 +689,13 @@ def test_unauthenticated_rejected(login_app):
 def test_login_cookie_and_me(login_app):
     app, _ = login_app
     c = app.test_client()
-    r = c.post("/api/prihlaseni", json={"login": "Spacil", "heslo": HESLO})
+    r = c.post("/api/prihlaseni", json={"login": "Prikladny", "heslo": HESLO})
     cookie = r.headers["Set-Cookie"]
     assert "HttpOnly" in cookie and "SameSite=Lax" in cookie
     assert "Secure" not in cookie
     assert HESLO not in r.get_data(as_text=True)
     assert c.get("/api/ja").json == {
-        "prihlaseni": True, "login": "spacil", "jmeno": "Spáčil, David",
+        "prihlaseni": True, "login": "prikladny", "jmeno": "Příkladný, Daniel",
         "role": "admin", "admin": True, "archivar": True,
         "zmenit_heslo": False}
     assert c.get("/api/akce").status_code == 200
@@ -703,9 +706,9 @@ def test_login_cookie_and_me(login_app):
 
 def test_me_roles(login_app):
     app, _ = login_app
-    for login, role, admin, archivar in (("spacil", "admin", True, True),
+    for login, role, admin, archivar in (("prikladny", "admin", True, True),
                                          ("novak", "archivar", False, True),
-                                         ("kopacova", None, False, False)):
+                                         ("modelova", None, False, False)):
         me = logged_in(app, login).get("/api/ja").json
         assert (me["role"], me["admin"], me["archivar"]) == \
             (role, admin, archivar)
@@ -719,7 +722,7 @@ def test_https_cookie_secure(tmp_path):
 def test_wrong_and_unknown_login_same(login_app):
     app, _ = login_app
     c = app.test_client()
-    wrong = c.post("/api/prihlaseni", json={"login": "spacil", "heslo": "x"})
+    wrong = c.post("/api/prihlaseni", json={"login": "prikladny", "heslo": "x"})
     unknown = c.post("/api/prihlaseni", json={"login": "nikdo", "heslo": "x"})
     assert wrong.status_code == unknown.status_code == 401
     assert wrong.json == unknown.json == {"chyba": "neplatne"}
@@ -729,15 +732,15 @@ def test_login_throttled(login_app):
     app, _ = login_app
     c = app.test_client()
     for _ in range(5):
-        c.post("/api/prihlaseni", json={"login": "spacil", "heslo": "x"})
-    r = c.post("/api/prihlaseni", json={"login": "spacil", "heslo": HESLO})
+        c.post("/api/prihlaseni", json={"login": "prikladny", "heslo": "x"})
+    r = c.post("/api/prihlaseni", json={"login": "prikladny", "heslo": HESLO})
     assert r.status_code == 429 and r.json["za_s"] >= 1
 
 
 def test_one_time_password_only_change(login_app):
     app, _ = login_app
-    heslo = app.config["AUTH"].issue("kopacova")
-    c = logged_in(app, "kopacova", heslo)
+    heslo = app.config["AUTH"].issue("modelova")
+    c = logged_in(app, "modelova", heslo)
     assert c.get("/api/ja").json["zmenit_heslo"] is True
     r = c.get("/api/akce")
     assert r.status_code == 403 and r.json["chyba"] == "zmenit_heslo"
@@ -753,8 +756,8 @@ def test_one_time_password_only_change(login_app):
 
 def test_password_change_ends_other_sessions(login_app):
     app, _ = login_app
-    a = logged_in(app, "kopacova")
-    b = logged_in(app, "kopacova")
+    a = logged_in(app, "modelova")
+    b = logged_in(app, "modelova")
     r = a.post("/api/heslo", json={"stavajici": "spatne",
                                    "nove": "nove-heslo-22"})
     assert r.status_code == 400 and r.json["chyba"] == "spatne_heslo"
@@ -763,22 +766,22 @@ def test_password_change_ends_other_sessions(login_app):
     assert a.get("/api/akce").status_code == 200
     assert b.get("/api/akce").status_code == 401
     r = app.test_client().post("/api/prihlaseni",
-                               json={"login": "kopacova", "heslo": HESLO})
+                               json={"login": "modelova", "heslo": HESLO})
     assert r.status_code == 401
 
 
 def test_new_one_time_password_ends_sessions(login_app):
     app, _ = login_app
-    c = logged_in(app, "kopacova")
-    app.config["AUTH"].issue("kopacova")
+    c = logged_in(app, "modelova")
+    app.config["AUTH"].issue("modelova")
     assert c.get("/api/akce").status_code == 401
 
 
 def test_removed_user_401(login_app, tmp_path):
     app, _ = login_app
-    c = logged_in(app, "kopacova")
+    c = logged_in(app, "modelova")
     path = tmp_path / "work" / "uzivatele.json"
-    path.write_text(json.dumps({"spacil": USERS["spacil"]}))
+    path.write_text(json.dumps({"prikladny": USERS["prikladny"]}))
     import os
     os.utime(path, ns=(1, 1))
     assert c.get("/api/akce").status_code == 401
@@ -802,15 +805,15 @@ def set_users(tmp_path, users):
 
 def test_lock_name_from_login_and_logout_releases(login_app):
     app, _ = login_app
-    own(app, "Kopáčová, Jana")
-    c = logged_in(app, "kopacova")
+    own(app, "Modelová, Jana")
+    c = logged_in(app, "modelova")
     r = c.post(f"/api/akce/{EVENT}/zamek",
                json={"relace": "r1", "jmeno": "Podvržené, Jméno"})
-    assert r.json["zamek"]["jmeno"] == "Kopáčová, Jana"
-    other = logged_in(app, "spacil")
+    assert r.json["zamek"]["jmeno"] == "Modelová, Jana"
+    other = logged_in(app, "prikladny")
     r = other.post(f"/api/akce/{EVENT}/zamek", json={"relace": "r2"})
     assert r.status_code == 409
-    assert r.json["drzitel"]["jmeno"] == "Kopáčová, Jana"
+    assert r.json["drzitel"]["jmeno"] == "Modelová, Jana"
     c.post("/api/odhlaseni")
     assert other.post(f"/api/akce/{EVENT}/zamek",
                       json={"relace": "r2"}).status_code == 200
@@ -818,15 +821,15 @@ def test_lock_name_from_login_and_logout_releases(login_app):
 
 def test_force_release_admin_and_archivist(login_app):
     app, _ = login_app
-    own(app, "Kopáčová, Jana")
-    user = logged_in(app, "kopacova")
+    own(app, "Modelová, Jana")
+    user = logged_in(app, "modelova")
     doc = user.get(f"/api/akce/{EVENT}").json["metadata"]
     user.post(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
     r = user.post(f"/api/akce/{EVENT}/zamek/vynutit")
     assert r.status_code == 403
     archivar = logged_in(app, "novak")
     r = archivar.post(f"/api/akce/{EVENT}/zamek/vynutit")
-    assert r.json["uvolneno"]["jmeno"] == "Kopáčová, Jana"
+    assert r.json["uvolneno"]["jmeno"] == "Modelová, Jana"
     assert archivar.post(f"/api/akce/{EVENT}/zamek",
                          json={"relace": "r2"}).status_code == 200
     r = user.put(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
@@ -834,14 +837,14 @@ def test_force_release_admin_and_archivist(login_app):
     r = user.put(f"/api/akce/{EVENT}/metadata",
                  json={"metadata": doc, "version": None, "relace": "r1"})
     assert r.status_code == 423
-    admin = logged_in(app, "spacil")
+    admin = logged_in(app, "prikladny")
     r = admin.post(f"/api/akce/{EVENT}/zamek/vynutit")
     assert r.json["uvolneno"]["jmeno"] == "Novák, Petr"
 
 
 def test_edit_permission(login_app):
     app, _ = login_app
-    user = logged_in(app, "kopacova")
+    user = logged_in(app, "modelova")
     archivar = logged_in(app, "novak")
     # Akce bez _metadata.json: jen admin a archivář.
     assert user.get("/api/akce").json[0]["upravit"] is False
@@ -852,7 +855,7 @@ def test_edit_permission(login_app):
     # Prohlížet smí.
     assert user.get(f"/api/akce/{EVENT}").status_code == 200
     # Cizí akce (jiné jméno v upravili).
-    own(app, "Spáčil, David")
+    own(app, "Příkladný, Daniel")
     assert user.get("/api/akce").json[0]["upravit"] is False
     assert user.post(f"/api/akce/{EVENT}/zamek",
                      json={"relace": "r1"}).status_code == 403
@@ -866,7 +869,7 @@ def test_edit_permission(login_app):
     assert r.status_code == 200
     archivar.delete(f"/api/akce/{EVENT}/zamek", json={"relace": "r2"})
     # Vlastní akce (jméno bez diakritiky v upravili).
-    own(app, "Kopacova, Jana")
+    own(app, "Modelova, Jana")
     assert user.get("/api/akce").json[0]["upravit"] is True
     assert user.post(f"/api/akce/{EVENT}/zamek",
                      json={"relace": "r1"}).status_code == 200
@@ -888,7 +891,7 @@ def test_role_removed_while_holding_lock(login_app, tmp_path):
 def test_unsorted_admin_and_archivist(login_app):
     app, archiv = login_app
     unsorted_tree(archiv)
-    user = logged_in(app, "kopacova")
+    user = logged_in(app, "modelova")
     r = user.get("/api/pretridit")
     assert r.status_code == 403 and r.json["chyba"] == "jen_archivar"
     r = user.post("/api/import", json={"zdroj": "DOD 2019"})
@@ -902,7 +905,7 @@ def test_unsorted_admin_and_archivist(login_app):
                          json={"zdroj": "DOD 2019"}).status_code == 200
     assert archivar.put("/api/nominatim",
                         json={"kontakt": "x@example.cz"}).status_code == 403
-    admin = logged_in(app, "spacil")
+    admin = logged_in(app, "prikladny")
     assert admin.get("/api/pretridit?exif=0").status_code == 200
 
 
@@ -922,15 +925,15 @@ def test_unsorted_execute_without_role(login_app, tmp_path):
 
 def test_import_owner_from_login(login_app):
     app, _ = login_app
-    admin = logged_in(app, "spacil")
+    admin = logged_in(app, "prikladny")
     id = admin.post("/api/import", json={"jmeno": "Podvržené, Jméno"}) \
         .json["id"]
     admin.post(f"/api/import/{id}/soubor", data=b"a",
                query_string={"cesta": "a.jpg", "mtime": 1})
     [item] = admin.get("/api/import").json["importy"]
     assert item["id"] == id
-    user = logged_in(app, "kopacova")
-    cizi = {"jmeno": "Spáčil, David"}
+    user = logged_in(app, "modelova")
+    cizi = {"jmeno": "Příkladný, Daniel"}
     assert user.get("/api/import", query_string=cizi).json["importy"] == []
     assert user.get(f"/api/import/{id}",
                     query_string=cizi).status_code == 404
@@ -944,7 +947,7 @@ def test_import_owner_from_login(login_app):
 
 def test_import_new_event_writes_editors(login_app):
     app, archiv = login_app
-    user = logged_in(app, "kopacova")
+    user = logged_in(app, "modelova")
     id = user.post("/api/import", json={}).json["id"]
     data = io.BytesIO()
     Image.new("RGB", (10, 10)).save(data, "JPEG")
@@ -957,7 +960,7 @@ def test_import_new_event_writes_editors(login_app):
     assert events[-1]["typ"] == "vysledek"
     assert events[-1]["skupiny"]["zapsano"] is True
     doc, _ = app.config["WORKSPACE"].load(nova)
-    assert list(doc["upravili"]) == ["Kopáčová, Jana"]
+    assert list(doc["upravili"]) == ["Modelová, Jana"]
     [event] = [e for e in user.get("/api/akce").json if e["nazev"] == nova]
     assert event["upravit"] is True
     user.delete(f"/api/akce/{nova}/zamek", json={"relace": "r1"})
@@ -967,8 +970,8 @@ def test_import_new_event_writes_editors(login_app):
 
 def test_import_into_foreign_event_refused(login_app):
     app, archiv = login_app
-    own(app, "Spáčil, David")
-    user = logged_in(app, "kopacova")
+    own(app, "Příkladný, Daniel")
+    user = logged_in(app, "modelova")
     id = user.post("/api/import", json={}).json["id"]
     user.post(f"/api/import/{id}/soubor", data=b"n",
               query_string={"cesta": "n.jpg", "mtime": 1})
@@ -984,14 +987,14 @@ def test_import_into_foreign_event_refused(login_app):
 
 def test_nominatim_contact_admin_only(login_app, tmp_path):
     app, _ = login_app
-    user = logged_in(app, "kopacova")
+    user = logged_in(app, "modelova")
     assert user.put("/api/nominatim",
                     json={"kontakt": "x@example.cz"}).status_code == 403
     assert app.test_client().get("/api/info").status_code == 401
-    admin = logged_in(app, "spacil")
+    admin = logged_in(app, "prikladny")
     assert admin.get("/api/info").json["geokodovani"] is False
     assert admin.get("/api/nominatim").json == {
-        "kontakt": None, "navrh": "spacil@example.cz"}
+        "kontakt": None, "navrh": "prikladny@example.cz"}
     assert admin.put("/api/nominatim", json={"kontakt": " "}).status_code \
         == 400
     r = admin.put("/api/nominatim", json={"kontakt": "archiv@example.cz"})
@@ -1010,7 +1013,7 @@ def test_without_login_everyone_admin(client):
         "admin": True, "archivar": True, "zmenit_heslo": False}
     assert c.get("/prihlaseni").status_code == 302
     r = c.post(f"/api/akce/{EVENT}/zamek", json=R1)
-    assert r.json["zamek"]["jmeno"] == "Spáčil, David"
+    assert r.json["zamek"]["jmeno"] == "Příkladný, Daniel"
     assert c.post(f"/api/akce/{EVENT}/zamek/vynutit").status_code == 200
 
 
@@ -1031,15 +1034,15 @@ def test_password_command(tmp_path, capsys):
     with pytest.raises(SystemExit) as e:
         main(["heslo", "nikdo", "--work", str(work)])
     assert "nikdo" in str(e.value)
-    main(["heslo", "kopacova", "--work", str(work)])
+    main(["heslo", "modelova", "--work", str(work)])
     heslo = capsys.readouterr().out.strip().rsplit(" ", 1)[1]
     a = auth.Auth(work)
-    assert a.passwords.must_change("kopacova")
-    assert a.login("kopacova", heslo)[1] is None
+    assert a.passwords.must_change("modelova")
+    assert a.login("modelova", heslo)[1] is None
     assert heslo not in (work / "hesla.json").read_text()
 
 
-OLD_USERS = {"spacil": {"jmeno": "Spáčil, David", "admin": True}}
+OLD_USERS = {"prikladny": {"jmeno": "Příkladný, Daniel", "admin": True}}
 
 
 def test_old_users_file_refused(tmp_path, monkeypatch):
@@ -1048,13 +1051,13 @@ def test_old_users_file_refused(tmp_path, monkeypatch):
     work.mkdir()
     (work / "uzivatele.json").write_text(json.dumps(OLD_USERS))
     (tmp_path / "archiv").mkdir()
-    for argv in (["heslo", "spacil", "--work", str(work)],
+    for argv in (["heslo", "prikladny", "--work", str(work)],
                  ["--archiv", str(tmp_path / "archiv"), "--work",
                   str(work)]):
         with pytest.raises(SystemExit) as e:
             main(argv)
         assert e.value.code not in (0, None)
-        assert "spacil" in str(e.value)
+        assert "prikladny" in str(e.value)
         assert '"role": "admin"' in str(e.value)
     assert not (work / "hesla.json").exists()
     # Bez přihlášení se soubor nečte.
@@ -1238,9 +1241,9 @@ def test_list_holder_and_yours(client):
     assert c.get("/api/akce").json[0]["drzitel"] is None
     c.post(f"/api/akce/{EVENT}/zamek", json=R1)
     r = c.get("/api/akce?relace=r1")
-    assert r.json[0]["drzitel"] == {"jmeno": "Spáčil, David", "vase": True}
+    assert r.json[0]["drzitel"] == {"jmeno": "Příkladný, Daniel", "vase": True}
     r = c.get("/api/akce?relace=r2")
-    assert r.json[0]["drzitel"] == {"jmeno": "Spáčil, David", "vase": False}
+    assert r.json[0]["drzitel"] == {"jmeno": "Příkladný, Daniel", "vase": False}
     assert c.get("/api/akce").json[0]["drzitel"]["vase"] is False
     assert b"r1" not in c.get("/api/akce?relace=r1").data
 
@@ -1249,8 +1252,8 @@ def test_save_writes_editors_ignores_client(client):
     c, _ = client
     doc, version = saved(c)
     stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
-    assert list(stored["upravili"]) == ["Spáčil, David"]
-    first = stored["upravili"]["Spáčil, David"]
+    assert list(stored["upravili"]) == ["Příkladný, Daniel"]
+    first = stored["upravili"]["Příkladný, Daniel"]
     assert len(first) == 19 and first[10] == "T"
     # Podvržená hodnota od klienta se zahodí.
     doc["upravili"] = {"Podvržený, Pán": "2030-01-01T00:00:00"}
@@ -1258,7 +1261,7 @@ def test_save_writes_editors_ignores_client(client):
               json={"metadata": doc, "version": version, "relace": "r1"})
     assert r.status_code == 200
     stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
-    assert list(stored["upravili"]) == ["Spáčil, David"]
+    assert list(stored["upravili"]) == ["Příkladný, Daniel"]
     # Druhý uživatel přibude vedle prvního.
     c.delete(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
     c.post(f"/api/akce/{EVENT}/zamek", json=R2)
@@ -1266,7 +1269,7 @@ def test_save_writes_editors_ignores_client(client):
               json={"metadata": doc, "version": r.json["version"],
                     "relace": "r2"})
     stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
-    assert set(stored["upravili"]) == {"Spáčil, David", "Kopáčová, Jana"}
+    assert set(stored["upravili"]) == {"Příkladný, Daniel", "Modelová, Jana"}
     assert c.get("/api/akce").json[0]["upravili"] == stored["upravili"]
 
 
@@ -1277,4 +1280,463 @@ def test_finish_writes_editors(client):
                json={"relace": "r1", "version": version})
     assert r.status_code == 200
     stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
-    assert list(stored["upravili"]) == ["Spáčil, David"]
+    assert list(stored["upravili"]) == ["Příkladný, Daniel"]
+
+
+# --- osoby v hotovosti výpisu (4.1) ------------------------------------------
+
+IMMICH_URL = "http://immich.test:2283"
+IMMICH_KLIC = "tajny-klic-W4No"
+CAS = "2026-10-18T10:00:00"
+
+
+def imich_setup(tmp_path, monkeypatch, vyplneno=True):
+    """Aplikace s podvrženým Immichem a dokončenou akcí `hotovo`;
+    nastavení Immiche zvoli volající (scénář bez nastavení)."""
+    archiv = tmp_path / "archiv"
+    archiv.mkdir()
+    make_tree(archiv, {f"{EVENT}/": {"foto.jpg": "x"}})
+    monkeypatch.setattr("fotoarchiv.scan.run_exiftool", lambda d, n: {})
+    fake = FakeImmich()
+    app = create_app(archiv, tmp_path / "work", immich_fetch=fake,
+                     prihlaseni=False)
+    app.testing = True
+    record = {"autori": ["Příkladný, Daniel"], "datum": "2026-04-28T10:00:00",
+              "misto": "Brno"} if vyplneno else {}
+    app.config["WORKSPACE"].save(
+        EVENT, {"schema": SCHEMA, "dokonceno": "2026-04-28",
+                "akce": {}, "skupiny": {},
+                "soubory": {"foto.jpg": record}}, None)
+    return app, app.test_client(), fake
+
+
+def nastavi_immich(app):
+    immich.Settings(app.config["WORKSPACE"].work).save(IMMICH_URL,
+                                                       IMMICH_KLIC)
+
+
+def napsat_work(app, jmeno, data):
+    """Podvržený soubor ve `.work/` (jako by zapsala synchronizace)."""
+    (app.config["WORKSPACE"].work / jmeno).write_text(
+        json.dumps(data), encoding="utf-8")
+
+
+def vypis_event(c):
+    return {e["nazev"]: e for e in c.get("/api/akce").json}[EVENT]
+
+
+def test_vypis_osoby_pri_rozpoznano(tmp_path, monkeypatch):
+    """Scénář Osoby akce: rozpoznano + 4/6 → `hotovost.osoby` a
+    štítek přes `chybi`; výpis se Immiche neptá."""
+    app, c, fake = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 4, "celkem": 6, "cas": CAS}})
+    event = vypis_event(c)
+    assert event["hotovost"]["osoby"] == [4, 6]
+    assert "osoby" in event["chybi"]      # štítek „nekompletní“
+    assert fake.calls == []                 # jen soubory ve `.work/`
+
+
+def test_vypis_osoby_dle_stavu(tmp_path, monkeypatch):
+    """Do `rozpoznano` osoby nepatří; bez alba taky ne (scénáře
+    Rozpoznávání probíhá, Akce bez zjištěných osob)."""
+    app, c, _ = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 4, "celkem": 6, "cas": CAS}})
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznavani",
+                         "cas": CAS}})
+    event = vypis_event(c)
+    assert "osoby" not in event["hotovost"]
+    assert "osoby" not in event["chybi"]
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": None, "stav": "rozpoznano",
+                         "cas": CAS}})
+    event = vypis_event(c)
+    assert "osoby" not in event["hotovost"]
+    assert "osoby" not in event["chybi"]
+
+
+def test_vypis_osoby_bez_nastaveneho_immiche(tmp_path, monkeypatch):
+    """Bez nastaveného Immiche se počty neuvádějí, ani když soubory
+    ve `.work/` zůstaly."""
+    app, c, _ = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 4, "celkem": 6, "cas": CAS}})
+    immich.Settings(app.config["WORKSPACE"].work).delete()
+    event = vypis_event(c)
+    assert "osoby" not in event["hotovost"]
+    assert "osoby" not in event["chybi"]
+
+
+def test_vypis_osoby_skryta_senepocita(tmp_path, monkeypatch):
+    """Scénář Skryté osoby: 6/6 (skrytá už není mezi počty) —
+    štítek „nekompletní“ kvůli osobám nevznikne."""
+    app, c, _ = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 6, "celkem": 6, "cas": CAS}})
+    event = vypis_event(c)
+    assert event["hotovost"]["osoby"] == [6, 6]
+    assert event["chybi"] == []
+
+
+def test_endpoint_immich_stav_s_osobami(tmp_path, monkeypatch):
+    """`GET /api/akce/<nazev>/immich` vrátí `osoby` [p, c] při albu se
+    stavem `rozpoznano`, jinak null; bez dotazu na Immich."""
+    app, c, fake = imich_setup(tmp_path, monkeypatch)
+    nastavi_immich(app)
+    napsat_work(app, "immich-osoby.json",
+                {EVENT: {"pojmenovane": 4, "celkem": 6, "cas": CAS}})
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    r = c.get(f"/api/akce/{EVENT}/immich")
+    assert r.json["nastaveno"] is True and r.json["osoby"] == [4, 6]
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznavani",
+                         "cas": CAS}})
+    assert c.get(f"/api/akce/{EVENT}/immich").json["osoby"] is None
+    napsat_work(app, "immich-alba.json",
+                {EVENT: {"album": "alb-1", "stav": "rozpoznano",
+                         "cas": CAS}})
+    (app.config["WORKSPACE"].work / "immich-osoby.json").unlink()
+    assert c.get(f"/api/akce/{EVENT}/immich").json["osoby"] is None
+    assert fake.calls == []
+
+
+# --- nástroj pojmenování osob (5.3) -------------------------------------------
+
+@pytest.fixture
+def naming_app(tmp_path, monkeypatch):
+    """Aplikace s přihlášením, FakeImmichem a dokončenou akcí s albem.
+
+    Album `alb-1` má assety `a1` (`P9109996.JPG`, skupina
+    `DOD 2015_Jana`), `a2` a `a3`; nepojmenované osoby `p-1`, `p-2`
+    a pojmenovaná `p-zname` (`Vzorný, Tomáš`).
+    """
+    from fotoarchiv import auth
+    work = tmp_path / "work"
+    work.mkdir()
+    (work / "uzivatele.json").write_text(json.dumps(USERS), encoding="utf-8")
+    passwords = auth.Passwords(work)
+    for login in USERS:
+        passwords.set(login, HESLO)
+    archiv = tmp_path / "archiv"
+    archiv.mkdir()
+    make_tree(archiv, {f"{EVENT}/": {"P9109996.JPG": "x"}})
+    monkeypatch.setattr("fotoarchiv.scan.run_exiftool", lambda d, n: {})
+    fake = FakeImmich()
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", oblicej(osoba("p-1")))
+    fake.add("a2", f"{ROOT}/{EVENT}/druha.jpg", oblicej(osoba("p-2")))
+    fake.add("a3", f"{ROOT}/{EVENT}/treti.jpg",
+             oblicej(osoba("p-zname", "Vzorný, Tomáš")))
+    fake.albums["alb-1"] = {"id": "alb-1", "albumName": EVENT,
+                            "assetIds": ["a1", "a2", "a3"]}
+    app = create_app(archiv, work, zapis=True, immich_fetch=fake,
+                     immich_fetch_bytes=fake.thumbnail)
+    app.testing = True
+    app.config["WORKSPACE"].save(
+        EVENT, {"schema": SCHEMA, "dokonceno": "2026-04-28",
+                "akce": {"nazev": "kontrola", "mista": ["Brno"],
+                         "autori": ["Příkladný, Daniel"]},
+                "skupiny": {"g1": {"nazev": "DOD 2015_Jana"}},
+                "soubory": {"P9109996.JPG": {"skupina": "g1"}}}, None)
+    immich.Settings(work).save(IMMICH_URL, IMMICH_KLIC)
+    app.config["IMMICH"].alba.nastav(EVENT, stav="rozpoznano",
+                                     album="alb-1")
+    return app, fake
+
+
+def lidi_writes(fake):
+    """Zápisy do osob (`/api/people…`); `search/metadata` je taky POST,
+    proto ne celkové `fake.writes`."""
+    return [w for w in fake.writes if w[1].startswith("/api/people")]
+
+
+def test_naming_role_required(naming_app):
+    """Scénář Oprávnění: bez role 403 na všechny endpointy a žádný
+    zápis; archivář a admin smí."""
+    app, fake = naming_app
+    user = logged_in(app, "modelova")
+    r = user.get(f"/api/akce/{EVENT}/osoby")
+    assert r.status_code == 403 and r.json["chyba"] == "jen_archivar"
+    assert user.get(f"/api/akce/{EVENT}/osoby/nahled/a1").status_code \
+        == 403
+    assert user.get(f"/api/akce/{EVENT}/osoby/osoba/p-zname/nahled") \
+        .status_code == 403
+    pojmen = {"akce": "pojmenovat", "jmeno": "Vzorný, Tomáš"}
+    for url, body in ((f"/api/akce/{EVENT}/osoby/p-1", pojmen),
+                      (f"/api/akce/{EVENT}/osoby/kolo", {}),
+                      (f"/api/akce/{EVENT}/osoby/hotovo", {})):
+        assert user.post(url, json=body).status_code == 403, url
+    assert fake.writes == []
+    archivar = logged_in(app, "novak")
+    assert archivar.get(f"/api/akce/{EVENT}/osoby").status_code == 200
+    admin = logged_in(app, "prikladny")
+    assert admin.get(f"/api/akce/{EVENT}/osoby").status_code == 200
+
+
+def test_naming_seznam_osob(naming_app):
+    """GET osoby: stav, osoby k pojmenování s výřezy a metadaty,
+    přepočet počtů; pojmenovaná osoba se nenabídne."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    r = c.get(f"/api/akce/{EVENT}/osoby")
+    assert r.status_code == 200
+    data = r.json
+    assert data["stav"] == "rozpoznano" and data["uplne"] is True
+    assert data["odlozene"] == 0
+    assert [(o["id"], o["pocet"]) for o in data["osoby"]] == \
+        [("p-1", 1), ("p-2", 1)]
+    vyrez = data["osoby"][0]["vyrezy"][0]
+    assert vyrez["asset"] == "a1" and vyrez["sirka"] == 1000
+    assert vyrez["immich"] == {"soubor": "P9109996.JPG",
+                               "datum": "2026-04-28T10:00:00.000Z"}
+    assert vyrez["archiv"] == {
+        "soubor": "P9109996.JPG", "skupina": "DOD 2015_Jana",
+        "datum": None, "misto": "Brno", "autori": ["Příkladný, Daniel"]}
+    # Počty osob akce se uloží i bez dotazu navíc (z téže odpovědi).
+    polozka = app.config["IMMICH"].osoby.polozka(EVENT)
+    assert (polozka["pojmenovane"], polozka["celkem"]) == (1, 3)
+    assert lidi_writes(fake) == []
+
+
+def test_naming_zamek_jineho(naming_app):
+    """Scénář Akce zamčená jiným: archivář pojmenovat může."""
+    app, fake = naming_app
+    ok, _ = app.config["LOCKS"].acquire(EVENT, "r9", "Někdo, Jiný")
+    assert ok
+    c = logged_in(app, "novak")
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1",
+               json={"akce": "pojmenovat", "jmeno": "Nováková, Alena"})
+    assert r.status_code == 200 and r.json["ok"] is True
+    assert ("PUT", "/api/people",
+            {"people": [{"id": "p-1", "name": "Nováková, Alena"}]}
+            ) in fake.writes
+
+
+def test_naming_pojmenovani_a_chybna_jmena(naming_app):
+    """Scénář Pojmenování: kanonický tvar se zapíše přes PUT /api/people;
+    nekanonické jméno → 400 s návrhem, prázdné → 400, nic nezapsáno."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-2", json={"akce": "pojmenovat",
+                                                     "jmeno": "  "})
+    assert r.status_code == 400 and lidi_writes(fake) == []
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-2",
+               json={"akce": "pojmenovat", "jmeno": "Věra Ukázková"})
+    assert r.status_code == 400 and r.json["navrh"] == "Ukázková, Věra"
+    assert lidi_writes(fake) == []
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-2",
+               json={"akce": "pojmenovat", "jmeno": " Ukázková, Věra "})
+    assert r.status_code == 200
+    assert r.json["osoby"] == [2, 3]        # přepočet z nového search
+    assert ("PUT", "/api/people",
+            {"people": [{"id": "p-2", "name": "Ukázková, Věra"}]}
+            ) in fake.writes
+    assert len(lidi_writes(fake)) == 1
+
+
+def test_naming_shoda(naming_app):
+    """Scénář Sloučení se stejnojmennou osobou: 409 se shodou a bez
+    zápisu; s `samostatne` se jen pojmenuje."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1",
+               json={"akce": "pojmenovat", "jmeno": "Vzorný, Tomáš"})
+    assert r.status_code == 409
+    assert r.json == {"shoda": {"id": "p-zname", "jmeno": "Vzorný, Tomáš"}}
+    assert lidi_writes(fake) == []
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1",
+               json={"akce": "pojmenovat", "jmeno": "Vzorný, Tomáš",
+                     "samostatne": True})
+    assert r.status_code == 200 and r.json["ok"] is True
+    assert lidi_writes(fake) == [("PUT", "/api/people",
+                                  {"people": [{"id": "p-1",
+                                               "name": "Vzorný, "
+                                                      "Tomáš"}]})]
+
+
+def test_naming_slouceni(naming_app):
+    """Scénář Sloučení: cílem je existující osoba, v těle je jako
+    první id; odmítnuté cíle → 400."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    for spatne in ({}, {"cil": "p-ning"}, {"cil": "p-1"},
+                   {"cil": "p-2"}):
+        r = c.post(f"/api/akce/{EVENT}/osoby/p-1",
+                   json=dict(spatne, akce="sloucit"))
+        assert r.status_code == 400 and lidi_writes(fake) == [], spatne
+
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1",
+               json={"akce": "sloucit", "cil": "p-zname"})
+    assert r.status_code == 200 and r.json["ok"] is True
+    assert ("POST", "/api/people/merge",
+            {"ids": ["p-zname", "p-1"]}) in fake.writes
+
+
+def test_naming_skryti(naming_app):
+    """Scénář Skrytí: `isHidden` se zapíše, osoba se nepožaduje
+    v seznamu ani v počtech."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-2", json={"akce": "skryt"})
+    assert r.status_code == 200
+    assert ("PUT", "/api/people",
+            {"people": [{"id": "p-2", "isHidden": True}]}) in fake.writes
+    assert r.json["osoby"] == [1, 2]        # skrytá se nepočítá
+    data = c.get(f"/api/akce/{EVENT}/osoby").json
+    assert [o["id"] for o in data["osoby"]] == ["p-1"]
+
+
+def test_naming_nevim_kolo_jiny_uzivatel(naming_app):
+    """Scénáře Nevím, Znovuotevření, Konec kola, Jiný uživatel."""
+    app, fake = naming_app
+    novak = logged_in(app, "novak")
+    r = novak.post(f"/api/akce/{EVENT}/osoby/p-1", json={"akce": "nevim"})
+    assert r.json == {"ok": True, "osoby": None}
+    data = novak.get(f"/api/akce/{EVENT}/osoby").json
+    assert [o["id"] for o in data["osoby"]] == ["p-2"]
+    assert data["odlozene"] == 1
+    # Druhý uživatel odloženou vidí (odložení je per login).
+    prikladny = logged_in(app, "prikladny")
+    assert [o["id"] for o in prikladny.get(
+        f"/api/akce/{EVENT}/osoby").json["osoby"]] == ["p-1", "p-2"]
+    # Nové kolo: odložená se nabídne znovu.
+    assert novak.post(f"/api/akce/{EVENT}/osoby/kolo",
+                      json={}).json == {"ok": True}
+    assert [o["id"] for o in novak.get(
+        f"/api/akce/{EVENT}/osoby").json["osoby"]] == ["p-1", "p-2"]
+    assert lidi_writes(fake) == []
+
+
+def test_naming_vyradeni_pojmenovane(naming_app):
+    """Odložená, která mezitím dostala jméno, se vyřadí a nepočítá."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    c.post(f"/api/akce/{EVENT}/osoby/p-1", json={"akce": "nevim"})
+    assert c.get(f"/api/akce/{EVENT}/osoby").json["odlozene"] == 1
+    for p in fake.people:                  # pojmenoval ji někdo
+        if p["id"] == "p-1":
+            p["name"] = "Nováková, Alena"
+    data = c.get(f"/api/akce/{EVENT}/osoby").json
+    assert data["odlozene"] == 0
+    path = app.config["WORKSPACE"].work / "pojmenovani.json"
+    assert json.loads(path.read_text())["novak"][EVENT] == []
+
+
+def test_naming_nahledy(naming_app):
+    """Scénář Cizí fotka: náhled jen z alba; náhled osoby jen pro
+    pojmenovanou (cíl sloučení)."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    r = c.get(f"/api/akce/{EVENT}/osoby/nahled/a1")
+    assert r.status_code == 200 and r.data == b"nahled-preview"
+    assert r.mimetype == "image/jpeg"
+    assert c.get(f"/api/akce/{EVENT}/osoby/nahled/cizi-asset") \
+        .status_code == 404
+    assert c.get(f"/api/akce/{EVENT}/osoby/osoba/p-zname/nahled") \
+        .status_code == 200
+    assert c.get(f"/api/akce/{EVENT}/osoby/osoba/p-1/nahled") \
+        .status_code == 404
+    assert any(url.endswith("/api/people/p-zname/thumbnail")
+               for _, url in fake.calls)
+
+
+def test_naming_chyba_immiche(naming_app):
+    """Scénář Selhané pojmenování: 502 s chybou, nic se neodloží."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    fake.fail = "/api/search"
+    r = c.get(f"/api/akce/{EVENT}/osoby")
+    assert r.status_code == 502 and "HTTP 403" in r.json["chyba"]
+    fake.fail = "/api/people"
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1",
+               json={"akce": "pojmenovat", "jmeno": "Nováková, Alena"})
+    assert r.status_code == 502 and "chyba" in r.json
+    assert lidi_writes(fake) == []
+    assert not (app.config["WORKSPACE"].work
+                / "pojmenovani.json").exists()
+
+
+def test_naming_hotovo_spusti_sync(naming_app, monkeypatch):
+    """Převzetí jmen po zavření: synchronizace jen po změně."""
+    app, fake = naming_app
+    volani = []
+    monkeypatch.setattr(app.config["IMMICH"], "trigger",
+                        lambda: volani.append(1))
+    novak = logged_in(app, "novak")
+    url = f"/api/akce/{EVENT}/osoby/hotovo"
+    assert novak.post(url, json={}).json == {"ok": True,
+                                             "synchronizace": False}
+    novak.post(f"/api/akce/{EVENT}/osoby/p-1", json={"akce": "nevim"})
+    assert novak.post(url, json={}).json["synchronizace"] is False
+    r = novak.post(f"/api/akce/{EVENT}/osoby/p-1",
+                   json={"akce": "pojmenovat", "jmeno": "Nováková, Alena"})
+    assert r.status_code == 200
+    assert novak.post(url, json={}).json["synchronizace"] is True
+    assert volani == [1]
+    # Příznak se smaže: druhé zavření už nic nespustí.
+    assert novak.post(url, json={}).json["synchronizace"] is False
+    # Jiný uživatel bez vlastní změny nespustí.
+    prikladny = logged_in(app, "prikladny")
+    assert prikladny.post(url, json={}).json["synchronizace"] is False
+    assert volani == [1]
+
+
+def test_naming_odmitnuti(naming_app):
+    """Neexistující akce, osoba mimo album, neznámá volba, bez alba,
+    bez Immiche — 404/400."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    assert c.get("/api/akce/2026-01-01 neni/osoby").status_code == 404
+    assert c.post("/api/akce/2026-01-01 neni/osoby/p-1",
+                  json={"akce": "skryt"}).status_code == 404
+    assert c.post(f"/api/akce/{EVENT}/osoby/p-ning",
+                  json={"akce": "skryt"}).status_code == 404
+    assert c.post(f"/api/akce/{EVENT}/osoby/p-1",
+                  json={"akce": "blbost"}).status_code == 400
+    app.config["IMMICH"].alba.nastav(EVENT, album=None)
+    r = c.get(f"/api/akce/{EVENT}/osoby")
+    assert r.status_code == 404 and r.json["chyba"] == "bez_alba"
+    immich.Settings(app.config["WORKSPACE"].work).delete()
+    r = c.get(f"/api/akce/{EVENT}/osoby")
+    assert r.status_code == 404 and r.json["chyba"] == "immich_nenastaven"
+
+
+def test_naming_archiv_beze_zmeny_a_klic(naming_app):
+    """`_metadata.json` zůstane beze změny; klíč Immiche v žádné
+    odpovědi."""
+    app, fake = naming_app
+    path = app.config["WORKSPACE"].metadata_path(EVENT)
+    pred = path.read_bytes()
+    c = logged_in(app, "novak")
+    odpovedi = [c.get(f"/api/akce/{EVENT}/osoby"),
+                c.post(f"/api/akce/{EVENT}/osoby/p-1",
+                       json={"akce": "pojmenovat",
+                             "jmeno": "Nováková, Alena"}),
+                c.post(f"/api/akce/{EVENT}/osoby/p-2",
+                       json={"akce": "nevim"}),
+                c.get(f"/api/akce/{EVENT}/osoby/nahled/a1"),
+                c.get(f"/api/akce/{EVENT}/osoby/osoba/p-zname/nahled"),
+                c.post(f"/api/akce/{EVENT}/osoby/kolo", json={})]
+    assert all(r.status_code == 200 for r in odpovedi), \
+        [r.status_code for r in odpovedi]
+    assert path.read_bytes() == pred
+    for r in odpovedi:
+        assert IMMICH_KLIC not in r.get_data(as_text=True)
+    assert IMMICH_KLIC not in c.post(
+        f"/api/akce/{EVENT}/osoby/hotovo", json={}).get_data(as_text=True)

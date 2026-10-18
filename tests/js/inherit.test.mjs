@@ -20,11 +20,11 @@ for (const name of readdirSync(dir).filter((n) => n.endsWith(".json"))) {
 test("skupina bez autorů", () => {
   const doc = {
     akce: { nazev: "x", datum_od: "2026-04-28", datum_do: "2026-04-28" },
-    skupiny: { a: {}, b: { autori: ["Spáčil, David"] }, c: {} },
+    skupiny: { a: {}, b: { autori: ["Příkladný, Daniel"] }, c: {} },
     soubory: {
       "1.jpg": { skupina: "a", datum: "2026-04-28" },
       "2.jpg": { skupina: "b" },
-      "3.jpg": { skupina: "c", autori: ["Kopáčová, Zuzana"] },
+      "3.jpg": { skupina: "c", autori: ["Modelová, Zuzana"] },
       "4.jpg": { skupina: "zmizela", datum: "2026-04-28" },
     },
   };
@@ -88,7 +88,7 @@ test("soubory k vyřazení se nepočítají", () => {
 
 test("skupina se zděděnými autory akce nechybí", () => {
   const doc = {
-    akce: { autori: ["Spáčil, David"] },
+    akce: { autori: ["Příkladný, Daniel"] },
     skupiny: { g9: { nazev: "G9" }, mobil: {} },
     soubory: {
       "P1503712.JPG": { skupina: "g9" },

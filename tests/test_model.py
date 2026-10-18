@@ -88,7 +88,7 @@ def test_unknown_technical_values_not_stored():
 
 
 def test_clean_drops_legacy_people_and_misplaced_faces():
-    face = {"jmeno": "Hlava, Miloš", "oblast": [0.5, 0.4, 0.08, 0.06]}
+    face = {"jmeno": "Vzorný, Tomáš", "oblast": [0.5, 0.4, 0.08, 0.06]}
     doc = {"akce": {"nazev": "x", "osoby": ["A, B"], "obliceje": [face]},
            "skupiny": {"g": {"osoby": ["A, B"], "obliceje": [face]}},
            "soubory": {"a.jpg": {"osoby": ["A, B"], "obliceje": [face]}}}
@@ -98,7 +98,7 @@ def test_clean_drops_legacy_people_and_misplaced_faces():
 
 
 def test_keep_faces_from_stored_version():
-    face = {"jmeno": "Hlava, Miloš", "oblast": [0.5, 0.4, 0.08, 0.06]}
+    face = {"jmeno": "Vzorný, Tomáš", "oblast": [0.5, 0.4, 0.08, 0.06]}
     stored = {"soubory": {"a.jpg": {"obliceje": [face]}, "b.jpg": {}}}
     doc = {"soubory": {"a.jpg": {"popis": "x"},
                        "b.jpg": {"obliceje": [face]}}}
@@ -108,7 +108,7 @@ def test_keep_faces_from_stored_version():
 
 
 def test_incomplete_authors_only_on_event():
-    doc = {"akce": {"autori": ["Spáčil, David"]},
+    doc = {"akce": {"autori": ["Příkladný, Daniel"]},
            "skupiny": {"g9": {"nazev": "G9"}},
            "soubory": {"P1503712.JPG": {"skupina": "g9"},
                        "IMG-20260428-WA0001.jpg": {}}}
@@ -149,46 +149,87 @@ def test_completeness_only_present_files():
         "autori": [0, 1], "datum": [1, 1], "misto": [0, 1]}
 
 
+# --- osoby v hotovosti (4.1) -------------------------------------------------
+
+def test_osoby_jen_pri_albu_a_rozpoznano():
+    """Scénáře Hotovost akce: osoby jsou jen při albu se stavem
+    `rozpoznano` a uložených počtech; jinak None."""
+    alba = {"album": "alb-1", "stav": "rozpoznano", "cas": "cas"}
+    pocty = {"pojmenovane": 4, "celkem": 6, "cas": "cas"}
+    assert model.osoby(alba, pocty) == [4, 6]
+    assert model.osoby(dict(alba, stav="rozpoznavani"), pocty) is None
+    assert model.osoby(dict(alba, album=None), pocty) is None
+    assert model.osoby(dict(alba, album=None), dict(pocty,
+                                                    pojmenovane=6,
+                                                    celkem=6)) is None
+    assert model.osoby(None, pocty) is None
+    assert model.osoby(alba, None) is None
+    # kompletní osoby (6/6) se počítají stejně — rozhodne až `incomplete`
+    assert model.osoby(alba, dict(pocty, pojmenovane=6)) == [6, 6]
+
+
+def test_incomplete_s_osobami():
+    """Nepojmenované osoby přidají `osoby` na konec `chybi`; hotové
+    počty ne; `completeness` sama osoby nezná (nečte `.work/`)."""
+    doc = {"soubory": {"a.jpg": {"autori": ["X"], "datum": "d",
+                                 "misto": "m"}}}
+    present = {"a.jpg"}
+    hotovost = model.completeness(doc, present)
+    assert "osoby" not in hotovost          # completeness osoby nepočítá
+    assert model.incomplete(doc, present, hotovost) == []
+    hotovost["osoby"] = [4, 6]
+    assert model.incomplete(doc, present, hotovost) == ["osoby"]
+    hotovost["osoby"] = [6, 6]              # skrytá = napočtená, hotovo
+    assert model.incomplete(doc, present, hotovost) == []
+    # pořadí: povinná pole první, osoby na konci
+    doc_chybi = {"soubory": {"a.jpg": {}}}
+    hotovost = model.completeness(doc_chybi, present)
+    hotovost["osoby"] = [0, 2]
+    assert model.incomplete(doc_chybi, present,
+                            hotovost) == ["autori", "datum", "misto",
+                                          "osoby"]
+
+
 def test_touch_first_save():
     doc = {"akce": {}}
-    model.touch(doc, None, "Spáčil, David", "2026-10-14T10:15:02")
-    assert doc["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02"}
+    model.touch(doc, None, "Příkladný, Daniel", "2026-10-14T10:15:02")
+    assert doc["upravili"] == {"Příkladný, Daniel": "2026-10-14T10:15:02"}
 
 
 def test_touch_second_user_keeps_first():
-    stored = {"upravili": {"Spáčil, David": "2026-10-14T10:15:02"}}
+    stored = {"upravili": {"Příkladný, Daniel": "2026-10-14T10:15:02"}}
     doc = {}
-    model.touch(doc, stored, "Kopáčová, Zuzana", "2026-10-14T11:00:00")
-    assert doc["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02",
-                               "Kopáčová, Zuzana": "2026-10-14T11:00:00"}
+    model.touch(doc, stored, "Modelová, Zuzana", "2026-10-14T11:00:00")
+    assert doc["upravili"] == {"Příkladný, Daniel": "2026-10-14T10:15:02",
+                               "Modelová, Zuzana": "2026-10-14T11:00:00"}
     # Uložená verze se nemění.
-    assert stored["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02"}
+    assert stored["upravili"] == {"Příkladný, Daniel": "2026-10-14T10:15:02"}
 
 
 def test_touch_ignores_client_value():
-    stored = {"upravili": {"Spáčil, David": "2026-10-14T10:15:02"}}
+    stored = {"upravili": {"Příkladný, Daniel": "2026-10-14T10:15:02"}}
     doc = {"upravili": {"Podvržený, Pán": "2030-01-01T00:00:00",
-                        "Spáčil, David": "2030-01-01T00:00:00"}}
-    model.touch(doc, stored, "Kopáčová, Zuzana", "2026-10-14T11:00:00")
-    assert doc["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02",
-                               "Kopáčová, Zuzana": "2026-10-14T11:00:00"}
+                        "Příkladný, Daniel": "2030-01-01T00:00:00"}}
+    model.touch(doc, stored, "Modelová, Zuzana", "2026-10-14T11:00:00")
+    assert doc["upravili"] == {"Příkladný, Daniel": "2026-10-14T10:15:02",
+                               "Modelová, Zuzana": "2026-10-14T11:00:00"}
 
 
-USER = {"jmeno": "Kopáčová, Zuzana", "admin": False, "archivar": False}
+USER = {"jmeno": "Modelová, Zuzana", "admin": False, "archivar": False}
 ARCHIVAR = {"jmeno": "Novák, Petr", "admin": False, "archivar": True}
 
 
 def test_can_edit_by_editors():
-    doc = {"upravili": {"Spáčil, David": "2026-10-14T10:15:02"}}
+    doc = {"upravili": {"Příkladný, Daniel": "2026-10-14T10:15:02"}}
     assert not model.can_edit(USER, doc)
-    doc["upravili"]["Kopáčová, Zuzana"] = "2026-10-14T10:16:00"
+    doc["upravili"]["Modelová, Zuzana"] = "2026-10-14T10:16:00"
     assert model.can_edit(USER, doc)
 
 
 def test_can_edit_name_without_diacritics():
-    doc = {"upravili": {"Kopacova, Zuzana": "2026-10-14T10:15:02"}}
+    doc = {"upravili": {"Modelova, Zuzana": "2026-10-14T10:15:02"}}
     assert model.can_edit(USER, doc)
-    doc = {"upravili": {"zuzana kopacova": "2026-10-14T10:15:02"}}
+    doc = {"upravili": {"zuzana modelova": "2026-10-14T10:15:02"}}
     assert model.can_edit(USER, doc)
 
 

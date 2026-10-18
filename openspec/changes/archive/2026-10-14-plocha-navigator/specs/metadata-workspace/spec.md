@@ -323,7 +323,7 @@ náhledu ikonu, soubor k vyřazení ikonu vyřazení místo nich.
 - **THEN** jeho pruh je šrafovaný a v překryvu je `bez autorů`
 
 #### Scenario: Jiný zápis téže osoby
-- **WHEN** jeden soubor má autora `Spáčil, David` a jiný `spacil, david`
+- **WHEN** jeden soubor má autora `Příkladný, Daniel` a jiný `prikladny, daniel`
 - **THEN** oba pruhy mají tutéž barvu
 
 #### Scenario: Změna autorů skupiny
@@ -420,8 +420,8 @@ pole SHALL místo osob uvést, že Immich není napojen. Chybějící osoby
 MUST NOT být mezi chybějícími údaji v navigátoru.
 
 #### Scenario: Soubor s obličeji
-- **WHEN** uživatel vybere soubor s obličejem `Lečbychová, Olga`
-- **THEN** formulář ukáže `Lečbychová, Olga` zašedle s poznámkou
+- **WHEN** uživatel vybere soubor s obličejem `Ukázková, Věra`
+- **THEN** formulář ukáže `Ukázková, Věra` zašedle s poznámkou
   „z Immiche“ a pole nejde upravit
 
 #### Scenario: Formulář skupiny

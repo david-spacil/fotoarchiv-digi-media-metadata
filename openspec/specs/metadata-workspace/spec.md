@@ -284,8 +284,8 @@ Akci bez `_metadata.json` stránka SHALL přesměrovat na plochu
 
 #### Scenario: Přímý odkaz bez zámku
 - **WHEN** uživatel otevře `#/akce/<název>/dokonceni` akce, kterou
-  drží Kopáčová, Zuzana
-- **THEN** stránka ukáže kontroly, uvede „upravuje Kopáčová, Zuzana“
+  drží Modelová, Zuzana
+- **THEN** stránka ukáže kontroly, uvede „upravuje Modelová, Zuzana“
   a tlačítko Dokončit je neaktivní
 
 #### Scenario: Nezpracovaná akce
@@ -364,7 +364,7 @@ dosud.
 - **WHEN** uživatel otevře existující akci bez `_metadata.json`, do
   které importoval `DOD 2015` s rozdělením „podle podsložek“ a autory
   skupin
-- **THEN** krok skupiny a autoři ukáže skupiny `DOD 2015_Bara Tesar`,
+- **THEN** krok skupiny a autoři ukáže skupiny `DOD 2015_Bara Pokusna`,
   `DOD 2015_Jana`, `DOD 2015_Pavla` a `DOD 2015_Verca` s autory
   zadanými při importu
 
@@ -454,12 +454,13 @@ Formulář souboru SHALL ukázat jména z jeho `obliceje` jako pole jen pro
 čtení s poznámkou, že pochází z Immiche; MUST NOT jít upravit.
 U výběru více souborů SHALL ukázat jména všech vybraných. Formulář
 skupiny ani akce pole osob MUST NOT nabízet. Není-li Immich nastaven,
-pole SHALL místo osob uvést, že Immich není napojen. Chybějící osoby
-MUST NOT být mezi chybějícími údaji v navigátoru.
+pole SHALL místo osob uvést, že Immich není napojen. Soubory bez osob
+MUST NOT být mezi chybějícími údaji v navigátoru; nepojmenované osoby
+akce ano (viz Chybějící údaje v navigátoru).
 
 #### Scenario: Soubor s obličeji
-- **WHEN** uživatel vybere soubor s obličejem `Lečbychová, Olga`
-- **THEN** formulář ukáže `Lečbychová, Olga` zašedle s poznámkou
+- **WHEN** uživatel vybere soubor s obličejem `Ukázková, Věra`
+- **THEN** formulář ukáže `Ukázková, Věra` zašedle s poznámkou
   „z Immiche“ a pole nejde upravit
 
 #### Scenario: Formulář skupiny
@@ -476,8 +477,8 @@ moci přepsat vlastními. Krok údaje akce pole autorů neukazuje.
 
 #### Scenario: Autoři celé akce
 - **WHEN** uživatel v kroku skupiny a autoři zadá autory celé akce
-  `Spáčil, David` a `Kopáčová, Zuzana`
-- **THEN** akce má `autori` = [`Spáčil, David`, `Kopáčová, Zuzana`]
+  `Příkladný, Daniel` a `Modelová, Zuzana`
+- **THEN** akce má `autori` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
   a skupina `g9` bez vlastních autorů je ukazuje jako zděděné z akce
 
 #### Scenario: Dokončení bez upozornění
@@ -486,9 +487,9 @@ moci přepsat vlastními. Krok údaje akce pole autorů neukazuje.
   a skupiny se uloží bez pole `autori`
 
 #### Scenario: Skupina s vlastními autory
-- **WHEN** akce má autory `Spáčil, David` a skupina `g9` má vlastní
-  autory `Kopáčová, Zuzana`
-- **THEN** skupina `g9` si ponechá `Kopáčová, Zuzana` jako zadané
+- **WHEN** akce má autory `Příkladný, Daniel` a skupina `g9` má vlastní
+  autory `Modelová, Zuzana`
+- **THEN** skupina `g9` si ponechá `Modelová, Zuzana` jako zadané
   u skupiny
 
 #### Scenario: Předvyplnění
@@ -584,7 +585,7 @@ náhledu ikonu, soubor k vyřazení ikonu vyřazení místo nich.
 - **THEN** jeho pruh je šrafovaný a v překryvu je `bez autorů`
 
 #### Scenario: Jiný zápis téže osoby
-- **WHEN** jeden soubor má autora `Spáčil, David` a jiný `spacil, david`
+- **WHEN** jeden soubor má autora `Příkladný, Daniel` a jiný `prikladny, daniel`
 - **THEN** oba pruhy mají tutéž barvu
 
 #### Scenario: Změna autorů skupiny
@@ -739,8 +740,9 @@ průběžně při posouvání mřížky.
 Navigátor SHALL průběžně ukazovat, co chybí (soubory označené
 k vyřazení MUST NOT být započítány):
 
-- **Řádek Akce:** chybějící název nebo data akce a místa bez souřadnic
-  (viz Místa bez souřadnic v navigátoru).
+- **Řádek Akce:** chybějící název nebo data akce, místa bez souřadnic
+  (viz Místa bez souřadnic v navigátoru) a počet nepojmenovaných osob
+  podle posledního zjištění osob akce (viz `immich-people`).
 - **Řádek oddílu:** počet souborů bez autorů, bez data a bez místa
   (bez místa jen pokud má akce víc míst); v zobrazení podle data
   i počet souborů bez skupiny. Oddíl „Bez data“ neukazuje „bez data“
@@ -753,6 +755,8 @@ k vyřazení MUST NOT být započítány):
 Každý chybějící údaj SHALL být ikona s počtem a titulkem slovy
 („30 souborů bez místa“). Klik na údaj SHALL vybrat dotčené soubory
 a posunout na ně mřížku; u skupiny bez autorů SHALL vybrat skupinu.
+Klik na nepojmenované osoby SHALL archiváři a adminovi otevřít nástroj
+pojmenování osob (viz `person-naming`), ostatním je jen ukázat.
 Bez zámku akce (jen ke čtení) SHALL údaje zůstat vidět a klik vybírat.
 
 #### Scenario: Skupina bez autorů
@@ -787,6 +791,16 @@ Bez zámku akce (jen ke čtení) SHALL údaje zůstat vidět a klik vybírat.
 - **WHEN** v zobrazení podle data leží pod jedním dnem 6 souborů bez
   skupiny
 - **THEN** řádek dne ukáže ikonu skupiny s počtem 6
+
+#### Scenario: Nepojmenované osoby
+- **WHEN** akce má podle posledního zjištění 2 nepojmenované osoby
+  a plochu otevře archivář
+- **THEN** řádek Akce ukáže ikonu osoby s počtem 2 („2 nepojmenované
+  osoby“) a klik na ni otevře nástroj pojmenování osob
+
+#### Scenario: Akce bez alba
+- **WHEN** akce nemá album v Immichi nebo Immich není nastaven
+- **THEN** řádek Akce nepojmenované osoby neukazuje
 
 ### Requirement: Místa bez souřadnic v navigátoru
 Řádek Akce v navigátoru SHALL ukázat názvy míst, o jejichž souřadnicích

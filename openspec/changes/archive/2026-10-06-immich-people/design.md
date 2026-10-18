@@ -7,8 +7,8 @@ Ověřeno proti Immichi 3.3.0-rc2 (6. 10. 2026) na knihovně
   `name: ""`.
 - `GET /api/faces?id=<asset>` vrací obličeje s `boundingBoxX1..Y2`,
   `imageWidth`, `imageHeight`, `sourceType` a `person {id, name}`.
-- Jména zadávají lidé v Immichi, tvar nevynucuje (`Lečbychová, Olga`
-  i `Rudolf Tichý`). Immich vidí archiv pod jiným kořenem (`/mnt/media/…`).
+- Jména zadávají lidé v Immichi, tvar nevynucuje (`Ukázková, Věra`
+  i `Rudolf Smyšlený`). Immich vidí archiv pod jiným kořenem (`/mnt/media/…`).
 
 Z GitHubu (immich-app/immich):
 - PR #6455 (sloučen 4. 9. 2024): import oblastí obličejů MWG z metadat

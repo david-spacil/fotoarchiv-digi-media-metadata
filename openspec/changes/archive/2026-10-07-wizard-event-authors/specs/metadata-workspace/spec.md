@@ -12,8 +12,8 @@ vlastními. Krok údaje akce pole autorů neukazuje.
 
 #### Scenario: Autoři celé akce
 - **WHEN** uživatel v kroku autoři skupin zadá autory celé akce
-  `Spáčil, David` a `Kopáčová, Zuzana`
-- **THEN** akce má `autori` = [`Spáčil, David`, `Kopáčová, Zuzana`]
+  `Příkladný, Daniel` a `Modelová, Zuzana`
+- **THEN** akce má `autori` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
   a skupina `g9` bez vlastních autorů je ukazuje jako zděděné z akce
 
 #### Scenario: Dokončení bez upozornění
@@ -22,9 +22,9 @@ vlastními. Krok údaje akce pole autorů neukazuje.
   a skupiny se uloží bez pole `autori`
 
 #### Scenario: Skupina s vlastními autory
-- **WHEN** akce má autory `Spáčil, David` a skupina `g9` má vlastní
-  autory `Kopáčová, Zuzana`
-- **THEN** skupina `g9` si ponechá `Kopáčová, Zuzana` jako zadané
+- **WHEN** akce má autory `Příkladný, Daniel` a skupina `g9` má vlastní
+  autory `Modelová, Zuzana`
+- **THEN** skupina `g9` si ponechá `Modelová, Zuzana` jako zadané
   u skupiny
 
 #### Scenario: Předvyplnění

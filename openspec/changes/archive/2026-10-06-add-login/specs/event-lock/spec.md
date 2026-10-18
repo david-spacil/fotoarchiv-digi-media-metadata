@@ -24,6 +24,6 @@ dosavadního držitele SHALL při dalším heartbeatu přepnout akci jen ke
 server po uvolnění odmítnout.
 
 #### Scenario: Opuštěná rozdělaná práce
-- **WHEN** admin uvolní zámek akce, kterou drží Kopáčová
-- **THEN** admin může akci otevřít a Kopáčová vidí upozornění, že akci
+- **WHEN** admin uvolní zámek akce, kterou drží Modelová
+- **THEN** admin může akci otevřít a Modelová vidí upozornění, že akci
   má jen ke čtení
