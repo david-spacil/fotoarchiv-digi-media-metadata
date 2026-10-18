@@ -256,6 +256,11 @@ class Client:
         return self._call_bytes(
             "GET", f"/api/assets/{asset_id}/thumbnail?{query}")
 
+    def person_thumbnail(self, person_id):
+        """Náhled osoby (cíl nabídky sloučení) jako (bytes,
+        content_type)."""
+        return self._call_bytes("GET", f"/api/people/{person_id}/thumbnail")
+
     def libraries(self):
         """Knihovny Immiche (jen admin; jinak 403)."""
         return self._call("GET", "/api/libraries")
@@ -409,7 +414,7 @@ class Sync:
     """Synchronizace v serveru: jeden běh najednou, stav posledního běhu."""
 
     def __init__(self, ws, locks, settings, known_names, fetch=None,
-                 interval=INTERVAL):
+                 fetch_bytes=None, interval=INTERVAL):
         from . import albums     # albums importuje immich (cyklus jen
                                  # v modulech, ne při importu)
         self.ws = ws
@@ -417,6 +422,7 @@ class Sync:
         self.settings = settings
         self.known_names = known_names
         self.fetch = fetch
+        self.fetch_bytes = fetch_bytes
         self.interval = interval
         self.alba = albums.Stavy(ws.work)
         self.osoby = albums.Osoby(ws.work)
@@ -432,7 +438,9 @@ class Sync:
 
     def client(self):
         s = self.settings.load()
-        return Client(s["adresa"], s["klic"], self.fetch) if s else None
+        if not s:
+            return None
+        return Client(s["adresa"], s["klic"], self.fetch, self.fetch_bytes)
 
     def run(self):
         """Jeden běh; když už běží jiný, jen vrátí stav."""

@@ -1017,6 +1017,21 @@ Přejmenování nebo přesun souboru je v Immichi nový asset bez obličejů;
 záloha v `_metadata.json` jde s přejmenováním a obnoví se exportem pro
 obnovu.
 
+**Nástroj pojmenování osob** (smí admin a archivář, ostatním server
+vrátí 403) prochází po jedné nepojmenované a neskryté osobě Immiche
+s obličejem na fotce v albu akce, seřazené podle počtu obličejů.
+U každé ukáže až 3 výřezy z různých fotek (zmenšeniny proxyuje
+server — klíč Immiche neopouští server) s metadaty z Immiche a po
+zdědění i ze souboru archivu. Osobu lze pojmenovat (do Immiche se
+zapisuje kanonický tvar `Příjmení, Jméno`, u stejnojmenné existující
+osoby nabídne server sloučení), skrýt, nebo odložit volbou „nevím“;
+odložené osoby jsou per uživatel a akce v `.work/pojmenovani.json`,
+nové kolo je vymaže. Nástroj zapisuje jen do Immiche (`PUT
+/api/people`, `POST /api/people/merge`), `_metadata.json` nemění
+a nevyžaduje zámek akce. Po každé akci přepočítá počty osob
+do `.work/immich-osoby.json`; zavření nástroje po změně spustí
+synchronizaci, takže se jména brzy objeví v `obliceje`.
+
 ### Ukládání a export
 
 - `_metadata.json` se ukládá průběžně, atomicky (dočasný soubor

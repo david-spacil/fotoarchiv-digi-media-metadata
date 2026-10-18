@@ -70,6 +70,10 @@ class FakeImmich:
         self.album_seq = 0
         self.bez_nahledu = set()  # assety bez zmenšeniny (thumbhash None)
         self.typy = {}          # id → type (výchozí IMAGE)
+        self.jmena_souboru = {}  # id → originalFileName (default ze
+                                 # cesty; nástroj pojmenování)
+        self.exify = {}         # id → exifInfo (default: datum pořízení)
+        self.vytvoreno = {}     # id → fileCreatedAt (pole assetu)
 
     def add(self, asset_id, path, *faces):
         self.paths[asset_id] = path
@@ -97,7 +101,8 @@ class FakeImmich:
         return vysledky
 
     def thumbnail(self, method, url, klic):
-        """Podvržený binární dotaz (`fetch_bytes`) na zmenšeninu."""
+        """Podvržený binární dotaz (`fetch_bytes`) na zmenšeniny assetu
+        i náhled osoby (`/api/people/{id}/thumbnail`)."""
         self.calls.append((method, url))
         assert klic == KEY
         return b"nahled-preview", "image/jpeg"
@@ -155,6 +160,16 @@ class FakeImmich:
             if body.get("withPeople"):
                 for item in items:
                     item["people"] = self._osoby_assetu(item["id"])
+            if body.get("withExif"):
+                for item in items:
+                    a = item["id"]
+                    item["originalFileName"] = self.jmena_souboru.get(
+                        a, self.paths[a].rsplit("/", 1)[-1])
+                    item["exifInfo"] = self.exify.get(
+                        a, {"dateTimeOriginal":
+                            "2026-04-28T10:00:00.000Z"})
+                    if a in self.vytvoreno:
+                        item["fileCreatedAt"] = self.vytvoreno[a]
             return {"assets": {"items": items,
                                "nextPage": str(page + 1) if more else None}}
         if parts.path == "/api/albums":
@@ -416,6 +431,10 @@ def test_thumbnail_binary(setup):
     assert fake.calls[-1] == ("GET",
                               f"{URL}/api/assets/a1/thumbnail"
                               "?size=preview")
+    # Náhled osoby (cíl nabídky sloučení) – bez `size`.
+    assert client.person_thumbnail("p-1") == (b"nahled-preview",
+                                              "image/jpeg")
+    assert fake.calls[-1] == ("GET", f"{URL}/api/people/p-1/thumbnail")
 
 
 def test_libraries_scan_queue(setup):
