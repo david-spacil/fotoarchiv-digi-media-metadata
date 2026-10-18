@@ -84,7 +84,7 @@
   Výpis akcí se Immiche neptá. Ověření: testy v `tests/test_archive.py`
   (nebo `tests/test_model.py`, podle místa výpočtu) na scénáře Stav
   akce a Hotovost akce s osobami.
-- [ ] 4.2 Karta akce (`app.js`): osoby v hotovosti (`osoby 4/6`), odkaz
+- [x] 4.2 Karta akce (`app.js`): osoby v hotovosti (`osoby 4/6`), odkaz
   na nástroj u archiváře a admina při nepojmenovaných, štítek
   „nekompletní“ i kvůli osobám. Navigátor: ikona osoby s počtem na
   řádku Akce, klik otevře nástroj (ostatním jen údaj). Ověření:
@@ -122,11 +122,11 @@
 
 ## 6. Klient nástroje
 
-- [ ] 6.1 Nový modul `fotoarchiv/static/naming.js`: čistá funkce výřezu
+- [x] 6.1 Nový modul `fotoarchiv/static/naming.js`: čistá funkce výřezu
   (obdélník + rozměr zmenšeniny → výřez) a pořadí kroků kola. Ověření:
   `tests/js/naming.test.mjs` (`node --test tests/js/*.test.mjs`,
   zkontrolovat počet testů ve výstupu).
-- [ ] 6.2 Překryv nad plochou akce (`<dialog>`, `::backdrop`
+- [x] 6.2 Překryv nad plochou akce (`<dialog>`, `::backdrop`
   s `backdrop-filter: blur`): výřezy s metadaty, pole jména
   s našeptáváním `/api/jmena` a kontrolou `/api/jmena/kontrola`
   (návrh tvaru, potvrzení převodu), nabídka sloučení s náhledem
