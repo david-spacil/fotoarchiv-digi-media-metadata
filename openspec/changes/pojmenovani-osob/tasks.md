@@ -140,7 +140,7 @@
 
 ## 7. Dokumentace a ruční ověření
 
-- [ ] 7.1 AGENTS.md: invariant „do Immiche zapisuje jen nástroj
+- [x] 7.1 AGENTS.md: invariant „do Immiche zapisuje jen nástroj
   pojmenování (osoby), dokončení a synchronizace (alba, sken knihovny
   jen při dokončení)“, soubory nástroje ve
   `.work/` a role archivář pro nástroj. README, Datový model: osoby
