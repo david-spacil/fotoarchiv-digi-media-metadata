@@ -144,7 +144,7 @@ def test_real_server_streamed_upload(live_server):
     # Vytvořit import
     conn = http.client.HTTPConnection(host, port)
     conn.request("POST", "/api/import",
-                 body=json.dumps({"jmeno": "Spáčil, David", "celkem": 1}))
+                 body=json.dumps({"jmeno": "Příkladný, Daniel", "celkem": 1}))
     resp = conn.getresponse()
     assert resp.status == 200
     import_id = json.loads(resp.read().decode())["id"]
@@ -155,7 +155,7 @@ def test_real_server_streamed_upload(live_server):
     chunk2 = b"B" * (512 * 1024)
 
     s = socket.create_connection((host, port))
-    q_jmeno = quote("Spáčil, David")
+    q_jmeno = quote("Příkladný, Daniel")
     req = (f"POST /api/import/{import_id}/soubor?jmeno={q_jmeno}"
            f"&cesta=test.jpg&relace=r1 HTTP/1.1\r\n"
            f"Host: {host}\r\nContent-Length: {total_size}\r\n"
@@ -189,7 +189,7 @@ def test_real_server_streamed_upload(live_server):
     s.close()
 
     # Soubor nad 1 MiB se uložil celý
-    record = imports.get(import_id, "Spáčil, David")
+    record = imports.get(import_id, "Příkladný, Daniel")
     assert len(record["soubory"]) == 1
     assert record["soubory"][0]["velikost"] == total_size
 

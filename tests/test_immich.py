@@ -280,7 +280,7 @@ def test_delete_settings(setup):
 
 def test_connection_ok(setup):
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     r = app.test_client().post("/api/immich/test")
     assert r.status_code == 200
     assert r.json == {"ok": True, "verze": "3.3.0-rc2", "osob": 1,
@@ -291,7 +291,7 @@ def test_connection_ok(setup):
 def test_connection_all_key_has_no_permission_warning(setup):
     """Klíč s `all`: žádná varování (knihovna vybraná, admin)."""
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     r = app.test_client().post("/api/immich/test")
     assert r.status_code == 200
     assert r.json["chybi"] == [] and r.json["varovani"] == []
@@ -300,7 +300,7 @@ def test_connection_all_key_has_no_permission_warning(setup):
 def test_connection_read_only_key_warns_but_passes(setup):
     """Klíč jen pro čtení: test projde a vypíše chybějící oprávnění."""
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     fake.permissions = ["person.read", "asset.read", "face.read",
                         "asset.view"]
     r = app.test_client().post("/api/immich/test")
@@ -317,7 +317,7 @@ def test_connection_read_only_key_warns_but_passes(setup):
 def test_connection_without_admin_role_warns(setup):
     """Klíč s `all` ale bez role admin: 403 na knihovnách = varování."""
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     fake.no_admin = True
     r = app.test_client().post("/api/immich/test")
     assert r.status_code == 200 and r.json["ok"] is True
@@ -329,7 +329,7 @@ def test_connection_without_admin_role_warns(setup):
 
 def test_connection_without_library_warns(setup):
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     ws = app.config["WORKSPACE"]
     immich.Settings(ws.work).save(URL, KEY)   # bez vybrané knihovny
     r = app.test_client().post("/api/immich/test")
@@ -340,7 +340,7 @@ def test_connection_without_library_warns(setup):
 
 def test_connection_without_face_permission(setup):
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     fake.fail = "/api/faces"
     r = app.test_client().post("/api/immich/test")
     assert r.status_code == 502
@@ -360,12 +360,12 @@ def test_update_people_request(setup):
     _, fake = setup
     fake.people = [{"id": "p-1", "name": ""}, {"id": "p-2", "name": "X"}]
     client = immich.Client(URL, KEY, fake)
-    client.update_people([{"id": "p-1", "name": "Hlava, Miloš"},
+    client.update_people([{"id": "p-1", "name": "Vzorný, Tomáš"},
                           {"id": "p-2", "isHidden": True}])
     assert fake.writes == [("PUT", "/api/people", {"people": [
-        {"id": "p-1", "name": "Hlava, Miloš"},
+        {"id": "p-1", "name": "Vzorný, Tomáš"},
         {"id": "p-2", "isHidden": True}]})]
-    assert fake.people[0]["name"] == "Hlava, Miloš"
+    assert fake.people[0]["name"] == "Vzorný, Tomáš"
     assert fake.people[1]["isHidden"] is True
 
 
@@ -416,7 +416,7 @@ def test_search_album_paging_and_body(setup):
 
 def test_search_path_pages_and_filters(setup):
     _, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     fake.add("a2", f"{ROOT}/2026-09-20 jina akce/x.jpg", face(None))
     client = immich.Client(URL, KEY, fake)
     found = client.search_path(EVENT, size=1)
@@ -529,10 +529,10 @@ def test_file_key_ignores_root():
 
 def test_new_face_named(setup):
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     status = app.config["IMMICH"].run()
     assert faces_of(app, "P9109996.JPG") == [
-        {"jmeno": "Hlava, Miloš", "oblast": [0.2725, 0.432, 0.041, 0.0747]}]
+        {"jmeno": "Vzorný, Tomáš", "oblast": [0.2725, 0.432, 0.041, 0.0747]}]
     assert faces_of(app, "b.jpg") is None
     assert status["posledni"]["zmenene"] == [EVENT]
     assert status["posledni_uspesny"]["ok"] is True
@@ -541,16 +541,16 @@ def test_new_face_named(setup):
 def test_unnamed_ignored_and_sorted(setup):
     app, fake = setup
     fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG",
-             face("Tichý, Rudolf", (500, 0, 510, 10)), face(""),
-             face(None), face("Hlava, Miloš", (100, 0, 110, 10)))
+             face("Zvláštní, Rudolf", (500, 0, 510, 10)), face(""),
+             face(None), face("Vzorný, Tomáš", (100, 0, 110, 10)))
     app.config["IMMICH"].run()
     assert [f["jmeno"] for f in faces_of(app, "P9109996.JPG")] == \
-        ["Hlava, Miloš", "Tichý, Rudolf"]
+        ["Vzorný, Tomáš", "Zvláštní, Rudolf"]
 
 
 def test_removed_person(setup):
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     sync = app.config["IMMICH"]
     sync.run()
     fake.faces["a1"] = [face("")]
@@ -562,7 +562,7 @@ def test_removed_person(setup):
 def test_written_only_on_change(setup):
     app, fake = setup
     ws = app.config["WORKSPACE"]
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     sync = app.config["IMMICH"]
     sync.run()
     mtime = ws.metadata_path(EVENT).stat().st_mtime_ns
@@ -574,18 +574,18 @@ def test_known_name_form(setup):
     app, fake = setup
     ws = app.config["WORKSPACE"]
     doc, version = ws.load(EVENT)
-    doc["akce"]["ucastnici"] = ["Hlava, Miloš"]
+    doc["akce"]["ucastnici"] = ["Vzorný, Tomáš"]
     ws.save(EVENT, doc, version)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Miloš Hlava"),
-             face("Rudolf Tichý", (0, 0, 10, 10)))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Tomáš Vzorný"),
+             face("Zvláštní Rudolf", (0, 0, 10, 10)))
     app.config["IMMICH"].run()
     assert [f["jmeno"] for f in faces_of(app, "P9109996.JPG")] == \
-        ["Hlava, Miloš", "Rudolf Tichý"]
+        ["Vzorný, Tomáš", "Zvláštní Rudolf"]
 
 
 def test_event_without_metadata_untouched(setup):
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{OTHER}/c.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{OTHER}/c.jpg", face("Vzorný, Tomáš"))
     app.config["IMMICH"].run()
     ws = app.config["WORKSPACE"]
     assert ws.load(OTHER) == (None, None)
@@ -607,15 +607,15 @@ def test_collision_skipped(tmp_path, monkeypatch):
     ws.save(OTHER, {"schema": SCHEMA, "akce": {}, "skupiny": {},
                     "soubory": {"c.jpg": {}}}, None)
     immich.Settings(ws.work).save(URL, KEY)
-    fake.add("a1", f"{ROOT}/{OTHER}/c.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{OTHER}/c.jpg", face("Vzorný, Tomáš"))
     status = app.config["IMMICH"].run()
     assert status["posledni"]["zmenene"] == [OTHER]
 
 
 def test_locked_event_skipped(setup):
     app, fake = setup
-    app.config["LOCKS"].acquire(EVENT, "r1", "Spáčil, David")
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    app.config["LOCKS"].acquire(EVENT, "r1", "Příkladný, Daniel")
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     status = app.config["IMMICH"].run()
     assert faces_of(app, "P9109996.JPG") is None
     assert status["posledni"]["preskocene"] == [EVENT]
@@ -625,7 +625,7 @@ def test_locked_event_skipped(setup):
 
 def test_lock_released_after_write(setup):
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     app.config["IMMICH"].run()
     assert app.config["LOCKS"].holder(EVENT) is None
 
@@ -633,13 +633,13 @@ def test_lock_released_after_write(setup):
 def test_failed_query_writes_nothing(setup):
     app, fake = setup
     ws = app.config["WORKSPACE"]
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     sync = app.config["IMMICH"]
     sync.run()
     ok = sync.status()["posledni_uspesny"]
     before = ws.metadata_path(EVENT).read_bytes()
     # Úspěšný běh by oblast změnil; dotaz na obličeje ale selže.
-    fake.faces["a1"] = [face("Hlava, Miloš", (0, 0, 10, 10))]
+    fake.faces["a1"] = [face("Vzorný, Tomáš", (0, 0, 10, 10))]
     fake.fail = "/api/faces"
     status = sync.run()
     assert ws.metadata_path(EVENT).read_bytes() == before
@@ -655,7 +655,7 @@ def test_export_stays_current(setup):
     xmp.export(ws, EVENT)
     _, version = ws.load(EVENT)
     assert ws.export_version(EVENT) == version
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     app.config["IMMICH"].run()
     _, new_version = ws.load(EVENT)
     assert new_version != version
@@ -671,7 +671,7 @@ def test_stale_export_not_shifted(setup):
     doc, version = ws.load(EVENT)
     doc["akce"]["popis"] = "změna po exportu"
     ws.save(EVENT, doc, version)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     app.config["IMMICH"].run()
     assert ws.export_version(EVENT) == version
 
@@ -700,12 +700,12 @@ def test_settings_admin_only(tmp_path):
     work = tmp_path / "work"
     work.mkdir()
     (work / "uzivatele.json").write_text(json.dumps(
-        {"kopacova": {"jmeno": "Kopáčová, Jana"}}))
-    auth.Passwords(work).set("kopacova", "tajne-heslo-1")
+        {"modelova": {"jmeno": "Modelová, Jana"}}))
+    auth.Passwords(work).set("modelova", "tajne-heslo-1")
     app = create_app(tmp_path, work)
     c = app.test_client()
     c.post("/api/prihlaseni",
-           json={"login": "kopacova", "heslo": "tajne-heslo-1"})
+           json={"login": "modelova", "heslo": "tajne-heslo-1"})
     assert c.get("/api/ja").status_code == 200
     for method, path in [("put", "/api/immich"), ("get", "/api/immich"),
                          ("delete", "/api/immich"),
@@ -803,7 +803,7 @@ def stavy_of(app):
 
 def test_sync_nedokoncena_akce_album_nedostane(setup):
     app, fake = setup
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     app.config["IMMICH"].run()
     assert fake.albums == {}
     assert stavy_of(app).polozka(EVENT) is None
@@ -812,8 +812,8 @@ def test_sync_nedokoncena_akce_album_nedostane(setup):
 def test_sync_vytvori_album_a_stav_rozpoznano(setup):
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     app.config["IMMICH"].run()
     album = list(fake.albums.values())
     assert len(album) == 1
@@ -837,8 +837,8 @@ def test_sync_immich_fotky_nezna(setup):
 def test_sync_doplni_chybejici_a_odebere_cizi(setup):
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     fake.add("a9", f"{ROOT}/2026-09-20 jina akce/x.jpg", face(None))
     fake.albums["albx"] = {"id": "albx", "albumName": EVENT,
                            "assetIds": ["a9"]}
@@ -855,8 +855,8 @@ def test_sync_doplni_chybejici_a_odebere_cizi(setup):
 def test_sync_album_smazane_v_immichi(setup):
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     sync = app.config["IMMICH"]
     sync.run()
     del fake.albums[stavy_of(app).polozka(EVENT)["album"]]
@@ -873,8 +873,8 @@ def test_sync_ztratena_vazba_dohleda_podle_nazvu(setup):
     album."""
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     app.config["IMMICH"].run()
     stavy_of(app).path.unlink()
     app.config["IMMICH"].run()
@@ -887,8 +887,8 @@ def test_sync_nova_instace_drovna_po_restartu(setup):
     app, fake = setup
     ws = app.config["WORKSPACE"]
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     fake.albums["albX"] = {"id": "albX", "albumName": EVENT,
                            "assetIds": ["a1"]}
     stavy_of(app).nastav(EVENT, album="albSmazany", stav="nacitani")
@@ -906,7 +906,7 @@ def test_sync_cizi_akce_se_stejnym_podretezcem(setup):
     `… Konference` od `… Konference 2`."""
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     fake.add("ax", f"{ROOT}/{EVENT} 2/cizak.jpg", face("Cizi, Osoba"))
     app.config["IMMICH"].run()
     album = next(iter(fake.albums.values()))
@@ -920,8 +920,8 @@ def test_sync_vyradene_soubory_nejsou_v_albu(setup):
     doc, version = ws.load(EVENT)
     doc["soubory"]["b.jpg"]["vyradit"] = True
     ws.save(EVENT, doc, version)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     app.config["IMMICH"].run()
     assert next(iter(fake.albums.values()))["assetIds"] == ["a1"]
 
@@ -931,8 +931,8 @@ def test_sync_klic_bez_prav_k_album_obliceje_projdou(setup):
     album ne, chyba se zapíše a stav nevznikne."""
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     fake.fail = "/api/albums"                  # 403 na alba
     status = app.config["IMMICH"].run()
     assert status["posledni"]["ok"] is True
@@ -947,8 +947,8 @@ def test_sync_klic_bez_prav_k_album_obliceje_projdou(setup):
 def test_sync_fronta_neprazdna_rozpoznavani(setup):
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     fake.queues["facialRecognition"] = {"active": 0, "waiting": 3}
     app.config["IMMICH"].run()
     assert stavy_of(app).polozka(EVENT)["stav"] == "rozpoznavani"
@@ -959,8 +959,8 @@ def test_sync_asset_bez_zmenseniny_rozpoznavani(setup):
     v Immichi 3.3 vždy true, a proto se nepoužívá."""
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     fake.bez_nahledu = {"a2"}
     app.config["IMMICH"].run()
     assert stavy_of(app).polozka(EVENT)["stav"] == "rozpoznavani"
@@ -969,8 +969,8 @@ def test_sync_asset_bez_zmenseniny_rozpoznavani(setup):
 def test_sync_video_bez_zmenseniny_neblokuje(setup):
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     fake.typy["a2"] = "VIDEO"
     fake.bez_nahledu = {"a2"}
     app.config["IMMICH"].run()
@@ -981,8 +981,8 @@ def test_sync_rozpoznano_necha_pri_cizi_praci_ve_fronte(setup):
     """Fronty jsou společné: cizí úlohy už rozpoznanou akci nevrátí."""
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     sync = app.config["IMMICH"]
     sync.run()
     assert sync.alba.polozka(EVENT)["stav"] == "rozpoznano"
@@ -995,7 +995,7 @@ def test_sync_odebere_cizi_asset_z_existujiciho_alba(setup):
     """Členy alba se čtou přes `albumIds` (odpověď alba je nemá)."""
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     fake.add("a9", f"{ROOT}/2026-09-20 jina akce/x.jpg", face(None))
     fake.albums["albY"] = {"id": "albY", "albumName": EVENT,
                            "assetIds": ["a1", "a9"]}
@@ -1010,8 +1010,8 @@ def test_sync_fronta_403_stav_rozpoznavani_a_chyba(setup):
     → `rozpoznavani` s chybou."""
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     fake.no_admin = True
     app.config["IMMICH"].run()
     assert len(fake.albums) == 1
@@ -1023,14 +1023,14 @@ def test_sync_fronta_403_stav_rozpoznavani_a_chyba(setup):
 def test_sync_chyba_fronty_stav_nemini(setup):
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     sync = app.config["IMMICH"]
     sync.run()
     assert sync.alba.polozka(EVENT)["stav"] == "rozpoznano"
     fake.fail = "/api/queues"
     # nový asset alba vynutí nové ověření front
-    fake.add("a3", f"{ROOT}/{EVENT}/c.jpg", face("Hlava, Miloš"))
+    fake.add("a3", f"{ROOT}/{EVENT}/c.jpg", face("Vzorný, Tomáš"))
     (app.config["WORKSPACE"].event_dir(EVENT) / "c.jpg").write_bytes(b"x")
     sync.run()
     polo = sync.alba.polozka(EVENT)
@@ -1042,8 +1042,8 @@ def test_udrzet_album_chyba_hledani_stav_nemini(setup):
     jen se zapíše chyba."""
     app, fake = setup
     dokoncit(app)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     sync = app.config["IMMICH"]
     sync.run()
     album_id = sync.alba.polozka(EVENT)["album"]
@@ -1061,12 +1061,12 @@ def test_pocty_osob_unit():
     """Čistá funkce: skrytá se nepočítá, prázdné jméno není pojmenovaná,
     stejná osoba na více assetech jednou, asset bez `people` nevadí."""
     a1 = {"id": "x1", "people": [
-        {"id": "p1", "name": "Hlava, Miloš"},
+        {"id": "p1", "name": "Vzorný, Tomáš"},
         {"id": "p2"},                                   # nepojmenovaná
         {"id": "p3", "name": "Skrytý, Kdo", "isHidden": True}]}
     a2 = {"id": "x2"}                                    # bez lidí
     a3 = {"id": "x3", "people": [
-        {"id": "p1", "name": "Hlava, Miloš"},            # už napočtená
+        {"id": "p1", "name": "Vzorný, Tomáš"},            # už napočtená
         {"id": "p4", "name": "   "}]}                    # prázdné jméno
     assert albums.pocty_osob([a1, a2, a3]) == {"pojmenovane": 1,
                                                "celkem": 3}
@@ -1098,7 +1098,7 @@ def album_a_osoby(app, fake):
     """Dokončená akce s albem: 4 pojmenované + 2 nepojmenované +
     1 skrytá osoba na obličejích (scénář Počty osob)."""
     dokoncit(app)
-    jmen = [osoba("p1", "Hlava, Miloš"), osoba("p2", "Malý, Karel"),
+    jmen = [osoba("p1", "Vzorný, Tomáš"), osoba("p2", "Malý, Karel"),
             osoba("p3", "Velká, Jana"), osoba("p4", "Tichá, Eva"),
             osoba("p5"), osoba("p6"), osoba("p7", skryta=True)]
     fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG",
@@ -1198,8 +1198,8 @@ def test_dokonceni_vytvori_album_a_spusti_sync(tmp_path, monkeypatch):
     """Scénář Dokončení akce (produkce): sken, album, rozpoznání,
     `Sync.trigger()` — vše na pozadí."""
     app, fake = hlidaci_setup(tmp_path, monkeypatch, zapis=True)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     volani = []
     monkeypatch.setattr(app.config["IMMICH"], "trigger",
                         lambda: volani.append(1))
@@ -1241,8 +1241,8 @@ def test_dokonceni_vyvojovy_rezim(tmp_path, monkeypatch):
     """Scénář Vývojový režim: bez skenu, album vznikne, když Immich
     fotky zná."""
     app, fake = hlidaci_setup(tmp_path, monkeypatch)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     r, _ = otestuj_dokonceni(app)
     assert r.status_code == 200
     hlidac = app.config["IMMICH_HLIDAC"]
@@ -1268,7 +1268,7 @@ def test_hlidac_druha_podminka_hotovo_podle_fronty(tmp_path, monkeypatch):
     """Immich nikdy nenaimportuje jeden soubor: fronta `library` stojí
     a počet nalezených se nezměnil → album i tak vznikne."""
     app, fake = hlidaci_setup(tmp_path, monkeypatch)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
     hlidac = app.config["IMMICH_HLIDAC"]
     hlidac.spust(EVENT)
     assert hlidac.cekat(5)
@@ -1280,8 +1280,8 @@ def test_hlidac_opakovany_start_pusti_znovu(tmp_path, monkeypatch):
     """Nejvýš jeden hlídač na akci; opakované spuštění nesmí zdvojit
     album."""
     app, fake = hlidaci_setup(tmp_path, monkeypatch)
-    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Hlava, Miloš"))
-    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Hlava, Miloš"))
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
     hlidac = app.config["IMMICH_HLIDAC"]
     assert hlidac.spust(EVENT) and hlidac.spust(EVENT)
     assert hlidac.cekat(5)
@@ -1367,14 +1367,14 @@ def test_alba_chyby_jen_na_nastaveni(setup):
 
 
 def prihlaseni_setup(tmp_path, monkeypatch):
-    """Přihlášená aplikace: admin `spacil` a `kopacova` bez role;
+    """Přihlášená aplikace: admin `prikladny` a `modelova` bez role;
     Immich nastavený, u akce stav `rozpoznavani`."""
     from fotoarchiv import auth
     work = tmp_path / "work"
     work.mkdir()
     (work / "uzivatele.json").write_text(json.dumps(
-        {"spacil": {"jmeno": "Spáčil, David", "role": "admin"},
-         "kopacova": {"jmeno": "Kopáčová, Jana"}}), encoding="utf-8")
+        {"prikladny": {"jmeno": "Příkladný, Daniel", "role": "admin"},
+         "modelova": {"jmeno": "Modelová, Jana"}}), encoding="utf-8")
     archiv = tmp_path / "archiv"
     archiv.mkdir()
     make_tree(archiv, {f"{EVENT}/": {"P9109996.JPG": "x"}})
@@ -1382,7 +1382,7 @@ def prihlaseni_setup(tmp_path, monkeypatch):
     fake = FakeImmich()
     app = create_app(archiv, work, immich_fetch=fake)
     app.testing = True
-    for login in ("spacil", "kopacova"):
+    for login in ("prikladny", "modelova"):
         auth.Passwords(work).set(login, "tajne-heslo-1")
     immich.Settings(work).save(URL, KEY, "lib-1")
     app.config["IMMICH"].alba.nastav(EVENT, stav="rozpoznavani",
@@ -1402,13 +1402,13 @@ def test_bezny_uzivatel_vidi_stav(tmp_path, monkeypatch):
     """Scénář Běžný uživatel: stav vidí i bez role; nastavení zůstává
     jen pro admina."""
     app = prihlaseni_setup(tmp_path, monkeypatch)
-    c = prihlasen(app, "kopacova")
+    c = prihlasen(app, "modelova")
     r = c.get(f"/api/akce/{EVENT}/immich")
     assert r.status_code == 200
     assert r.json["stav"] == "rozpoznavani" and r.json["album"] is True
     events = {e["nazev"]: e for e in c.get("/api/akce").json}
     assert events[EVENT]["immich"]["stav"] == "rozpoznavani"
     assert c.get("/api/immich").status_code == 403
-    admin = prihlasen(app, "spacil")
+    admin = prihlasen(app, "prikladny")
     assert admin.get(f"/api/akce/{EVENT}/immich").status_code == 200
     assert "alba_chyby" in admin.get("/api/immich").json

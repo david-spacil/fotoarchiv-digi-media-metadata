@@ -38,7 +38,7 @@ def test_nepojmenovana_nabiduta_jmena_a_skryta_ne():
     a skrytá ne; odložená ne."""
     fake = FakeImmich()
     nep = osoba("p-nep")
-    naplun(fake, "a1", nep, osoba("p-jmena", "Hlava, Miloš"),
+    naplun(fake, "a1", nep, osoba("p-jmena", "Vzorný, Tomáš"),
            osoba("p-skryta", None, skryta=True))
     vysl = osoby_k_pojmenovani(client(fake), assets(fake), {}, [])
     assert [o["id"] for o in vysl] == ["p-nep"]
@@ -154,7 +154,7 @@ def test_metadata_bez_dokumentu():
 
 def test_assety_alba_a_nepojmene_ids():
     fake = FakeImmich()
-    naplun(fake, "a1", osoba("p-1"), osoba("p-2", "Hlava, Miloš"))
+    naplun(fake, "a1", osoba("p-1"), osoba("p-2", "Vzorný, Tomáš"))
     a = assets(fake)
     assert assety_alba(a) == {"a1"}
     assert nepojmene_ids(a) == {"p-1"}
@@ -183,9 +183,9 @@ def test_odlozene_jiny_uzivatel_a_akce(tmp_path):
     """Scénář Jiný uživatel: odložení je per login a akce."""
     od = Odlozene(tmp_path)
     od.odlozit("novak", AKCE, "p-1")
-    assert od.seznam("spacil", AKCE) == []
+    assert od.seznam("prikladny", AKCE) == []
     assert od.seznam("novak", "2026-05-01 jina") == []
-    od.nove_kolo("spacil", AKCE)           # cizí výmaz nic nezmění
+    od.nove_kolo("prikladny", AKCE)           # cizí výmaz nic nezmění
     assert od.seznam("novak", AKCE) == ["p-1"]
 
 

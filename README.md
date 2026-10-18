@@ -76,9 +76,10 @@ a role); aplikace ho jen čte, změna platí bez restartu a odebraný
 uživatel přijde o přístup při dalším požadavku:
 
 ```json
-{"spacil": {"jmeno": "Spáčil, David", "email": "…", "role": "admin"},
+{"prikladny": {"jmeno": "Příkladný, Daniel", "email": "…",
+               "role": "admin"},
  "novak": {"jmeno": "Novák, Petr", "role": "archivar"},
- "kopacova": {"jmeno": "Kopáčová, Zuzana"}}
+ "modelova": {"jmeno": "Modelová, Zuzana"}}
 ```
 
 Role je `"admin"`, `"archivar"`, nebo chybí (běžný uživatel).
@@ -394,7 +395,7 @@ přístroje a vzoru názvu, uživatel je může upravit.
     "datum_od": "2026-04-28",
     "datum_do": "2026-04-28",
     "mista": ["Vysočany", "Holštejn"],
-    "ucastnici": ["Spáčil, David", "Kopáčová, Zuzana"]
+    "ucastnici": ["Příkladný, Daniel", "Modelová, Zuzana"]
   },
   "souradnice_mist": {
     "Vysočany": {"gps": [49.43, 16.804],
@@ -404,7 +405,7 @@ přístroje a vzoru názvu, uživatel je může upravit.
   },
   "skupiny": {
     "g9": {
-      "autori": ["Spáčil, David", "Kopáčová, Zuzana"],
+      "autori": ["Příkladný, Daniel", "Modelová, Zuzana"],
       "pristroj": "Panasonic DC-G9"
     }
   },
@@ -415,13 +416,13 @@ přístroje a vzoru názvu, uživatel je může upravit.
       "gps": null,
       "misto": "Holštejn",
       "popis": "…",
-      "obliceje": [{"jmeno": "Hlava, Miloš",
+      "obliceje": [{"jmeno": "Vzorný, Tomáš",
                     "oblast": [0.2725, 0.432, 0.041, 0.0747]}],
       "sha256": "…"
     },
     "P1503713.JPG": {"skupina": "g9", "vyradit": true}
   },
-  "upravili": {"Spáčil, David": "2026-10-14T10:15:02"}
+  "upravili": {"Příkladný, Daniel": "2026-10-14T10:15:02"}
 }
 ```
 
@@ -480,8 +481,9 @@ použitých ve všech `_metadata.json` v archivu a roste s tagováním.
 - Kanonický tvar `Příjmení, Jméno`.
 - Při zadání jména formulář porovná vstup se seznamem bez ohledu na
   diakritiku, velikost písmen a pořadí slov. Při shodě nabídne
-  „Mysleli jste `Spáčil, David`?“ a kliknutím opravený tvar propíše do
-  pole (např. pro `Spacil, David` nebo `David Spáčil`).
+  „Mysleli jste `Příkladný, Daniel`?“ a kliknutím opravený tvar
+  propíše do pole (např. pro `Prikladny, Daniel` nebo
+  `Daniel Příkladný`).
 - Nové jméno, které nic nepřipomíná, se přijme a od té doby je
   v seznamu.
 - Platí pro autory a účastníky. Jména obličejů z Immiche jsou

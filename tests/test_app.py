@@ -14,8 +14,8 @@ from .conftest import make_tree, snapshot
 from .test_immich import ROOT, FakeImmich, oblicej, osoba
 
 EVENT = "2026-04-28 kontrola"
-R1 = {"relace": "r1", "jmeno": "Spáčil, David"}
-R2 = {"relace": "r2", "jmeno": "Kopáčová, Jana"}
+R1 = {"relace": "r1", "jmeno": "Příkladný, Daniel"}
+R2 = {"relace": "r2", "jmeno": "Modelová, Jana"}
 
 
 def make_client(tmp_path, monkeypatch, zapis=False, locks=None):
@@ -77,7 +77,7 @@ def test_save_drops_people_and_keeps_stored_faces(tmp_path, client):
     version = c.put(f"/api/akce/{EVENT}/metadata", json={
         "metadata": doc, "version": None, "relace": "r1"}).json["version"]
     # Obličeje zapsala synchronizace; klient je nemá a posílá starší osoby.
-    face = {"jmeno": "Hlava, Miloš", "oblast": [0.5, 0.4, 0.08, 0.06]}
+    face = {"jmeno": "Vzorný, Tomáš", "oblast": [0.5, 0.4, 0.08, 0.06]}
     path = tmp_path / "work" / "metadata" / EVENT / "_metadata.json"
     stored = json.loads(path.read_text())
     stored["soubory"]["foto.jpg"]["obliceje"] = [face]
@@ -163,7 +163,7 @@ def test_lock_api(client):
     assert r.status_code == 200 and r.json["zamek"]["jmeno"] == R1["jmeno"]
     r = c.post(url, json=R2)
     assert r.status_code == 409
-    assert r.json["drzitel"]["jmeno"] == "Spáčil, David"
+    assert r.json["drzitel"]["jmeno"] == "Příkladný, Daniel"
     assert c.get(f"/api/akce/{EVENT}").json["zamek"]["jmeno"] == R1["jmeno"]
     assert c.put(url, json={"relace": "r1"}).status_code == 200
     assert c.put(url, json={"relace": "r2"}).status_code == 409
@@ -216,7 +216,7 @@ def test_prod_saves_into_archive(prod):
               json={"metadata": doc, "version": None, "relace": "r1"})
     assert r.status_code == 200
     stored = json.loads((archiv / EVENT / "_metadata.json").read_text())
-    assert list(stored.pop("upravili")) == ["Spáčil, David"]
+    assert list(stored.pop("upravili")) == ["Příkladný, Daniel"]
     assert stored == doc
     d = c.get(f"/api/akce/{EVENT}").json
     assert not d["novy"]
@@ -635,17 +635,17 @@ def test_discard_execute_requires_lock(prod):
 
 # --- přihlášení ------------------------------------------------------------
 
-USERS = {"spacil": {"jmeno": "Spáčil, David", "role": "admin",
-                    "email": "spacil@example.cz"},
-         "kopacova": {"jmeno": "Kopáčová, Jana"},
+USERS = {"prikladny": {"jmeno": "Příkladný, Daniel", "role": "admin",
+                    "email": "prikladny@example.cz"},
+         "modelova": {"jmeno": "Modelová, Jana"},
          "novak": {"jmeno": "Novák, Petr", "role": "archivar"}}
 HESLO = "tajne-heslo-1"
 
 
 @pytest.fixture
 def login_app(tmp_path, monkeypatch):
-    """(app, archiv) s přihlášením v produkčním režimu; admin `spacil`,
-    běžná `kopacova`, archivář `novak`, všichni s heslem HESLO."""
+    """(app, archiv) s přihlášením v produkčním režimu; admin `prikladny`,
+    běžná `modelova`, archivář `novak`, všichni s heslem HESLO."""
     from fotoarchiv import auth
     work = tmp_path / "work"
     work.mkdir()
@@ -689,13 +689,13 @@ def test_unauthenticated_rejected(login_app):
 def test_login_cookie_and_me(login_app):
     app, _ = login_app
     c = app.test_client()
-    r = c.post("/api/prihlaseni", json={"login": "Spacil", "heslo": HESLO})
+    r = c.post("/api/prihlaseni", json={"login": "Prikladny", "heslo": HESLO})
     cookie = r.headers["Set-Cookie"]
     assert "HttpOnly" in cookie and "SameSite=Lax" in cookie
     assert "Secure" not in cookie
     assert HESLO not in r.get_data(as_text=True)
     assert c.get("/api/ja").json == {
-        "prihlaseni": True, "login": "spacil", "jmeno": "Spáčil, David",
+        "prihlaseni": True, "login": "prikladny", "jmeno": "Příkladný, Daniel",
         "role": "admin", "admin": True, "archivar": True,
         "zmenit_heslo": False}
     assert c.get("/api/akce").status_code == 200
@@ -706,9 +706,9 @@ def test_login_cookie_and_me(login_app):
 
 def test_me_roles(login_app):
     app, _ = login_app
-    for login, role, admin, archivar in (("spacil", "admin", True, True),
+    for login, role, admin, archivar in (("prikladny", "admin", True, True),
                                          ("novak", "archivar", False, True),
-                                         ("kopacova", None, False, False)):
+                                         ("modelova", None, False, False)):
         me = logged_in(app, login).get("/api/ja").json
         assert (me["role"], me["admin"], me["archivar"]) == \
             (role, admin, archivar)
@@ -722,7 +722,7 @@ def test_https_cookie_secure(tmp_path):
 def test_wrong_and_unknown_login_same(login_app):
     app, _ = login_app
     c = app.test_client()
-    wrong = c.post("/api/prihlaseni", json={"login": "spacil", "heslo": "x"})
+    wrong = c.post("/api/prihlaseni", json={"login": "prikladny", "heslo": "x"})
     unknown = c.post("/api/prihlaseni", json={"login": "nikdo", "heslo": "x"})
     assert wrong.status_code == unknown.status_code == 401
     assert wrong.json == unknown.json == {"chyba": "neplatne"}
@@ -732,15 +732,15 @@ def test_login_throttled(login_app):
     app, _ = login_app
     c = app.test_client()
     for _ in range(5):
-        c.post("/api/prihlaseni", json={"login": "spacil", "heslo": "x"})
-    r = c.post("/api/prihlaseni", json={"login": "spacil", "heslo": HESLO})
+        c.post("/api/prihlaseni", json={"login": "prikladny", "heslo": "x"})
+    r = c.post("/api/prihlaseni", json={"login": "prikladny", "heslo": HESLO})
     assert r.status_code == 429 and r.json["za_s"] >= 1
 
 
 def test_one_time_password_only_change(login_app):
     app, _ = login_app
-    heslo = app.config["AUTH"].issue("kopacova")
-    c = logged_in(app, "kopacova", heslo)
+    heslo = app.config["AUTH"].issue("modelova")
+    c = logged_in(app, "modelova", heslo)
     assert c.get("/api/ja").json["zmenit_heslo"] is True
     r = c.get("/api/akce")
     assert r.status_code == 403 and r.json["chyba"] == "zmenit_heslo"
@@ -756,8 +756,8 @@ def test_one_time_password_only_change(login_app):
 
 def test_password_change_ends_other_sessions(login_app):
     app, _ = login_app
-    a = logged_in(app, "kopacova")
-    b = logged_in(app, "kopacova")
+    a = logged_in(app, "modelova")
+    b = logged_in(app, "modelova")
     r = a.post("/api/heslo", json={"stavajici": "spatne",
                                    "nove": "nove-heslo-22"})
     assert r.status_code == 400 and r.json["chyba"] == "spatne_heslo"
@@ -766,22 +766,22 @@ def test_password_change_ends_other_sessions(login_app):
     assert a.get("/api/akce").status_code == 200
     assert b.get("/api/akce").status_code == 401
     r = app.test_client().post("/api/prihlaseni",
-                               json={"login": "kopacova", "heslo": HESLO})
+                               json={"login": "modelova", "heslo": HESLO})
     assert r.status_code == 401
 
 
 def test_new_one_time_password_ends_sessions(login_app):
     app, _ = login_app
-    c = logged_in(app, "kopacova")
-    app.config["AUTH"].issue("kopacova")
+    c = logged_in(app, "modelova")
+    app.config["AUTH"].issue("modelova")
     assert c.get("/api/akce").status_code == 401
 
 
 def test_removed_user_401(login_app, tmp_path):
     app, _ = login_app
-    c = logged_in(app, "kopacova")
+    c = logged_in(app, "modelova")
     path = tmp_path / "work" / "uzivatele.json"
-    path.write_text(json.dumps({"spacil": USERS["spacil"]}))
+    path.write_text(json.dumps({"prikladny": USERS["prikladny"]}))
     import os
     os.utime(path, ns=(1, 1))
     assert c.get("/api/akce").status_code == 401
@@ -805,15 +805,15 @@ def set_users(tmp_path, users):
 
 def test_lock_name_from_login_and_logout_releases(login_app):
     app, _ = login_app
-    own(app, "Kopáčová, Jana")
-    c = logged_in(app, "kopacova")
+    own(app, "Modelová, Jana")
+    c = logged_in(app, "modelova")
     r = c.post(f"/api/akce/{EVENT}/zamek",
                json={"relace": "r1", "jmeno": "Podvržené, Jméno"})
-    assert r.json["zamek"]["jmeno"] == "Kopáčová, Jana"
-    other = logged_in(app, "spacil")
+    assert r.json["zamek"]["jmeno"] == "Modelová, Jana"
+    other = logged_in(app, "prikladny")
     r = other.post(f"/api/akce/{EVENT}/zamek", json={"relace": "r2"})
     assert r.status_code == 409
-    assert r.json["drzitel"]["jmeno"] == "Kopáčová, Jana"
+    assert r.json["drzitel"]["jmeno"] == "Modelová, Jana"
     c.post("/api/odhlaseni")
     assert other.post(f"/api/akce/{EVENT}/zamek",
                       json={"relace": "r2"}).status_code == 200
@@ -821,15 +821,15 @@ def test_lock_name_from_login_and_logout_releases(login_app):
 
 def test_force_release_admin_and_archivist(login_app):
     app, _ = login_app
-    own(app, "Kopáčová, Jana")
-    user = logged_in(app, "kopacova")
+    own(app, "Modelová, Jana")
+    user = logged_in(app, "modelova")
     doc = user.get(f"/api/akce/{EVENT}").json["metadata"]
     user.post(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
     r = user.post(f"/api/akce/{EVENT}/zamek/vynutit")
     assert r.status_code == 403
     archivar = logged_in(app, "novak")
     r = archivar.post(f"/api/akce/{EVENT}/zamek/vynutit")
-    assert r.json["uvolneno"]["jmeno"] == "Kopáčová, Jana"
+    assert r.json["uvolneno"]["jmeno"] == "Modelová, Jana"
     assert archivar.post(f"/api/akce/{EVENT}/zamek",
                          json={"relace": "r2"}).status_code == 200
     r = user.put(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
@@ -837,14 +837,14 @@ def test_force_release_admin_and_archivist(login_app):
     r = user.put(f"/api/akce/{EVENT}/metadata",
                  json={"metadata": doc, "version": None, "relace": "r1"})
     assert r.status_code == 423
-    admin = logged_in(app, "spacil")
+    admin = logged_in(app, "prikladny")
     r = admin.post(f"/api/akce/{EVENT}/zamek/vynutit")
     assert r.json["uvolneno"]["jmeno"] == "Novák, Petr"
 
 
 def test_edit_permission(login_app):
     app, _ = login_app
-    user = logged_in(app, "kopacova")
+    user = logged_in(app, "modelova")
     archivar = logged_in(app, "novak")
     # Akce bez _metadata.json: jen admin a archivář.
     assert user.get("/api/akce").json[0]["upravit"] is False
@@ -855,7 +855,7 @@ def test_edit_permission(login_app):
     # Prohlížet smí.
     assert user.get(f"/api/akce/{EVENT}").status_code == 200
     # Cizí akce (jiné jméno v upravili).
-    own(app, "Spáčil, David")
+    own(app, "Příkladný, Daniel")
     assert user.get("/api/akce").json[0]["upravit"] is False
     assert user.post(f"/api/akce/{EVENT}/zamek",
                      json={"relace": "r1"}).status_code == 403
@@ -869,7 +869,7 @@ def test_edit_permission(login_app):
     assert r.status_code == 200
     archivar.delete(f"/api/akce/{EVENT}/zamek", json={"relace": "r2"})
     # Vlastní akce (jméno bez diakritiky v upravili).
-    own(app, "Kopacova, Jana")
+    own(app, "Modelova, Jana")
     assert user.get("/api/akce").json[0]["upravit"] is True
     assert user.post(f"/api/akce/{EVENT}/zamek",
                      json={"relace": "r1"}).status_code == 200
@@ -891,7 +891,7 @@ def test_role_removed_while_holding_lock(login_app, tmp_path):
 def test_unsorted_admin_and_archivist(login_app):
     app, archiv = login_app
     unsorted_tree(archiv)
-    user = logged_in(app, "kopacova")
+    user = logged_in(app, "modelova")
     r = user.get("/api/pretridit")
     assert r.status_code == 403 and r.json["chyba"] == "jen_archivar"
     r = user.post("/api/import", json={"zdroj": "DOD 2019"})
@@ -905,7 +905,7 @@ def test_unsorted_admin_and_archivist(login_app):
                          json={"zdroj": "DOD 2019"}).status_code == 200
     assert archivar.put("/api/nominatim",
                         json={"kontakt": "x@example.cz"}).status_code == 403
-    admin = logged_in(app, "spacil")
+    admin = logged_in(app, "prikladny")
     assert admin.get("/api/pretridit?exif=0").status_code == 200
 
 
@@ -925,15 +925,15 @@ def test_unsorted_execute_without_role(login_app, tmp_path):
 
 def test_import_owner_from_login(login_app):
     app, _ = login_app
-    admin = logged_in(app, "spacil")
+    admin = logged_in(app, "prikladny")
     id = admin.post("/api/import", json={"jmeno": "Podvržené, Jméno"}) \
         .json["id"]
     admin.post(f"/api/import/{id}/soubor", data=b"a",
                query_string={"cesta": "a.jpg", "mtime": 1})
     [item] = admin.get("/api/import").json["importy"]
     assert item["id"] == id
-    user = logged_in(app, "kopacova")
-    cizi = {"jmeno": "Spáčil, David"}
+    user = logged_in(app, "modelova")
+    cizi = {"jmeno": "Příkladný, Daniel"}
     assert user.get("/api/import", query_string=cizi).json["importy"] == []
     assert user.get(f"/api/import/{id}",
                     query_string=cizi).status_code == 404
@@ -947,7 +947,7 @@ def test_import_owner_from_login(login_app):
 
 def test_import_new_event_writes_editors(login_app):
     app, archiv = login_app
-    user = logged_in(app, "kopacova")
+    user = logged_in(app, "modelova")
     id = user.post("/api/import", json={}).json["id"]
     data = io.BytesIO()
     Image.new("RGB", (10, 10)).save(data, "JPEG")
@@ -960,7 +960,7 @@ def test_import_new_event_writes_editors(login_app):
     assert events[-1]["typ"] == "vysledek"
     assert events[-1]["skupiny"]["zapsano"] is True
     doc, _ = app.config["WORKSPACE"].load(nova)
-    assert list(doc["upravili"]) == ["Kopáčová, Jana"]
+    assert list(doc["upravili"]) == ["Modelová, Jana"]
     [event] = [e for e in user.get("/api/akce").json if e["nazev"] == nova]
     assert event["upravit"] is True
     user.delete(f"/api/akce/{nova}/zamek", json={"relace": "r1"})
@@ -970,8 +970,8 @@ def test_import_new_event_writes_editors(login_app):
 
 def test_import_into_foreign_event_refused(login_app):
     app, archiv = login_app
-    own(app, "Spáčil, David")
-    user = logged_in(app, "kopacova")
+    own(app, "Příkladný, Daniel")
+    user = logged_in(app, "modelova")
     id = user.post("/api/import", json={}).json["id"]
     user.post(f"/api/import/{id}/soubor", data=b"n",
               query_string={"cesta": "n.jpg", "mtime": 1})
@@ -987,14 +987,14 @@ def test_import_into_foreign_event_refused(login_app):
 
 def test_nominatim_contact_admin_only(login_app, tmp_path):
     app, _ = login_app
-    user = logged_in(app, "kopacova")
+    user = logged_in(app, "modelova")
     assert user.put("/api/nominatim",
                     json={"kontakt": "x@example.cz"}).status_code == 403
     assert app.test_client().get("/api/info").status_code == 401
-    admin = logged_in(app, "spacil")
+    admin = logged_in(app, "prikladny")
     assert admin.get("/api/info").json["geokodovani"] is False
     assert admin.get("/api/nominatim").json == {
-        "kontakt": None, "navrh": "spacil@example.cz"}
+        "kontakt": None, "navrh": "prikladny@example.cz"}
     assert admin.put("/api/nominatim", json={"kontakt": " "}).status_code \
         == 400
     r = admin.put("/api/nominatim", json={"kontakt": "archiv@example.cz"})
@@ -1013,7 +1013,7 @@ def test_without_login_everyone_admin(client):
         "admin": True, "archivar": True, "zmenit_heslo": False}
     assert c.get("/prihlaseni").status_code == 302
     r = c.post(f"/api/akce/{EVENT}/zamek", json=R1)
-    assert r.json["zamek"]["jmeno"] == "Spáčil, David"
+    assert r.json["zamek"]["jmeno"] == "Příkladný, Daniel"
     assert c.post(f"/api/akce/{EVENT}/zamek/vynutit").status_code == 200
 
 
@@ -1034,15 +1034,15 @@ def test_password_command(tmp_path, capsys):
     with pytest.raises(SystemExit) as e:
         main(["heslo", "nikdo", "--work", str(work)])
     assert "nikdo" in str(e.value)
-    main(["heslo", "kopacova", "--work", str(work)])
+    main(["heslo", "modelova", "--work", str(work)])
     heslo = capsys.readouterr().out.strip().rsplit(" ", 1)[1]
     a = auth.Auth(work)
-    assert a.passwords.must_change("kopacova")
-    assert a.login("kopacova", heslo)[1] is None
+    assert a.passwords.must_change("modelova")
+    assert a.login("modelova", heslo)[1] is None
     assert heslo not in (work / "hesla.json").read_text()
 
 
-OLD_USERS = {"spacil": {"jmeno": "Spáčil, David", "admin": True}}
+OLD_USERS = {"prikladny": {"jmeno": "Příkladný, Daniel", "admin": True}}
 
 
 def test_old_users_file_refused(tmp_path, monkeypatch):
@@ -1051,13 +1051,13 @@ def test_old_users_file_refused(tmp_path, monkeypatch):
     work.mkdir()
     (work / "uzivatele.json").write_text(json.dumps(OLD_USERS))
     (tmp_path / "archiv").mkdir()
-    for argv in (["heslo", "spacil", "--work", str(work)],
+    for argv in (["heslo", "prikladny", "--work", str(work)],
                  ["--archiv", str(tmp_path / "archiv"), "--work",
                   str(work)]):
         with pytest.raises(SystemExit) as e:
             main(argv)
         assert e.value.code not in (0, None)
-        assert "spacil" in str(e.value)
+        assert "prikladny" in str(e.value)
         assert '"role": "admin"' in str(e.value)
     assert not (work / "hesla.json").exists()
     # Bez přihlášení se soubor nečte.
@@ -1241,9 +1241,9 @@ def test_list_holder_and_yours(client):
     assert c.get("/api/akce").json[0]["drzitel"] is None
     c.post(f"/api/akce/{EVENT}/zamek", json=R1)
     r = c.get("/api/akce?relace=r1")
-    assert r.json[0]["drzitel"] == {"jmeno": "Spáčil, David", "vase": True}
+    assert r.json[0]["drzitel"] == {"jmeno": "Příkladný, Daniel", "vase": True}
     r = c.get("/api/akce?relace=r2")
-    assert r.json[0]["drzitel"] == {"jmeno": "Spáčil, David", "vase": False}
+    assert r.json[0]["drzitel"] == {"jmeno": "Příkladný, Daniel", "vase": False}
     assert c.get("/api/akce").json[0]["drzitel"]["vase"] is False
     assert b"r1" not in c.get("/api/akce?relace=r1").data
 
@@ -1252,8 +1252,8 @@ def test_save_writes_editors_ignores_client(client):
     c, _ = client
     doc, version = saved(c)
     stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
-    assert list(stored["upravili"]) == ["Spáčil, David"]
-    first = stored["upravili"]["Spáčil, David"]
+    assert list(stored["upravili"]) == ["Příkladný, Daniel"]
+    first = stored["upravili"]["Příkladný, Daniel"]
     assert len(first) == 19 and first[10] == "T"
     # Podvržená hodnota od klienta se zahodí.
     doc["upravili"] = {"Podvržený, Pán": "2030-01-01T00:00:00"}
@@ -1261,7 +1261,7 @@ def test_save_writes_editors_ignores_client(client):
               json={"metadata": doc, "version": version, "relace": "r1"})
     assert r.status_code == 200
     stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
-    assert list(stored["upravili"]) == ["Spáčil, David"]
+    assert list(stored["upravili"]) == ["Příkladný, Daniel"]
     # Druhý uživatel přibude vedle prvního.
     c.delete(f"/api/akce/{EVENT}/zamek", json={"relace": "r1"})
     c.post(f"/api/akce/{EVENT}/zamek", json=R2)
@@ -1269,7 +1269,7 @@ def test_save_writes_editors_ignores_client(client):
               json={"metadata": doc, "version": r.json["version"],
                     "relace": "r2"})
     stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
-    assert set(stored["upravili"]) == {"Spáčil, David", "Kopáčová, Jana"}
+    assert set(stored["upravili"]) == {"Příkladný, Daniel", "Modelová, Jana"}
     assert c.get("/api/akce").json[0]["upravili"] == stored["upravili"]
 
 
@@ -1280,7 +1280,7 @@ def test_finish_writes_editors(client):
                json={"relace": "r1", "version": version})
     assert r.status_code == 200
     stored = c.get(f"/api/akce/{EVENT}").json["metadata"]
-    assert list(stored["upravili"]) == ["Spáčil, David"]
+    assert list(stored["upravili"]) == ["Příkladný, Daniel"]
 
 
 # --- osoby v hotovosti výpisu (4.1) ------------------------------------------
@@ -1301,7 +1301,7 @@ def imich_setup(tmp_path, monkeypatch, vyplneno=True):
     app = create_app(archiv, tmp_path / "work", immich_fetch=fake,
                      prihlaseni=False)
     app.testing = True
-    record = {"autori": ["Spáčil, David"], "datum": "2026-04-28T10:00:00",
+    record = {"autori": ["Příkladný, Daniel"], "datum": "2026-04-28T10:00:00",
               "misto": "Brno"} if vyplneno else {}
     app.config["WORKSPACE"].save(
         EVENT, {"schema": SCHEMA, "dokonceno": "2026-04-28",
@@ -1425,7 +1425,7 @@ def naming_app(tmp_path, monkeypatch):
 
     Album `alb-1` má assety `a1` (`P9109996.JPG`, skupina
     `DOD 2015_Jana`), `a2` a `a3`; nepojmenované osoby `p-1`, `p-2`
-    a pojmenovaná `p-zname` (`Hlava, Miloš`).
+    a pojmenovaná `p-zname` (`Vzorný, Tomáš`).
     """
     from fotoarchiv import auth
     work = tmp_path / "work"
@@ -1442,7 +1442,7 @@ def naming_app(tmp_path, monkeypatch):
     fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", oblicej(osoba("p-1")))
     fake.add("a2", f"{ROOT}/{EVENT}/druha.jpg", oblicej(osoba("p-2")))
     fake.add("a3", f"{ROOT}/{EVENT}/treti.jpg",
-             oblicej(osoba("p-zname", "Hlava, Miloš")))
+             oblicej(osoba("p-zname", "Vzorný, Tomáš")))
     fake.albums["alb-1"] = {"id": "alb-1", "albumName": EVENT,
                             "assetIds": ["a1", "a2", "a3"]}
     app = create_app(archiv, work, zapis=True, immich_fetch=fake,
@@ -1451,7 +1451,7 @@ def naming_app(tmp_path, monkeypatch):
     app.config["WORKSPACE"].save(
         EVENT, {"schema": SCHEMA, "dokonceno": "2026-04-28",
                 "akce": {"nazev": "kontrola", "mista": ["Brno"],
-                         "autori": ["Spáčil, David"]},
+                         "autori": ["Příkladný, Daniel"]},
                 "skupiny": {"g1": {"nazev": "DOD 2015_Jana"}},
                 "soubory": {"P9109996.JPG": {"skupina": "g1"}}}, None)
     immich.Settings(work).save(IMMICH_URL, IMMICH_KLIC)
@@ -1470,14 +1470,14 @@ def test_naming_role_required(naming_app):
     """Scénář Oprávnění: bez role 403 na všechny endpointy a žádný
     zápis; archivář a admin smí."""
     app, fake = naming_app
-    user = logged_in(app, "kopacova")
+    user = logged_in(app, "modelova")
     r = user.get(f"/api/akce/{EVENT}/osoby")
     assert r.status_code == 403 and r.json["chyba"] == "jen_archivar"
     assert user.get(f"/api/akce/{EVENT}/osoby/nahled/a1").status_code \
         == 403
     assert user.get(f"/api/akce/{EVENT}/osoby/osoba/p-zname/nahled") \
         .status_code == 403
-    pojmen = {"akce": "pojmenovat", "jmeno": "Hlava, Miloš"}
+    pojmen = {"akce": "pojmenovat", "jmeno": "Vzorný, Tomáš"}
     for url, body in ((f"/api/akce/{EVENT}/osoby/p-1", pojmen),
                       (f"/api/akce/{EVENT}/osoby/kolo", {}),
                       (f"/api/akce/{EVENT}/osoby/hotovo", {})):
@@ -1485,7 +1485,7 @@ def test_naming_role_required(naming_app):
     assert fake.writes == []
     archivar = logged_in(app, "novak")
     assert archivar.get(f"/api/akce/{EVENT}/osoby").status_code == 200
-    admin = logged_in(app, "spacil")
+    admin = logged_in(app, "prikladny")
     assert admin.get(f"/api/akce/{EVENT}/osoby").status_code == 200
 
 
@@ -1507,7 +1507,7 @@ def test_naming_seznam_osob(naming_app):
                                "datum": "2026-04-28T10:00:00.000Z"}
     assert vyrez["archiv"] == {
         "soubor": "P9109996.JPG", "skupina": "DOD 2015_Jana",
-        "datum": None, "misto": "Brno", "autori": ["Spáčil, David"]}
+        "datum": None, "misto": "Brno", "autori": ["Příkladný, Daniel"]}
     # Počty osob akce se uloží i bez dotazu navíc (z téže odpovědi).
     polozka = app.config["IMMICH"].osoby.polozka(EVENT)
     assert (polozka["pojmenovane"], polozka["celkem"]) == (1, 3)
@@ -1537,15 +1537,15 @@ def test_naming_pojmenovani_a_chybna_jmena(naming_app):
                                                      "jmeno": "  "})
     assert r.status_code == 400 and lidi_writes(fake) == []
     r = c.post(f"/api/akce/{EVENT}/osoby/p-2",
-               json={"akce": "pojmenovat", "jmeno": "Olga Lečbychová"})
-    assert r.status_code == 400 and r.json["navrh"] == "Lečbychová, Olga"
+               json={"akce": "pojmenovat", "jmeno": "Věra Ukázková"})
+    assert r.status_code == 400 and r.json["navrh"] == "Ukázková, Věra"
     assert lidi_writes(fake) == []
     r = c.post(f"/api/akce/{EVENT}/osoby/p-2",
-               json={"akce": "pojmenovat", "jmeno": " Lečbychová, Olga "})
+               json={"akce": "pojmenovat", "jmeno": " Ukázková, Věra "})
     assert r.status_code == 200
     assert r.json["osoby"] == [2, 3]        # přepočet z nového search
     assert ("PUT", "/api/people",
-            {"people": [{"id": "p-2", "name": "Lečbychová, Olga"}]}
+            {"people": [{"id": "p-2", "name": "Ukázková, Věra"}]}
             ) in fake.writes
     assert len(lidi_writes(fake)) == 1
 
@@ -1556,18 +1556,18 @@ def test_naming_shoda(naming_app):
     app, fake = naming_app
     c = logged_in(app, "novak")
     r = c.post(f"/api/akce/{EVENT}/osoby/p-1",
-               json={"akce": "pojmenovat", "jmeno": "Hlava, Miloš"})
+               json={"akce": "pojmenovat", "jmeno": "Vzorný, Tomáš"})
     assert r.status_code == 409
-    assert r.json == {"shoda": {"id": "p-zname", "jmeno": "Hlava, Miloš"}}
+    assert r.json == {"shoda": {"id": "p-zname", "jmeno": "Vzorný, Tomáš"}}
     assert lidi_writes(fake) == []
     r = c.post(f"/api/akce/{EVENT}/osoby/p-1",
-               json={"akce": "pojmenovat", "jmeno": "Hlava, Miloš",
+               json={"akce": "pojmenovat", "jmeno": "Vzorný, Tomáš",
                      "samostatne": True})
     assert r.status_code == 200 and r.json["ok"] is True
     assert lidi_writes(fake) == [("PUT", "/api/people",
                                   {"people": [{"id": "p-1",
-                                               "name": "Hlava, "
-                                                      "Miloš"}]})]
+                                               "name": "Vzorný, "
+                                                      "Tomáš"}]})]
 
 
 def test_naming_slouceni(naming_app):
@@ -1612,8 +1612,8 @@ def test_naming_nevim_kolo_jiny_uzivatel(naming_app):
     assert [o["id"] for o in data["osoby"]] == ["p-2"]
     assert data["odlozene"] == 1
     # Druhý uživatel odloženou vidí (odložení je per login).
-    spacil = logged_in(app, "spacil")
-    assert [o["id"] for o in spacil.get(
+    prikladny = logged_in(app, "prikladny")
+    assert [o["id"] for o in prikladny.get(
         f"/api/akce/{EVENT}/osoby").json["osoby"]] == ["p-1", "p-2"]
     # Nové kolo: odložená se nabídne znovu.
     assert novak.post(f"/api/akce/{EVENT}/osoby/kolo",
@@ -1692,8 +1692,8 @@ def test_naming_hotovo_spusti_sync(naming_app, monkeypatch):
     # Příznak se smaže: druhé zavření už nic nespustí.
     assert novak.post(url, json={}).json["synchronizace"] is False
     # Jiný uživatel bez vlastní změny nespustí.
-    spacil = logged_in(app, "spacil")
-    assert spacil.post(url, json={}).json["synchronizace"] is False
+    prikladny = logged_in(app, "prikladny")
+    assert prikladny.post(url, json={}).json["synchronizace"] is False
     assert volani == [1]
 
 

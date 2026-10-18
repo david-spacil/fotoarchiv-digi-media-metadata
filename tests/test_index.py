@@ -14,18 +14,18 @@ VLNENA = "2026-06-19 židovská synagoga u Vlněny"
 def konference():
     soubory = {f"p{i:03}.jpg": {"skupina": "a"} for i in range(108)}
     soubory["p000.jpg"] = {"skupina": "a", "misto": "Poprad",
-                           "obliceje": [{"jmeno": "Linda, Jan",
+                           "obliceje": [{"jmeno": "Fiktivní, Jan",
                                          "oblast": [0, 0, 1, 1]}]}
     soubory["p001.jpg"] = {"skupina": "a", "autori": ["Filipová, Zuzana"],
-                           "obliceje": [{"jmeno": "Linda, Jan",
+                           "obliceje": [{"jmeno": "Fiktivní, Jan",
                                          "oblast": [0, 0, 1, 1]}]}
     soubory["v.mp4"] = {"skupina": "a"}
     return {
         "akce": {"nazev": "Konference Dějiny archeologie",
                  "datum_od": "2026-09-08", "datum_do": "2026-09-10",
                  "mista": ["Markušovce", "Spišská Nová Ves"],
-                 "ucastnici": ["Linda, Jan"]},
-        "skupiny": {"a": {"nazev": "A", "autori": ["Linda, Jan"],
+                 "ucastnici": ["Fiktivní, Jan"]},
+        "skupiny": {"a": {"nazev": "A", "autori": ["Fiktivní, Jan"],
                           "pristroj": "Canon EOS"}},
         "soubory": soubory,
     }
@@ -67,8 +67,8 @@ def test_collect(tmp_path):
     assert (k["foto"], k["video"]) == (108, 1)
     assert k["mista_akce"] == ["Markušovce", "Spišská Nová Ves"]
     assert k["mista"] == ["Markušovce", "Spišská Nová Ves", "Poprad"]
-    assert k["osoby"] == [("Linda, Jan", 2)]
-    assert k["ucastnici"] == ["Linda, Jan"]
+    assert k["osoby"] == [("Fiktivní, Jan", 2)]
+    assert k["ucastnici"] == ["Fiktivní, Jan"]
     assert k["pristroje"] == ["Canon EOS"]
     assert k["nahled"]  # p000.jpg je jediný platný JPEG a první
     v = r[VLNENA]
@@ -82,15 +82,15 @@ def test_authors_order():
     soubory = {f"f{i}.jpg": {"skupina": "g"} for i in range(100)}
     for i in range(5):
         soubory[f"k{i}.jpg"] = {"skupina": "g",
-                                "autori": ["Kopáčová, Zuzana"]}
-    soubory["obe.jpg"] = {"skupina": "g", "autori": ["Kopáčová, Zuzana",
-                                                     "Spáčil, David"]}
+                                "autori": ["Modelová, Zuzana"]}
+    soubory["obe.jpg"] = {"skupina": "g", "autori": ["Modelová, Zuzana",
+                                                     "Příkladný, Daniel"]}
     doc = {"akce": {"nazev": "x", "autori": ["Nikdo, Nefotil"]},
-           "skupiny": {"g": {"autori": ["Spáčil, David"]}},
+           "skupiny": {"g": {"autori": ["Příkladný, Daniel"]}},
            "soubory": soubory}
     d = index.details(doc)
-    assert d["autori"] == [("Spáčil, David", 101), ("Kopáčová, Zuzana", 6)]
-    assert index.authors_text(d) == "Spáčil D.; Kopáčová Z."
+    assert d["autori"] == [("Příkladný, Daniel", 101), ("Modelová, Zuzana", 6)]
+    assert index.authors_text(d) == "Příkladný D.; Modelová Z."
 
 
 def test_authors_tie_by_name():
@@ -100,9 +100,9 @@ def test_authors_tie_by_name():
 
 
 def test_short_name():
-    assert index.short_name("Spáčil, David") == "Spáčil D."
+    assert index.short_name("Příkladný, Daniel") == "Příkladný D."
     assert index.short_name("Erdoğan, Hüseyin") == "Erdoğan H."
-    assert index.short_name("Linda") == "Linda"
+    assert index.short_name("Fiktivní") == "Fiktivní"
 
 
 def test_render_md(tmp_path):
@@ -113,7 +113,7 @@ def test_render_md(tmp_path):
     cells = [c.strip() for c in row.strip("│").split("│")]
     assert cells == ["2026-09-08", "Konference Dějiny archeologie",
                      "Markušovce; Spišská Nová Ves",
-                     "Linda J.; Filipová Z.", "108", "1"]
+                     "Fiktivní J.; Filipová Z.", "108", "1"]
     assert "Poprad" not in md
     assert "╒" in md and "Místa" in md
     # Bez času generování: jen datum akcí, žádný čas.
@@ -131,7 +131,7 @@ def test_render_html(tmp_path):
     assert "bez náhledu" in text
     assert "rozpracováno" in text and "hotovo" in text
     assert "Spišská Nová Ves; Poprad" in text
-    assert "Linda J. <small>2×</small>" in text
+    assert "Fiktivní J. <small>2×</small>" in text
     assert "8.–10. 9. 2026" in text
     assert "přetřídit" not in text
     # Upozornění jen v komentáři, žádné externí zdroje.

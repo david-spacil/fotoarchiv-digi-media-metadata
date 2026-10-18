@@ -15,8 +15,8 @@ const defaults = {
   soubory: media("a.jpg", "b.jpg", "c.jpg"),
   skupiny: { jana: { nazev: "Jana" }, pavla: { nazev: "Pavla" } },
   prirazeni: { "a.jpg": "jana", "b.jpg": "pavla" },
-  existujici: { g9: { nazev: "G9", autori: ["Spáčil, David"] } },
-  akce_autori: ["Kopáčová, Zuzana"],
+  existujici: { g9: { nazev: "G9", autori: ["Příkladný, Daniel"] } },
+  akce_autori: ["Modelová, Zuzana"],
 };
 
 test("nový popis z výchozího rozdělení", () => {
@@ -25,7 +25,7 @@ test("nový popis z výchozího rozdělení", () => {
   assert.deepEqual(Object.keys(p.skupiny), ["g9", "jana", "pavla"]);
   assert.deepEqual(p.soubory, { "a.jpg": { skupina: "jana" },
     "b.jpg": { skupina: "pavla" }, "c.jpg": {} });
-  assert.deepEqual(p.akce, { autori: ["Kopáčová, Zuzana"] });
+  assert.deepEqual(p.akce, { autori: ["Modelová, Zuzana"] });
   assert.equal(p.upraveno, false);
 });
 
@@ -37,7 +37,7 @@ test("údaje nové akce zůstanou, stávající cíl je odloží", () => {
   assert.equal(nova.typ, "nova");
   assert.deepEqual(nova.akce, akce);
   const stavajici = freshDescription(defaults, nova);
-  assert.deepEqual(stavajici.akce, { autori: ["Kopáčová, Zuzana"] });
+  assert.deepEqual(stavajici.akce, { autori: ["Modelová, Zuzana"] });
   assert.deepEqual(stavajici.nova_akce, akce);
   assert.equal(stavajici.typ, "stavajici");
   const zpet = freshDescription({ ...defaults, nova: true }, stavajici);
@@ -46,7 +46,7 @@ test("údaje nové akce zůstanou, stávající cíl je odloží", () => {
 
 test("sladění s novým plánem zachová ruční úpravy", () => {
   const p = freshDescription(defaults, null);
-  p.skupiny.nova = { nazev: "Nová", autori: ["Tesař, Bára"] };
+  p.skupiny.nova = { nazev: "Nová", autori: ["Pokusná, Bára"] };
   p.soubory["a.jpg"].skupina = "nova";
   p.pripojit = { pavla: "g9", jana: "zmizela" };
   const plan = { ...defaults,
@@ -69,6 +69,6 @@ test("připojená skupina dědí autory existující", () => {
   assert.equal(doc.skupiny.pavla, undefined);
   // jana nemá autory ani je nedědí; pavla je připojená k g9 s autory.
   assert.deepEqual(groupsWithoutAuthors(p), ["jana"]);
-  p.akce.autori = ["Spáčil, David"];
+  p.akce.autori = ["Příkladný, Daniel"];
   assert.deepEqual(groupsWithoutAuthors(p), []);
 });

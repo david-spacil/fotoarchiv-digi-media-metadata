@@ -7,11 +7,11 @@
       "g9": {
         "nazev": "Panasonic DC-G9",
         "pristroj": "Panasonic DC-G9",
-        "autori": ["Spáčil, David", "Kopáčová, Zuzana"]
+        "autori": ["Příkladný, Daniel", "Modelová, Zuzana"]
       }
     },
     "soubory": {
-      "P1.JPG": {"skupina": "g9", "autori": ["Kopáčová, Zuzana"]},
+      "P1.JPG": {"skupina": "g9", "autori": ["Modelová, Zuzana"]},
       "P2.JPG": {"skupina": "g9"}
     }
   },
@@ -20,14 +20,14 @@
       "nazev": {"hodnota": "kontrola", "uroven": "akce"},
       "datum_od": {"hodnota": "2026-04-28", "uroven": "akce"},
       "pristroj": {"hodnota": "Panasonic DC-G9", "uroven": "skupina"},
-      "autori": {"hodnota": ["Kopáčová, Zuzana"], "uroven": "soubor"}
+      "autori": {"hodnota": ["Modelová, Zuzana"], "uroven": "soubor"}
     },
     "P2.JPG": {
       "nazev": {"hodnota": "kontrola", "uroven": "akce"},
       "datum_od": {"hodnota": "2026-04-28", "uroven": "akce"},
       "pristroj": {"hodnota": "Panasonic DC-G9", "uroven": "skupina"},
       "autori": {
-        "hodnota": ["Spáčil, David", "Kopáčová, Zuzana"],
+        "hodnota": ["Příkladný, Daniel", "Modelová, Zuzana"],
         "uroven": "skupina"
       }
     }

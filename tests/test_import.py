@@ -12,7 +12,7 @@ from .conftest import make_tree, snapshot
 
 EVENT = "2026-04-28 kontrola"
 MTIME_MS = 1777363200123  # 2026-04-28
-ME = "Spáčil, David"
+ME = "Příkladný, Daniel"
 
 
 def free(n):
@@ -66,8 +66,8 @@ def test_upload_stores_record(imports):
     record = imports.get(id, ME)
     assert [s["cesta"] for s in record["soubory"]] == ["Fotky/a.jpg"]
     # Vlastník podle jména: jiné pořadí slov a diakritika nevadí.
-    assert imports.get(id, "david spacil") == record
-    for other in ("Kopáčová, Jana", "", None):
+    assert imports.get(id, "daniel prikladny") == record
+    for other in ("Modelová, Jana", "", None):
         with pytest.raises(KeyError):
             imports.get(id, other)
 
@@ -535,9 +535,9 @@ def test_activity_in_other_tab(imports, tree):
 
 def test_owned_and_target(imports):
     mine = make_import(imports, {"a.jpg": "a", "b.jpg": "bb"})
-    imports.create("Kopáčová, Jana")
+    imports.create("Modelová, Jana")
     imports.set_target(mine, ME, EVENT, False)
-    [item] = imports.owned("david Spacil")
+    [item] = imports.owned("daniel Prikladny")
     assert item["id"] == mine and item["souboru"] == 2
     assert item["velikost"] == 3 and item["cil"] == EVENT
     assert not item["nova"] and not item["probiha"]
@@ -700,7 +700,7 @@ def test_description_saved(imports):
             imports.set_description(id, ME, bad)
         assert e.value.code == "neplatny_popis", bad
     with pytest.raises(KeyError):
-        imports.set_description(id, "Kopáčová, Jana", popis)
+        imports.set_description(id, "Modelová, Jana", popis)
 
 
 def test_describe():
@@ -779,7 +779,7 @@ def stream(r):
 
 
 R1 = {"relace": "r1", "jmeno": ME}
-R2 = {"relace": "r2", "jmeno": "Kopáčová, Jana"}
+R2 = {"relace": "r2", "jmeno": "Modelová, Jana"}
 
 
 def test_api_dev_mode_plan_only(tmp_path, monkeypatch):
@@ -823,7 +823,7 @@ def test_api_list(tmp_path, monkeypatch):
     c.post("/api/import", json=R2)
     stream(c.post(f"/api/import/{id}/plan",
                   json={"jmeno": ME, "nova": "2026-04-28 nová"}))
-    [item] = c.get("/api/import", query_string={"jmeno": "spacil david"}) \
+    [item] = c.get("/api/import", query_string={"jmeno": "prikladny daniel"}) \
         .json["importy"]
     assert item["id"] == id and item["cil"] == "2026-04-28 nová"
     assert item["nova"] and item["souboru"] == 1
@@ -1060,14 +1060,14 @@ def test_api_groups_into_event(tmp_path, monkeypatch):
     assert [f["nazev"] for f in d["soubory"]] == ["n0.jpg", "n1.jpg",
                                                  "n2.jpg"]
     assert d["akce_autori"] is None and d["cil"] == EVENT and not d["nova"]
-    save_description(c, id, d, autori={"workshop": ["Kopáčová, Zuzana"]})
+    save_description(c, id, d, autori={"workshop": ["Modelová, Zuzana"]})
     r = stream(c.post(f"/api/import/{id}/provest",
                       json=dict(R1, cil=EVENT)))[-1]
     assert r["skupiny"]["zapsano"] and r["skupiny"]["nove"] == ["workshop"]
     assert [o["skupina"] for o in r["operace"]] == [None] + ["workshop"] * 3
     doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
     assert doc["skupiny"] == dict(before["skupiny"], workshop={
-        "nazev": "Workshop", "autori": ["Kopáčová, Zuzana"]})
+        "nazev": "Workshop", "autori": ["Modelová, Zuzana"]})
     for i in range(3):
         assert doc["soubory"][f"n{i}.jpg"]["skupina"] == "workshop"
     assert "autori" not in doc["akce"]
@@ -1092,7 +1092,7 @@ def test_api_groups_into_event(tmp_path, monkeypatch):
     doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
     assert doc["soubory"]["m.jpg"]["skupina"] == "workshop"
     assert "workshop-2" not in doc["skupiny"]
-    assert doc["skupiny"]["workshop"]["autori"] == ["Kopáčová, Zuzana"]
+    assert doc["skupiny"]["workshop"]["autori"] == ["Modelová, Zuzana"]
     assert doc["akce"]["autori"] == [ME]
 
 
@@ -1124,7 +1124,7 @@ def test_api_new_event_description(tmp_path, monkeypatch):
                        "S/RAW/a.rw2": "r"})
     akce = {"nazev": "kontrola Stezky", "datum_od": "2026-04-28",
             "datum_do": "2026-04-29", "popis": "Kontrola", "mista": [],
-            "ucastnici": [ME], "autori": ["Kopáčová, Zuzana"]}
+            "ucastnici": [ME], "autori": ["Modelová, Zuzana"]}
     save_description(c, id, {
         "skupiny": {"g": {"nazev": "G", "autori": [ME]},
                     "prazdna": {"nazev": "Prázdná"}},
@@ -1147,7 +1147,7 @@ def test_api_new_event_description(tmp_path, monkeypatch):
     row = next(line for line in (archiv / "_INDEX.md").read_text()
                .splitlines() if "kontrola Stezky" in line)
     # Skupina přepisuje autory akce vlastními.
-    assert "Spáčil" in row and "Kopáčová" not in row
+    assert "Příkladný" in row and "Modelová" not in row
     assert 'data-stav="rozpracovano"' in (archiv / "_INDEX.html").read_text()
 
 
@@ -1179,12 +1179,12 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     assert d["shody"] == {"dod-2015-jana-2": ["dod-2015-jana"]}
     assert d["akce_autori"] == [ME]
     save_description(c, id, d, akce={"autori": [ME]},
-                     autori={"dod-2015-jana-2": ["Tesař, Bára"]})
+                     autori={"dod-2015-jana-2": ["Pokusná, Bára"]})
     stream(c.post(f"/api/import/{id}/provest", json=dict(R1, cil=EVENT)))
     g = c.get(f"/api/akce/{EVENT}/skupiny").json["skupiny"]
     assert {x["nazev"]: x.get("autori") for x in g.values()} == {
         "DOD 2015_Jana": ["Nováková, Jana"], "DOD 2015_Pavla": None,
-        "DOD 2015_Jana 2": ["Tesař, Bára"]}
+        "DOD 2015_Jana 2": ["Pokusná, Bára"]}
 
     # Průvodce: návrh z importu s autory, soubor mimo návrh automaticky.
     d = c.get(f"/api/akce/{EVENT}").json
@@ -1196,7 +1196,7 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     assert named["a.jpg"] == {"nazev": "DOD 2015_Jana",
                               "autori": ["Nováková, Jana"]}
     assert named["b.jpg"]["nazev"] == "DOD 2015_Pavla"
-    assert named["c.jpg"]["autori"] == ["Tesař, Bára"]
+    assert named["c.jpg"]["autori"] == ["Pokusná, Bára"]
     assert named["IMG-20260428-WA0001.jpg"]["nazev"] == "WhatsApp"
     r = c.put(f"/api/akce/{EVENT}/metadata",
               json=dict(R1, metadata=doc, version=None))
@@ -1232,8 +1232,8 @@ def test_source_create(source):
         assert e.value.code == "neplatny_zdroj", bad
     id = imp.create(ME, zdroj="DOD 2019", cil="2019-05-01 DOD 2019",
                     nova=True)
-    assert imp.create("david spacil", zdroj="DOD 2019") == id
-    other = imp.create("Kopáčová, Jana", zdroj="DOD 2019")
+    assert imp.create("daniel prikladny", zdroj="DOD 2019") == id
+    other = imp.create("Modelová, Jana", zdroj="DOD 2019")
     assert other != id
     [item] = imp.owned(ME)
     assert item["zdroj"] == "DOD 2019" and item["souboru"] == 1
@@ -1614,7 +1614,7 @@ def test_delete_damaged_upload(imports, caplog):
     assert staged(imports, id) == ["import.json", "soubory/a.jpg",
                                    "soubory/b.jpg"]
     with pytest.raises(KeyError):
-        imports.delete_damaged(id, "Kopáčová, Jana", "b.jpg")
+        imports.delete_damaged(id, "Modelová, Jana", "b.jpg")
 
 
 def test_delete_damaged_refused_while_running(imports, tree):
@@ -1782,7 +1782,7 @@ def test_api_source_delete_dev_mode_refused(tmp_path, monkeypatch):
 def test_api_source_delete(tmp_path, monkeypatch):
     c, src, id = source_client(tmp_path, monkeypatch, zapis=True)
     locks = c.application.config["LOCKS"]
-    locks.acquire("přetřídit/HLOZEK", "jina#přetřídit", "Kopáčová, Jana")
+    locks.acquire("přetřídit/HLOZEK", "jina#přetřídit", "Modelová, Jana")
     r = c.delete(f"/api/import/{id}/soubor",
                  json=dict(R1, cesta="HLOZEK/bad.jpg"))
     assert r.status_code == 409 and r.json["chyba"] == "zdroj_obsazen"

@@ -2,27 +2,27 @@ import json
 
 from fotoarchiv import names
 
-KNOWN = ["Spáčil, David", "Kopáčová, Zuzana"]
+KNOWN = ["Příkladný, Daniel", "Modelová, Zuzana"]
 
 
 def test_suggest_without_diacritics():
-    assert names.suggest("spac", KNOWN) == ["Spáčil, David"]
-    assert names.suggest("david sp", KNOWN) == ["Spáčil, David"]
-    assert names.suggest("KOPAC", KNOWN) == ["Kopáčová, Zuzana"]
+    assert names.suggest("prikl", KNOWN) == ["Příkladný, Daniel"]
+    assert names.suggest("daniel pr", KNOWN) == ["Příkladný, Daniel"]
+    assert names.suggest("MODEL", KNOWN) == ["Modelová, Zuzana"]
 
 
 def test_check_word_order():
-    assert names.check("David Spáčil", KNOWN)["mysleli_jste"] == \
-        "Spáčil, David"
+    assert names.check("Daniel Příkladný", KNOWN)["mysleli_jste"] == \
+        "Příkladný, Daniel"
 
 
 def test_check_missing_diacritics():
-    assert names.check("Spacil, David", KNOWN)["mysleli_jste"] == \
-        "Spáčil, David"
+    assert names.check("Prikladny, Daniel", KNOWN)["mysleli_jste"] == \
+        "Příkladný, Daniel"
 
 
 def test_check_known():
-    assert names.check("Spáčil, David", KNOWN) == \
+    assert names.check("Příkladný, Daniel", KNOWN) == \
         {"znamo": True, "mysleli_jste": None, "prevod": None}
 
 
@@ -50,7 +50,7 @@ def test_index_collects_all_levels(tmp_path):
 
 
 def test_known_form():
-    known = ["Hlava, Miloš", "Miloš Hlava", "Spáčil, David"]
-    assert names.known_form("Miloš Hlava", known) == "Hlava, Miloš"
-    assert names.known_form("milos  hlava", known) == "Hlava, Miloš"
-    assert names.known_form("Rudolf Tichý", known) == "Rudolf Tichý"
+    known = ["Vzorný, Tomáš", "Tomáš Vzorný", "Příkladný, Daniel"]
+    assert names.known_form("Tomáš Vzorný", known) == "Vzorný, Tomáš"
+    assert names.known_form("tomas  vzorny", known) == "Vzorný, Tomáš"
+    assert names.known_form("Rudolf Smyšlený", known) == "Rudolf Smyšlený"

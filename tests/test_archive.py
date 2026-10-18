@@ -307,13 +307,13 @@ def test_list_events_card_data(ws):
            "akce": {"mista": ["Brno"]},
            "soubory": {"a.jpg": {"datum": "2026-04-28T10:00:00"},
                        "b.mp4": {"vyradit": True}},
-           "upravili": {"Spáčil, David": "2026-10-14T10:15:02"}}
+           "upravili": {"Příkladný, Daniel": "2026-10-14T10:15:02"}}
     ws.save(EVENT, doc, None)
     event = ws.list_events()[0]
     assert event["hotovost"] == {"autori": [0, 1], "datum": [1, 1],
                                  "misto": [1, 1]}
     assert event["ukazky"] == ["a.jpg"]
-    assert event["upravili"] == {"Spáčil, David": "2026-10-14T10:15:02"}
+    assert event["upravili"] == {"Příkladný, Daniel": "2026-10-14T10:15:02"}
     # `chybi` dál jen u hotovo.
     assert event["chybi"] == []
 
