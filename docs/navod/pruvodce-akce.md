@@ -11,7 +11,8 @@ skupinách s úpravou skupin (přejmenovat, sloučit, nová skupina
 z výběru, přesun) a u každé skupiny pole autorů.
 Mřížku kroku ovládá klávesnice jako na ploše a Esc v ní zruší
 výběr souborů i skupiny; Delete, Enter a P tam nic nedělají —
-krok nemá lupu ani označování k vyřazení.
+krok nemá lupu ani označování k vyřazení (v kroku skupin importu
+Delete vylučuje z importu, viz Import).
 Existuje-li k akci návrh skupin z importu, krok použije jeho
 skupiny (i s autory) a přiřazení pro soubory v kořeni, které návrh
 uvádí; ostatní soubory dostanou automatický návrh. Prvním uložením
