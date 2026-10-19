@@ -17,6 +17,7 @@ import {
 } from "./fronta.js";
 import { icon } from "./icons.js";
 import { immichStav } from "./immichstav.js";
+import { lzeSmazat, nazevSedi, zbyvaText } from "./kos.js";
 import { showNaming } from "./naming.js";
 import { osmUrl } from "./osm.js";
 import { klavesa, naPas, oddil, radek, stranka } from "./pohyb.js";
@@ -503,6 +504,8 @@ async function route() {
     await showSettings();
   } else if (location.hash === "#/pretridit") {
     await showUnsorted();
+  } else if (location.hash === "#/kos") {
+    await showTrash();
   } else if (im) {
     await openImport(im[1] ? decodeURIComponent(im[1]) : null,
       new URLSearchParams(im[2] || ""));
@@ -625,7 +628,8 @@ async function showList() {
       h("button", { onclick: () => { location.hash = "#/import"; } },
         "Importovat fotky a videa…"),
       state.me?.archivar ? h("a", { href: "#/pretridit" }, "Přetřídit")
-        : null),
+        : null,
+      state.me?.admin ? h("a", { href: "#/kos" }, "Koš") : null),
     pendingImports(pending),
     h("div", { class: "fronta-lista" }, filters, search, sort, layouts),
     list));
@@ -950,6 +954,181 @@ async function showUnsorted() {
       status.textContent = `Přehled nejde načíst: ${err.message}`;
     }
   }
+}
+
+// --- koš smazaných akcí (jen admin) -----------------------------------------
+
+const KOS_CHYBA = {
+  obsazeno: "Akci má otevřenou jiný uživatel.",
+  kolize_pripony: KOLIZE,
+  spatne_potvrzeni: "Opsaný název neodpovídá akci.",
+  bez_duvodu: "Uveďte důvod smazání.",
+  presun_selhal: "Složku akce nejde přesunout (soubor drží jiný počítač?).",
+};
+
+// Tlačítko smazání na ploše i v průvodci; jen admin, cizí zámek ho
+// blokuje (server smazání stejně odmítne).
+function deleteButton() {
+  if (!state.me?.admin) return null;
+  const holder = state.readonly?.uvolnil ? null : state.readonly?.jmeno;
+  return h("button", { disabled: !!holder,
+    title: holder ? `Akci má otevřenou ${holder}`
+      : "Přesunout akci do koše; trvale se smaže po 7 dnech",
+    onclick: deleteEventDialog }, "Smazat akci…");
+}
+
+// Dialog smazání akce: opsat název a uvést důvod. Ve vývojovém režimu
+// server vrátí jen plán, archiv se nemění.
+function deleteEventDialog() {
+  const name = state.name;
+  const input = h("input", { type: "text", autocomplete: "off",
+    spellcheck: false, "aria-label": "Název akce",
+    oninput: () => check() });
+  const reason = h("textarea", { rows: 2, "aria-label": "Důvod smazání",
+    placeholder: "např. duplicita akce 2026-04-28 …",
+    oninput: () => check() });
+  const error = h("p", { class: "notice error", hidden: true });
+  const ok = h("button", { class: "primary", disabled: true,
+    onclick: () => submit() }, "Smazat do koše");
+  const cancel = h("button", { onclick: () => close() }, "Zrušit");
+  const body = h("div", {},
+    h("p", {}, "Celá složka akce se i s metadaty přesune do koše. ",
+      "Admin ji odtud může 7 dní obnovit, pak se smaže natrvalo ",
+      "i s albem v Immichi."),
+    h("label", {}, "Pro potvrzení opište název akce ",
+      h("code", {}, name), input),
+    h("label", {}, "Důvod (uloží se do záznamu o smazání)", reason),
+    error);
+  const dialog = h("dialog", { class: "conflict smazani" },
+    h("h2", {}, "Smazat akci?"), body,
+    h("div", { class: "buttons" }, ok, cancel));
+  function check() {
+    ok.disabled = !lzeSmazat(input.value, name, reason.value);
+    input.classList.toggle("ok", nazevSedi(input.value, name));
+  }
+  function close() {
+    dialog.close();
+    dialog.remove();
+  }
+  async function submit() {
+    if (!lzeSmazat(input.value, name, reason.value)) return;
+    ok.disabled = true;
+    if (!(await flushSave())) {
+      error.hidden = false;
+      error.textContent = "Změny akce se nepodařilo uložit; smazání " +
+        "neproběhlo.";
+      return;
+    }
+    let r;
+    try {
+      r = await api(eventUrl(name, "/smazat"), { method: "POST",
+        body: { relace: session(), potvrzeni: name,
+          duvod: reason.value.trim() } });
+    } catch (err) {
+      error.hidden = false;
+      const c = err.data?.chyba;
+      error.textContent = c === "obsazeno"
+        ? `Akci má otevřenou ${err.data.drzitel?.jmeno || "jiný uživatel"}.`
+        : KOS_CHYBA[c] || `Akci nejde smazat (${err.message}).`;
+      check();
+      return;
+    }
+    if (r.plan) {
+      body.replaceChildren(h("p", { class: "notice" },
+        "Vývojový režim: archiv se nemění. V produkčním režimu by se ",
+        "složka ", h("code", {}, r.slozka), " přesunula do koše a ",
+        `natrvalo smazala ${fmtDate(r.vysypat)}.`));
+      ok.remove();
+      cancel.textContent = "Zavřít";
+      return;
+    }
+    close();
+    // Server zámek uvolnil; akce už neexistuje.
+    state.locked = null;
+    clearInterval(heartbeatTimer);
+    state.dirty = false;
+    location.hash = listLink();
+  }
+  dialog.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    close();
+  });
+  document.body.append(dialog);
+  dialog.showModal();
+  input.focus();
+}
+
+async function showTrash() {
+  state.mode = "kos";
+  state.name = null;
+  if (!state.me?.admin) {
+    app.replaceChildren(header(), h("main", { class: "list" },
+      h("h1", {}, "Koš"), h("p", {}, "Koš smazaných akcí vidí jen admin.")));
+    return;
+  }
+  app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
+  let data;
+  try {
+    data = await api("/api/kos");
+  } catch (err) {
+    app.replaceChildren(header(), h("main", { class: "list" },
+      h("h1", {}, "Koš"), h("p", { class: "notice error" },
+        `Koš nejde načíst: ${err.message}`)));
+    return;
+  }
+  const error = h("p", { class: "notice error", hidden: true });
+  const restore = async (e, button) => {
+    if (!(await confirmDialog("Obnovit akci?", [e.nazev,
+      `Smazal(a) ${e.smazal} ${fmtDate(e.smazano)}: ${e.duvod}`,
+      "Složka se vrátí pod původní název."], "Obnovit"))) return;
+    setBusy(button, "Obnovuji…");
+    try {
+      await api(`/api/kos/${encodeURIComponent(e.id)}/obnovit`,
+        { method: "POST" });
+    } catch (err) {
+      error.hidden = false;
+      error.textContent = err.data?.chyba === "obsazeno"
+        ? `V archivu už je akce ${e.nazev}; obnovení by ji přepsalo. ` +
+          "Přejmenujte nebo smažte nejdřív ji."
+        : `Akci nejde obnovit (${err.data?.chyba || err.message}).`;
+      button.disabled = false;
+      button.textContent = "Obnovit";
+      return;
+    }
+    showTrash();
+  };
+  const rows = data.akce.map((e) => {
+    if (e.neznama) {
+      return h("tr", { class: "meta" }, h("td", {}, h("code", {}, e.id)),
+        h("td", { colspan: 6 }, "Neznámá složka bez záznamu o smazání – ",
+          "nesmaže se, řeší ji správce archivu ručně."));
+    }
+    const button = h("button", { disabled: !data.zapis,
+      onclick: () => restore(e, button) }, "Obnovit");
+    return h("tr", {},
+      h("td", {}, e.nazev),
+      h("td", {}, e.smazal || "—"),
+      h("td", {}, fmtDate(e.smazano)),
+      h("td", {}, e.duvod || "—"),
+      h("td", {}, e.souboru),
+      h("td", { title: fmtDate(e.vysypat) }, zbyvaText(e.zbyva_dni)),
+      h("td", {}, button));
+  });
+  app.replaceChildren(header(), h("main", { class: "list" },
+    h("div", { class: "row" }, h("a", { href: listLink() }, "← Akce"),
+      h("h1", {}, "Koš")),
+    h("p", { class: "notice" }, "Smazané akce leží v koši ",
+      `${data.lhuta_dni} dní, pak je server smaže natrvalo i s albem `,
+      "v Immichi. Obnovení vrátí složku pod původní název."),
+    data.zapis ? null : h("p", { class: "notice" },
+      "Vývojový režim: do koše se nic nepřesouvá a obnovit nejde."),
+    error,
+    rows.length ? h("table", {},
+      h("thead", {}, h("tr", {}, h("th", {}, "Akce"), h("th", {}, "Smazal"),
+        h("th", {}, "Kdy"), h("th", {}, "Důvod"), h("th", {}, "Souborů"),
+        h("th", {}, "Trvale smaže"), h("th"))),
+      h("tbody", {}, rows))
+      : h("p", { class: "meta" }, "Koš je prázdný.")));
 }
 
 // --- otevření akce --------------------------------------------------------
@@ -3373,6 +3552,7 @@ function renderWorkspace() {
           title: "Nahrát do akce další fotky a videa", onclick: () => {
             location.hash = `#/import?cil=${encodeURIComponent(state.name)}`;
           } }, "Importovat…"),
+        deleteButton(),
         h("span", { class: "export" },
           h("span", { id: "export-status" }),
           h("button", { id: "finish", class: "primary",
@@ -3700,7 +3880,7 @@ function wizardFrame(body, nav) {
   return [
     header(),
     h("div", { class: "eventbar" }, h("a", { href: listLink() }, "← Akce"),
-      h("h1", {}, state.name)),
+      h("h1", {}, state.name), h("span", { class: "acts" }, deleteButton())),
     h("ol", { class: "steps" }, STEPS.map((s, i) => h("li", {
       class: i === wizard.step ? "current" : i < wizard.step ? "done" : "",
     }, s))),

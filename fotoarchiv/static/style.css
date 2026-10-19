@@ -399,6 +399,10 @@ dialog::backdrop { background: var(--backdrop); }
 dialog h2 { margin-top: 0; font-size: 17px; }
 dialog.conflict { max-width: 460px; }
 dialog.cleanup { max-width: 760px; }
+dialog.smazani label { display: grid; gap: 4px; margin: var(--space-3) 0; }
+dialog.smazani input, dialog.smazani textarea { width: 100%;
+  box-sizing: border-box; }
+dialog.smazani input.ok { outline: 2px solid var(--accent); }
 dialog .buttons { display: flex; gap: var(--space-3);
   justify-content: flex-end; }
 dialog.sample { padding: var(--space-3); cursor: zoom-out; }
