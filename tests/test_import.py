@@ -1811,3 +1811,171 @@ def test_api_source_delete(tmp_path, monkeypatch):
     assert r.status_code == 200
     assert os.listdir(src) == ["a.jpg"]
     assert locks.holder("přetřídit/HLOZEK") is None
+
+
+
+# --- vyloučení z importu (vyloucit-z-importu, úkoly 1.1–1.3) ----------------
+
+def test_set_excluded(imports):
+    id = make_import(imports, {"a.jpg": "a", "b.jpg": "bb"})
+    # Jen cesty výběru, seřazené, bez duplicit.
+    assert imports.set_excluded(id, ME, ["b.jpg", "cizi.jpg", "b.jpg"]) == \
+        ["b.jpg"]
+    assert imports.get(id, ME)["vyloucene"] == ["b.jpg"]
+    assert imports.overview(id, ME, fake_exiftool)["vyloucene"] == ["b.jpg"]
+    for bad in ("b.jpg", [1], None):
+        with pytest.raises(Refused) as e:
+            imports.set_excluded(id, ME, bad)
+        assert e.value.code == "neplatna_volba"
+    with pytest.raises(KeyError):
+        imports.set_excluded(id, "Modelová, Jana", ["a.jpg"])
+    assert imports.set_excluded(id, ME, []) == []
+
+
+def test_set_excluded_refused_while_running(imports, tree):
+    akce = tree({"akce/": {}}) / "akce"
+    id = make_import(imports, {"a.jpg": "a"})
+    running = imports.execute(id, ME, akce)
+    next(running)
+    with pytest.raises(Refused) as e:
+        imports.set_excluded(id, ME, ["a.jpg"])
+    assert e.value.code == "probiha"
+    running.close()
+
+
+def test_plan_excluded_keeps_duplicates_and_collisions(tree, tmp_path):
+    root = tree({"akce/": {"stary.jpg": "stary"}})
+    entries = [entry("kopie.jpg", "stary"),
+               entry("a/x.jpg", "1"), entry("b/X.jpg", "2", "kolize/1/X.jpg"),
+               entry("c/y.jpg", "3"), entry("d/y2.jpg", "3"),
+               entry("P2.RW2", "r2"), entry("z.jpg", "4")]
+    excluded = {"kopie.jpg", "a/x.jpg", "c/y.jpg", "P2.RW2"}
+    plan = importer.plan(root / "akce", entries, tmp_path / "sha.json",
+                         excluded=excluded)
+    assert plan_ops(plan) == [
+        ("P2.RW2", "RAW.ignored/P2.RW2", "vylouceny"),
+        # Kolize jmen zůstává, i když je jeden ze souborů vyloučený.
+        ("a/x.jpg", "x.jpg", "blokovano"),
+        ("b/X.jpg", "X.jpg", "blokovano"),
+        # Vyloučená kopie dál „zabírá“ obsah: druhá je duplicita.
+        ("c/y.jpg", "y.jpg", "vylouceny"),
+        ("d/y2.jpg", "y2.jpg", "duplicita"),
+        ("kopie.jpg", "kopie.jpg", "duplicita"),
+        ("z.jpg", "z.jpg", "ok"),
+    ]
+    o = plan["operace"][0]
+    assert o["blocked"] and o["duvod"] == "vyloučeno z importu"
+
+
+def test_defaults_keep_excluded(imports, monkeypatch):
+    monkeypatch.setattr(scan, "run_exiftool", fake_exiftool)
+    id = make_import(imports, {"DSC/P1.JPG": "a", "DSC/P1.RW2": "r",
+                               "DSC/P2.JPG": "bb", "x.txt": "t"})
+    imports.set_excluded(id, ME, ["DSC/P1.JPG", "DSC/P1.RW2"])
+    plan = last(imports.plan(id, ME, None))
+    assert plan_ops(plan) == [
+        ("DSC/P1.JPG", "P1.JPG", "vylouceny"),
+        ("DSC/P1.RW2", "RAW.ignored/P1.RW2", "vylouceny"),
+        ("DSC/P2.JPG", "P2.JPG", "ok")]
+    g = imports.defaults(id, ME, {}, {"rezim": "jedna", "nazev": "DSC"})
+    # Vyloučené zůstávají v mřížce i ve skupině, ať je jde vrátit.
+    assert [f["nazev"] for f in g["soubory"]] == ["P1.JPG", "P2.JPG"]
+    assert sorted(g["prirazeni"]) == ["P1.JPG", "P2.JPG"]
+    assert g["raw"] == ["DSC/P1.RW2"]
+    assert g["vyloucene"] == ["DSC/P1.JPG", "DSC/P1.RW2"]
+    # Vrácení a nový plán: zase `ok`.
+    imports.set_excluded(id, ME, [])
+    assert {o["stav"] for o in last(imports.plan(id, ME, None))["operace"]} \
+        == {"ok"}
+
+
+def test_execute_excluded_upload_stays(imports, tree):
+    akce = tree({"akce/": {}}) / "akce"
+    id = make_import(imports, {"a.jpg": "a", "b.jpg": "bb",
+                               "RAW/b.rw2": "r"})
+    imports.set_excluded(id, ME, ["b.jpg", "RAW/b.rw2"])
+    result = last(imports.execute(id, ME, akce))
+    assert plan_ops(result) == [
+        ("RAW/b.rw2", "RAW.ignored/b.rw2", "vylouceny"),
+        ("a.jpg", "a.jpg", "hotovo"),
+        ("b.jpg", "b.jpg", "vylouceny")]
+    assert all(o["chyba"] is None for o in result["operace"])
+    assert os.listdir(akce) == ["a.jpg"]
+    assert not result["zahozeno"]
+    assert staged(imports, id) == ["import.json", "soubory/b.jpg",
+                                   "soubory/b.rw2"]
+    record = imports.get(id, ME)
+    assert sorted(s["cesta"] for s in record["soubory"]) == \
+        ["RAW/b.rw2", "b.jpg"]
+    assert imports.owned(ME)[0]["souboru"] == 2
+
+
+def test_source_excluded_stays(source):
+    imp, archiv = source({"DOD 2016/": {"a.jpg": "a", "b.jpg": "bb"}})
+    src = archiv / "přetřídit" / "DOD 2016"
+    id = imp.create(ME, zdroj="DOD 2016")
+    imp.set_excluded(id, ME, ["DOD 2016/b.jpg"])
+    last(imp.plan(id, ME, None))
+    path = importer.create_event(archiv, "2016-05-14 DOD 2016")
+    result = last(imp.execute(id, ME, path))
+    assert plan_ops(result) == [("DOD 2016/a.jpg", "a.jpg", "hotovo"),
+                                ("DOD 2016/b.jpg", "b.jpg", "vylouceny")]
+    assert os.listdir(src) == ["b.jpg"]
+    assert os.listdir(path) == ["a.jpg"]
+    assert result["zdroj_zbyva"] == {"foto": 1}
+    assert not result["zdroj_smazan"] and not result["zahozeno"]
+    assert imp.owned(ME)[0]["souboru"] == 1
+
+
+def test_api_excluded_dev_mode(tmp_path, monkeypatch):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=False)
+    before = snapshot(archiv)
+    id = c.post("/api/import", json=dict(R1, celkem=10)).json["id"]
+    api_upload(c, id, {"a.jpg": "a", "b.jpg": "bb", "RAW/b.rw2": "r"})
+    r = c.post(f"/api/import/{id}/vyloucene",
+               json={"jmeno": ME, "vyloucene": ["b.jpg", "RAW/b.rw2",
+                                                "x.jpg"]})
+    assert r.status_code == 200
+    assert r.json == {"vyloucene": ["RAW/b.rw2", "b.jpg"]}
+    assert c.post(f"/api/import/{id}/vyloucene", json={
+        "jmeno": ME, "vyloucene": "b.jpg"}).status_code == 400
+    assert c.post(f"/api/import/{id}/vyloucene", json={
+        "jmeno": R2["jmeno"], "vyloucene": []}).status_code == 404
+    o = c.get(f"/api/import/{id}", query_string={"jmeno": ME}).json
+    assert o["vyloucene"] == ["RAW/b.rw2", "b.jpg"]
+    plan = stream(c.post(f"/api/import/{id}/plan",
+                         json={"jmeno": ME, "nova": "2026-05-01 Nova"}))[-1]
+    assert plan_ops(plan) == [
+        ("RAW/b.rw2", "RAW.ignored/b.rw2", "vylouceny"),
+        ("a.jpg", "a.jpg", "ok"), ("b.jpg", "b.jpg", "vylouceny")]
+    d = c.post(f"/api/import/{id}/skupiny",
+               json={"jmeno": ME, "skupiny": {"rezim": "zadne"}}).json
+    assert [f["nazev"] for f in d["soubory"]] == ["a.jpg", "b.jpg"]
+    assert d["raw"] == ["RAW/b.rw2"]
+    assert d["vyloucene"] == ["RAW/b.rw2", "b.jpg"]
+    assert snapshot(archiv) == before
+
+
+def test_api_excluded_execute(tmp_path, monkeypatch):
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
+    name = "2026-04-28 kontrola Stezky"
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"S/a.jpg": "a", "S/b.jpg": "bb", "S/RAW/b.rw2": "r"})
+    save_description(c, id, {"skupiny": {"g": {"nazev": "G"}},
+                             "prirazeni": {"a.jpg": "g", "b.jpg": "g"}},
+                     akce={"nazev": "kontrola Stezky",
+                           "datum_od": "2026-04-28"})
+    c.post(f"/api/import/{id}/vyloucene",
+           json={"jmeno": ME, "vyloucene": ["S/b.jpg", "S/RAW/b.rw2"]})
+    r = stream(c.post(f"/api/import/{id}/provest",
+                      json=dict(R1, nova=name)))[-1]
+    assert {o["z"]: o["stav"] for o in r["operace"]} == {
+        "S/a.jpg": "hotovo", "S/b.jpg": "vylouceny",
+        "S/RAW/b.rw2": "vylouceny"}
+    assert not r["zahozeno"]
+    assert sorted(os.listdir(archiv / f"{name}.ignored")) == [
+        "_metadata.json", "a.jpg"]
+    doc = c.get(f"/api/akce/{name}").json["metadata"]
+    assert sorted(doc["soubory"]) == ["a.jpg"]
+    [item] = c.get("/api/import", query_string={"jmeno": ME}).json["importy"]
+    assert item["id"] == id and item["souboru"] == 2

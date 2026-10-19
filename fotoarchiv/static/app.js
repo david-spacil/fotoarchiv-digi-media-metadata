@@ -20,6 +20,9 @@ import { immichStav } from "./immichstav.js";
 import { showNaming } from "./naming.js";
 import { klavesa, naPas, oddil, radek, stranka } from "./pohyb.js";
 import {
+  applyToggle, excludedCounts, importCount, planToggle, withExcluded,
+} from "./vylouceni.js";
+import {
   byDay, dayLabel, personIndex, sectionInfo, stripeSegments, stripeStops,
 } from "./sections.js";
 
@@ -444,7 +447,8 @@ window.addEventListener("pageshow", (e) => {
   if (e.persisted) route(); // návrat z bfcache: zámek získat znovu
 });
 window.addEventListener("beforeunload", (e) => {
-  if (state.dirty || state.saving || imp.uploading || descTimer) {
+  if (state.dirty || state.saving || imp.uploading || descTimer ||
+      exclDirty) {
     e.preventDefault();
   }
 });
@@ -468,7 +472,12 @@ document.addEventListener("keydown", (e) => {
     if (loupe) setView("grid");
     else select(new Set(), null);
   } else if (!ws) {
-    // Delete, Enter a P ve skupinovém kroku nic nedělají.
+    // Enter a P ve skupinovém kroku nic nedělají, Delete jen v importu
+    // (vyloučení z importu).
+    if (e.key === "Delete" && state.mode === "import") {
+      e.preventDefault();
+      toggleExcluded();
+    }
   } else if (e.key === "Delete") {
     e.preventDefault();
     toggleDiscard();
@@ -1267,9 +1276,13 @@ function groupTools(afterChange) {
     h("option", { value: "" }, "— bez skupiny —"),
     groupIds().map((g) => h("option", { value: g }, groupName(g))));
   const nameInput = h("input", { placeholder: "název nové skupiny" });
+  const back = state.mode === "import" && files.every(excludedFile);
   return h("fieldset", { class: "tools" },
     h("legend", {}, `Skupina (${plural(files.length, "soubor", "soubory",
       "souborů")})`),
+    state.mode === "import" ? h("div", { class: "row" }, h("button", {
+      title: "Del", onclick: toggleExcluded,
+    }, back ? "Vrátit do importu" : "Vyloučit z importu")) : null,
     h("div", { class: "row" }, target,
       h("button", {
         onclick: () => {
@@ -1452,6 +1465,7 @@ function tile(f, markOf) {
       `${state.sel.has(f) ? " selected" : ""}` +
       `${f === state.current ? " current" : ""}` +
       `${discarded(f) ? " discard" : ""}` +
+      `${excludedFile(f) ? " excluded" : ""}` +
       d.cls + m.cls,
     dataset: { file: f }, title: d.title || m.title, style: m.style,
     tabindex: tabulator ? 0 : null,
@@ -1459,7 +1473,9 @@ function tile(f, markOf) {
   }, thumb,
   // Plocha: bez popisku, ikony v rohu a překryv při najetí či fokusu.
   ws ? [tileFlags(f, datum), h("div", { class: "ov" }, text)]
-    : h("div", { class: "cap" }, text));
+    : [excludedFile(f) ? h("span", { class: "flags" },
+      h("span", { title: "vyloučeno z importu" }, icon("vyloucit"))) : null,
+    h("div", { class: "cap" }, text)]);
 }
 
 // Ikony v rohu dlaždice plochy: k vyřazení, jinak bez data a bez místa
@@ -4002,7 +4018,7 @@ function renderGroupsPanel(panel) {
       h("p", { class: "meta" }, "Soubory vyberte v mřížce (klik, Ctrl, " +
         "Shift, tažení) a přesuňte do skupiny. Autoři = fotil někdo " +
         "z uvedených; u jednotlivých fotek je jde přepsat na ploše."),
-      groupTools(after), ...groups].filter(Boolean));
+      excludedLine(), groupTools(after), ...groups].filter(Boolean));
   panel.querySelector("fieldset.current")?.scrollIntoView({ block: "nearest" });
 }
 
@@ -4023,7 +4039,8 @@ const TYP = {
   nepodporovany: ["nepodporovaný", "nepodporované", "nepodporovaných"],
 };
 const IMPORT_STAV = { ok: "", blokovano: "blokováno", duplicita: "duplicita",
-  hotovo: "hotovo", chyba: "chyba", poskozeny: "poškozený, nepřenese se" };
+  hotovo: "hotovo", chyba: "chyba", poskozeny: "poškozený, nepřenese se",
+  vylouceny: "vyloučeno" };
 const IMPORT_CHYBA = {
   probiha: "import se právě provádí (jiná záložka)",
   neuplny: "přenos se přerušil",
@@ -4056,6 +4073,8 @@ const imp = {
   defaults: null,   // odpověď POST …/skupiny pro aktuální plán
   volba: null,      // výchozí rozdělení do skupin
   modes: null,      // dostupné volby rozdělení a předvolba (groupModes)
+  excluded: new Set(), // cesty vyloučené z importu (vylouceni.js)
+  paths: {},        // název média kroku skupin → cesta ve výběru
 };
 
 function importUrl(rest = "") {
@@ -4085,8 +4104,11 @@ async function openImport(id, params) {
       plan: null, result: null, lockHolder: null, error: null, busy: null,
       unsorted: null, sourceHolder: null, checking: false, checkError: null,
       checkedFor: null, popis: null, defaults: null, volba: null,
-      modes: null,
+      modes: null, excluded: new Set(), paths: {},
     });
+    clearTimeout(exclTimer);
+    exclTimer = null;
+    exclDirty = false;
   }
   app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
   if (!userName()) await askName();
@@ -4103,6 +4125,7 @@ async function openImport(id, params) {
     }
     if (imp.overview.soubory.length || imp.overview.zdroj) imp.step = 1;
     imp.popis = imp.overview.popis; // návrat k rozpracovanému importu
+    imp.excluded = new Set(imp.overview.vyloucene || []);
   }
   renderImport();
 }
@@ -4673,6 +4696,33 @@ async function saveDescription() {
   }
 }
 
+// Seznam vyloučených se ukládá zvlášť (`POST …/vyloucene`), také
+// s prodlevou; `exclDirty` drží neuloženou změnu i po chybě uložení.
+let exclTimer = null;
+let exclDirty = false;
+
+function scheduleExcluded() {
+  exclDirty = true;
+  clearTimeout(exclTimer);
+  exclTimer = setTimeout(saveExcluded, 1000);
+}
+
+// Uloží seznam vyloučených k importu (ne do archivu); false při chybě.
+async function saveExcluded() {
+  clearTimeout(exclTimer);
+  exclTimer = null;
+  if (!imp.id || !exclDirty) return true;
+  try {
+    await api(importUrl("/vyloucene"), { method: "POST",
+      body: { jmeno: userName(), vyloucene: [...imp.excluded] } });
+    exclDirty = false;
+    return true;
+  } catch (err) {
+    imp.error = `Seznam vyloučených nejde uložit (${err.message}).`;
+    return false;
+  }
+}
+
 // --- cíl -------------------------------------------------------------------
 
 // Údaje nové akce v popisu (krok cíl): odložené z dřívějška, jinak
@@ -4794,6 +4844,7 @@ function renderTarget() {
     imp.targetError = null;
     renderTarget();
     await saveDescription();
+    await saveExcluded();
     let total = null;
     try {
       let checkTotal = null;
@@ -4844,13 +4895,14 @@ function importOps(ops, group) {
   return h("table", { class: "ops" }, ops.map((o) => h("tr", {
     class: o.stav === "hotovo" || o.stav === "ok" ? ""
       : o.stav === "chyba" || o.stav === "poskozeny" ? "failed"
-        : o.stav === "duplicita" ? "dup" : "blocked" },
+        : o.stav === "duplicita" ? "dup"
+          : o.stav === "vylouceny" ? "excluded" : "blocked" },
   h("td", {}, h("code", {}, o.z)), h("td", {}, h("code", {}, `→ ${o.do}`)),
   group ? h("td", {}, o.skupina ? group(o.skupina) : "") : null,
   h("td", { class: "num" }, fmtSize(o.velikost)),
   h("td", {}, o.poskozeni === "bez_polohy"
     ? "odebraná poloha, nepřenese se" : IMPORT_STAV[o.stav],
-    o.stav === "hotovo" || o.stav === "ok"
+    o.stav === "hotovo" || o.stav === "ok" || o.stav === "vylouceny"
     ? "" : `: ${o.chyba || o.duvod}`))));
 }
 
@@ -4861,7 +4913,10 @@ function countBy(ops) {
 }
 
 function renderImportPlan() {
-  const p = imp.plan;
+  // Plán podle aktuálního vyloučení (krok skupin ho mohl od sestavení
+  // změnit; server ho při provedení použije také).
+  const p = { ...imp.plan, operace: withExcluded(imp.plan.operace,
+    imp.excluded) };
   const n = countBy(p.operace);
   const bezPolohy = p.operace.filter(bezPolohyOp);
   const zdroj = imp.overview?.zdroj;
@@ -4876,12 +4931,15 @@ function renderImportPlan() {
         ? `, s odebranou polohou ${bezPolohy.length}` : "") +
       (n("poskozeny") - bezPolohy.length
         ? `, poškozených (nepřenesou se) ` +
-          `${n("poskozeny") - bezPolohy.length}.` : ".")),
+          `${n("poskozeny") - bezPolohy.length}` : "") +
+      (n("vylouceny") ? `, vyloučeno ${n("vylouceny")}.` : ".")),
     p.nepodporovane.length ? h("p", { class: "meta" },
       `Nepodporované (nepřenesou se): ${p.nepodporovane.join(", ")}`) : null,
     bezPolohyGroup(bezPolohy, zdroj),
     importOps(p.operace));
-  const go = h("button", { class: "primary", disabled: !n("ok"),
+  // Vše vyloučené jde v kroku skupin zase vrátit.
+  const go = h("button", { class: "primary",
+    disabled: !n("ok") && !n("vylouceny"),
     onclick: () => enterImportGroups(go) },
   "Pokračovat ke skupinám a autorům");
   app.replaceChildren(...importFrame(body, [
@@ -4942,6 +5000,7 @@ async function enterImportGroups(button) {
     const d = await loadDefaults(volba);
     imp.defaults = d;
     imp.volba = volba;
+    imp.paths = mediaPaths(d);
     if (imp.popis?.cil === targetKey(d)) reconcile(imp.popis, d);
     else imp.popis = freshDescription(d, imp.popis);
     imp.error = (await saveDescription()) ? null : imp.error;
@@ -4972,6 +5031,7 @@ async function changeVolba(volba) {
     const akce = imp.popis.akce;
     imp.defaults = d;
     imp.volba = volba;
+    imp.paths = mediaPaths(d);
     imp.popis = freshDescription(d, imp.popis);
     imp.popis.akce = akce;
     imp.error = (await saveDescription()) ? null : imp.error;
@@ -5034,7 +5094,7 @@ function joinChoice(gid, after) {
 // Co se při provedení zapíše (vývojový režim i kontrola před importem).
 function descriptionLines() {
   const p = imp.popis;
-  const doc = effectiveDoc(p);
+  const doc = effectiveDoc(p, excludedNames());
   const lines = [];
   const a = p.akce;
   if (imp.defaults.nova) {
@@ -5058,6 +5118,11 @@ function descriptionLines() {
     lines.push(`Bez skupiny: ${plural(counts.get(""), "soubor", "soubory",
       "souborů")}`);
   }
+  const ex = excludedNames().size;
+  if (ex) {
+    lines.push(`Vyloučeno z importu (nezapíše se): ${plural(ex, "médium",
+      "média", "médií")}`);
+  }
   return lines;
 }
 
@@ -5072,6 +5137,78 @@ function linesDialog(title, lines) {
   dialog.showModal();
 }
 
+// --- vyloučení z importu -----------------------------------------------------
+
+// Název média kroku skupin → cesta ve výběru (vyloučení je podle cest).
+function mediaPaths(d) {
+  return Object.fromEntries(d.soubory.map((f) => [f.nazev, f.cesta]));
+}
+
+function excludedFile(f) {
+  return state.mode === "import" && imp.excluded.has(imp.paths[f]);
+}
+
+// Názvy vyloučených médií (pro popis a upozornění na autory).
+function excludedNames() {
+  return new Set(Object.keys(imp.paths)
+    .filter((f) => imp.excluded.has(imp.paths[f])));
+}
+
+// Řádek panelu „Vyloučeno: N médií, M RAWů“ (jen když něco vyloučeno).
+function excludedLine() {
+  if (state.mode !== "import") return null;
+  const c = excludedCounts(imp.excluded, Object.values(imp.paths),
+    imp.defaults?.raw || []);
+  if (!c.media && !c.raw) return null;
+  return h("p", { class: "warn" }, `Vyloučeno: ${plural(c.media, "médium",
+    "média", "médií")}, ${plural(c.raw, "RAW", "RAWy", "RAWů")}`);
+}
+
+// Dotaz, zda s fotkami vyloučit i jejich RAWy: "raw", "foto", nebo null
+// (Esc, celé vyloučení se zruší).
+function askRaws(n) {
+  return new Promise((resolve) => {
+    const close = (value) => {
+      dialog.close();
+      dialog.remove();
+      resolve(value);
+    };
+    const dialog = h("dialog", { class: "conflict" },
+      h("h2", {}, "Vyloučit i RAWy?"),
+      h("p", {}, `K vylučovaným fotkám patří ${plural(n, "RAW", "RAWy",
+        "RAWů")} stejného jména.`),
+      h("div", { class: "buttons" },
+        h("button", { class: "primary", onclick: () => close("raw") },
+          "Vyloučit i RAWy"),
+        h("button", { onclick: () => close("foto") }, "Jen fotky")));
+    dialog.addEventListener("cancel", (e) => {
+      e.preventDefault();
+      close(null);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+}
+
+// Del a tlačítko v kroku skupin importu: vybraná média vyloučí, jsou-li
+// už všechna vyloučená, vrátí je (i s jejich RAWy). Výběr zůstává.
+async function toggleExcluded() {
+  const files = [...state.sel].map((f) => imp.paths[f]).filter(Boolean);
+  if (state.mode !== "import" || !files.length) return;
+  const t = planToggle(imp.excluded, files, imp.defaults?.raw || []);
+  let raws = t.raws;
+  if (t.exclude && raws.length) {
+    const choice = await askRaws(raws.length);
+    if (!choice) return;
+    if (choice === "foto") raws = [];
+  }
+  imp.excluded = applyToggle(imp.excluded, files, t.exclude, raws);
+  scheduleExcluded();
+  groupsCtx?.onExclude?.();
+  renderGrid();
+  renderPanel();
+}
+
 function renderImportGroups() {
   const d = imp.defaults;
   const p = imp.popis;
@@ -5080,12 +5217,15 @@ function renderImportGroups() {
     scan: Object.fromEntries(d.soubory.map((f) => [f.nazev, f])) });
   const zapis = state.info.zapis;
   const zdroj = imp.overview?.zdroj;
-  const n = countBy(imp.plan.operace)("ok");
   const warn = h("span", { class: "warn" });
-  const label = `Importovat (${plural(n, "soubor", "soubory", "souborů")})`;
+  // Počet bez vyloučených; vyloučí-li se vše, tlačítko je vypnuté.
+  const label = () => {
+    const n = importCount(imp.plan.operace, imp.excluded);
+    return `Importovat (${plural(n, "soubor", "soubory", "souborů")})`;
+  };
   const go = h("button", { class: "primary", onclick: () => {
     if (!go.dataset.confirm) {
-      const bez = groupsWithoutAuthors(p);
+      const bez = groupsWithoutAuthors(p, excludedNames());
       go.dataset.confirm = "1";
       warn.textContent = bez.length ? `${plural(bez.length, "skupina",
         "skupiny", "skupin")} bez autorů: ${bez.map(groupName)
@@ -5095,12 +5235,14 @@ function renderImportGroups() {
       return;
     }
     executeImport(go);
-  } }, label);
+  } });
   const reset = () => {
     delete go.dataset.confirm;
-    go.textContent = label;
+    go.textContent = label();
+    go.disabled = !importCount(imp.plan.operace, imp.excluded);
     warn.textContent = "";
   };
+  reset();
   const holder = imp.lockHolder;
   const notices = [
     imp.error ? h("p", { class: "notice error" }, imp.error) : null,
@@ -5125,12 +5267,13 @@ function renderImportGroups() {
       h("span", { class: "row" }, warn,
         h("button", { onclick: () => linesDialog("Co se zapíše",
           descriptionLines()) }, "Co by se zapsalo"),
-        zapis && n ? go : null),
+        zapis ? go : null),
     ],
     onChange: () => {
       descChanged();
       reset();
     },
+    onExclude: reset,
     top: importVolbaBlock,
     join: { target: (gid) => p.pripojit[gid], choice: joinChoice },
   });
@@ -5143,8 +5286,9 @@ async function executeImport(button) {
   const p = imp.plan;
   const zdroj = imp.overview?.zdroj;
   imp.sourceHolder = null;
-  // Provedení bere popis z importu: nejdřív uložit poslední úpravy.
-  if (!(await saveDescription())) {
+  // Provedení bere popis a vyloučené z importu: nejdřív uložit poslední
+  // úpravy.
+  if (!(await saveDescription()) || !(await saveExcluded())) {
     imp.busy = null;
     return renderImport();
   }
@@ -5253,6 +5397,7 @@ function renderImportResult() {
         ? `s odebranou polohou ${bezPolohy.length}, ` : "") +
       (n("poskozeny") - bezPolohy.length
         ? `poškozených ${n("poskozeny") - bezPolohy.length}, ` : "") +
+      (n("vylouceny") ? `vyloučeno ${n("vylouceny")}, ` : "") +
       `chyba ${n("chyba")}.` + (r.zahozeno || zdroj ? ""
         : " Nepřenesené soubory zůstaly v pracovním adresáři, dokud " +
           "import nezahodíte.")),

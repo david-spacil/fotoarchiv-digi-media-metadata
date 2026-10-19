@@ -584,6 +584,10 @@ dialog.nastroj-osoby > * { min-width: 0; max-width: 100%; }
 .tile.discard img, .tile.discard .ph, .ftile.discard img { opacity: 0.35; }
 .tile.discard .fn { text-decoration: line-through; color: var(--danger); }
 .tile.discard { background: var(--discard-bg); }
+/* Vyloučené z importu (krok skupin): zašedlé, přeškrtnuté, ikona v rohu. */
+.tile.excluded { position: relative; }
+.tile.excluded img, .tile.excluded .ph { opacity: 0.35; filter: grayscale(1); }
+.tile.excluded .fn { text-decoration: line-through; color: var(--text-muted); }
 .tile.damaged, .ftile.damaged { outline: 2px solid var(--danger);
   outline-offset: -2px; }
 .tile .cap { font-size: 11px; padding: 1px 3px; display: flex;
@@ -777,6 +781,7 @@ main.wizard.form { max-width: 600px; }
 .ops td { padding: 2px 8px; }
 .ops tr.blocked, .ops tr.failed td { color: var(--danger); }
 .ops tr.dup td { color: var(--warn); }
+.ops tr.excluded td { color: var(--text-muted); }
 .ops td.num { text-align: right; white-space: nowrap; }
 
 .strip { display: flex; gap: 4px; margin: 4px 0 6px; overflow: hidden; }

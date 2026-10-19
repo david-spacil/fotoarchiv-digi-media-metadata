@@ -74,7 +74,9 @@ popisovalo jen to, co se opravdu přenese.
   a účastníky. Pokračovat jde jen s názvem a datem od.
 - **Plán:** média do kořene, RAWy do `RAW.ignored/`. Poškozené
   soubory (nečitelné a nepovolené podezřelé) se nepřenesou a plán je
-  uvede zvlášť s důvodem; soubor změněný od kontroly se zkontroluje
+  uvede zvlášť s důvodem; vyloučená média dostanou stav operace
+  `vylouceny` („vyloučeno z importu“) — vyloučení nemění, co je
+  duplicita nebo blokované; soubor změněný od kontroly se zkontroluje
   znovu. Jméno, které v cíli existuje nebo ho má víc souborů výběru,
   se blokuje.
   Duplicita (stejný sha256 jako soubor v kořeni cílové akce nebo jiný
@@ -88,8 +90,19 @@ popisovalo jen to, co se opravdu přenese.
 - **Skupiny a autoři:** mřížka náhledů přenášených fotek a videí
   (náhledy nahraných souborů i souborů zdroje v `přetřídit`, nic se
   nezapisuje) a panel jako v průvodci akce. Mřížka kroku se ovládá
-  klávesnicí jako na ploše, Esc ruší výběr souborů i skupiny;
-  Delete, Enter a P tam nejsou. Nahoře **výchozí
+  klávesnicí jako na ploše, Esc ruší výběr souborů i skupiny; Enter a
+  P nic nedělají a **Del** (stejně jako tlačítko v panelu) přepíná
+  **vyloučení z importu**: jsou-li všechna vybraná média vyloučená,
+  vrátí je do importu, jinak všechna vybraná vyloučí; popisek tlačítka
+  je podle výběru „Vyloučit z importu“ resp. „Vrátit do
+  importu“. Vyloučené médium zůstane v mřížce ve své skupině,
+  zašedlé s ikonou; nepočítá se do „Importovat (N)“ ani do upozornění na
+  skupiny bez autorů — vyloučí-li se vše, Importovat je vypnuté. Panel
+  uvádí „Vyloučeno: N médií, M RAWů“. Má-li vylučovaná fotka RAW
+  stejného jména bez přípony ve stejné složce výběru (porovnání bez
+  ohledu na velikost písmen), průvodce se v dialogu zeptá, zda vyloučit
+  i RAWy („Vyloučit i RAWy“ / „Jen fotky“, Esc zruší celé
+  vyloučení); vrácení fotky vrací i její RAW bez dotazu. Nahoře **výchozí
   rozdělení** (RAWy skupinu nedostanou): *podle podsložek* (jen má-li
   výběr podsložky; skupina = podsložka první úrovně pod nejdelší
   společnou složkou výběru, soubory přímo v ní dostanou skupinu
@@ -114,13 +127,17 @@ popisovalo jen to, co se opravdu přenese.
 
   Údaje akce, volba rozdělení, skupiny, přiřazení, připojení a autoři
   (**popis importu**) se průběžně ukládají do `import.json` (ne do
-  archivu) a po návratu se předvyplní. Po novém plánu média, která se
+  archivu) a po návratu se předvyplní. Seznam vyloučených (cesty ve
+  výběru) se ukládá k importu do `.work/import/<id>/import.json` (klíč
+  `vyloucene`), ne do archivu, i ve vývojovém režimu; přežije Pokračovat
+  i změnu výchozího rozdělení. Po novém plánu média, která se
   už nepřenesou, ze skupin vypadnou, nově přenášená dostanou skupinu
   z výchozího rozdělení a ruční úpravy ostatních zůstanou. Má-li
   některá skupina po zdědění prázdné autory, tlačítko importu na to
   upozorní a import provede až druhé kliknutí; jinak druhé kliknutí
   jen potvrzuje zápis do archivu. „Co by se zapsalo“ ukáže souhrn
-  popisu (ve vývojovém režimu místo provedení).
+  popisu (ve vývojovém režimu místo provedení); vyloučená média v něm
+  chybí.
 - **Provedení** (jen produkční režim, ve vývojovém se plán a krok
   skupin jen ukážou):
   plán se sestaví znovu, soubor se zkopíruje do dočasného
@@ -130,7 +147,9 @@ popisovalo jen to, co se opravdu přenese.
   akce; nová akce vznikne jen, pokud složka mezitím nevznikla, a zámek
   na ni dostane relace importu. Průběh jde streamem (NDJSON) po
   souborech a u velkých po 64 MB; ukazatel se posouvá podle bajtů.
-  Přenesený soubor zmizí z pracovního adresáře hned. Zavření stránky
+  Přenesený soubor zmizí z pracovního adresáře hned. Vyloučený soubor se
+  nepřenese a v pracovním adresáři importu zůstane, import proto zůstává
+  mezi rozpracovanými. Zavření stránky
   kopírování zastaví nejpozději po dalších 64 MB: rozkopírovaný
   dočasný soubor se smaže, přenesené zůstanou v archivu, zbytek
   v pracovním adresáři. Když dočasný soubor smazat nejde (výpadek
@@ -143,8 +162,9 @@ popisovalo jen to, co se opravdu přenese.
   z issue #10 (vynulované bloky) vzniká na kartě, ne přenosem.
 
   Po přenosu server zapíše popis z `import.json` jen pro skutečně
-  přenesená média; blokované, duplicitní a selhané záznam nedostanou
-  a skupina bez přeneseného souboru nevznikne. **Nová akce:**
+  přenesená média; blokované, duplicitní, selhané a vyloučené záznam
+  nedostanou (vyloučený ani do návrhu skupin) a skupina bez přeneseného
+  souboru nevznikne. **Nová akce:**
   `_metadata.json` vznikne rovnou s údaji akce z kroku cíl,
   skupinami a přenesenými soubory s technickými
   údaji; akce je *rozpracovaná* a otevře se rovnou plocha. **Akce
@@ -157,8 +177,9 @@ popisovalo jen to, co se opravdu přenese.
   import ho doplní) a použije ho průvodce akce. Když zápis selže
   (např. `_metadata.json` mezitím upravený mimo aplikaci), soubory
   zůstanou v archivu a výsledek uvede, že jsou bez skupiny a autorů.
-- **Výsledek:** přenesené, blokované, duplicitní, poškozené a selhané
-  soubory; přenesené zmizí z pracovního adresáře, ostatní tam zůstanou,
-  dokud uživatel import nezahodí. Importy neaktivní přes 7 dní server smaže
+- **Výsledek:** přenesené, blokované, duplicitní, poškozené, selhané
+  a vyloučené soubory — vyloučené uvede mezi nepřenesenými jako
+  „vyloučeno“; přenesené zmizí z pracovního adresáře, ostatní tam
+  zůstanou, dokud uživatel import nezahodí. Importy neaktivní přes 7 dní server smaže
   při startu. Průvodce nabídne otevřít akci; nové soubory jsou mezi
   „novými od posledního otevření“, metadata se doplňují běžně.

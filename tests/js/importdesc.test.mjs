@@ -78,3 +78,13 @@ test("připojená skupina dědí autory existující", () => {
   p.akce.autori = ["Příkladný, Daniel"];
   assert.deepEqual(groupsWithoutAuthors(p), ["jana"]);
 });
+
+test("vyloučená média: chybí v zápisu, skupina jen z nich bez upozornění", () => {
+  const p = freshDescription(defaults, null);
+  const ex = new Set(["a.jpg"]);
+  assert.equal(effectiveDoc(p, ex).soubory["a.jpg"], undefined);
+  // jana má jen vyloučenou a.jpg, pavla nevyloučenou b.jpg.
+  assert.deepEqual(groupsWithoutAuthors(p, ex), ["pavla"]);
+  assert.deepEqual(groupsWithoutAuthors(p, new Set(["a.jpg", "b.jpg"])), []);
+  assert.deepEqual(groupsWithoutAuthors(p), ["jana", "pavla"]);
+});

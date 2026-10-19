@@ -76,9 +76,13 @@ export function reconcile(popis, defaults) {
 }
 
 // Popis, jak se zapíše: soubory připojených skupin patří do cílové
-// skupiny (s jejími autory).
-export function effectiveDoc(popis) {
+// skupiny (s jejími autory); `excluded` = názvy médií vyloučených
+// z importu, v zápisu chybí.
+export function effectiveDoc(popis, excluded = new Set()) {
   const doc = structuredClone(popis);
+  for (const name of Object.keys(doc.soubory)) {
+    if (excluded.has(name)) delete doc.soubory[name];
+  }
   for (const record of Object.values(doc.soubory)) {
     const target = popis.pripojit[record.skupina];
     if (target) record.skupina = target;
@@ -87,7 +91,8 @@ export function effectiveDoc(popis) {
   return doc;
 }
 
-// Skupiny přenášených médií bez autorů.
-export function groupsWithoutAuthors(popis) {
-  return missing(effectiveDoc(popis)).skupinyBezAutoru;
+// Skupiny přenášených médií bez autorů; skupina jen z vyloučených
+// (`excluded`, názvy) se nehlásí.
+export function groupsWithoutAuthors(popis, excluded = new Set()) {
+  return missing(effectiveDoc(popis, excluded)).skupinyBezAutoru;
 }
