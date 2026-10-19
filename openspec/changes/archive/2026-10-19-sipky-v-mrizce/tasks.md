@@ -64,5 +64,5 @@
 - [x] 5.4 Změřit dobu stisku šipky dolů na akci s ~500 soubory a zapsat
   ji do design.md (Risks); při znatelném zpoždění zúžit čtení obdélníků
   podle designu.
-- [ ] 5.5 Ruční ověření uživatelem na reálné akci (plocha, lupa,
+- [x] 5.5 Ruční ověření uživatelem na reálné akci (plocha, lupa,
   průvodce, import).
