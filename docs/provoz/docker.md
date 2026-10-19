@@ -59,6 +59,12 @@ docker compose stop fotoarchiv
 docker compose run --rm fotoarchiv skryt \
   --archiv /archiv --work /work --zapis-do-archivu
 docker compose start fotoarchiv
+# po aktualizaci na schéma /2 jednorázově převést _metadata.json (při
+# zastaveném serveru; nejdřív bez --zapis-do-archivu jen výpis):
+docker compose stop fotoarchiv
+docker compose run --rm fotoarchiv migrovat \
+  --archiv /archiv --work /work --zapis-do-archivu
+docker compose start fotoarchiv
 ```
 
 Aktualizace: `git pull && docker compose up -d --build`.

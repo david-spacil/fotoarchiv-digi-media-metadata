@@ -1450,9 +1450,9 @@ def naming_app(tmp_path, monkeypatch):
     app.testing = True
     app.config["WORKSPACE"].save(
         EVENT, {"schema": SCHEMA, "dokonceno": "2026-04-28",
-                "akce": {"nazev": "kontrola", "mista": ["Brno"],
-                         "autori": ["Příkladný, Daniel"]},
-                "skupiny": {"g1": {"nazev": "DOD 2015_Jana"}},
+                "akce": {"nazev": "kontrola", "mista": ["Brno"]},
+                "skupiny": {"g1": {"nazev": "DOD 2015_Jana",
+                                   "autori": ["Příkladný, Daniel"]}},
                 "soubory": {"P9109996.JPG": {"skupina": "g1"}}}, None)
     immich.Settings(work).save(IMMICH_URL, IMMICH_KLIC)
     app.config["IMMICH"].alba.nastav(EVENT, stav="rozpoznano",

@@ -1,7 +1,7 @@
 {
   "popis": "Po zrušení přepsání (pole chybí u souboru) se hodnota dědí; prázdná hodnota u souboru je přepsání",
   "metadata": {
-    "schema": "fotoarchiv-digi-media-metadata/1",
+    "schema": "fotoarchiv-digi-media-metadata/2",
     "akce": {"popis": "akce"},
     "skupiny": {"s": {"nazev": "S", "popis": "skupina"}},
     "soubory": {

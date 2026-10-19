@@ -7,19 +7,21 @@ se ověřují proti fixturám v `tests/fixtures/inheritance/`.
 import unicodedata
 
 from . import names
-from .archive import EVENT_RE, SCHEMA
+from .archive import DROPPED_KEYS, EVENT_RE, SCHEMA, drop_keys
 
 # Klíče, které patří jen své úrovni a nedědí se. `obliceje` (jen
-# u souboru, zapisuje synchronizace z Immiche) a starší `osoby` se do
-# výsledných hodnot nedostanou na žádné úrovni.
+# u souboru, zapisuje synchronizace z Immiche) a klíče vypuštěné ve
+# schématu /2 (`DROPPED_KEYS`) se do výsledných hodnot nedostanou na
+# žádné úrovni.
 LOCAL_KEYS = {
     # Účastníci a místa akce jsou výčty pro celou akci, ne údaje každé
     # fotky. Jediné místo akce se ale jako `misto` dědí (viz resolve).
     # `overeno` je ruční potvrzení integrity u konkrétního souboru
     # (issue #10) — nikdy se nedění ani nedostane do výstupů.
-    "akce": {"ucastnici", "mista", "obliceje", "osoby"},
-    "skupina": {"nazev", "obliceje", "osoby"},
-    "soubor": {"skupina", "sha256", "obliceje", "osoby", "overeno"},
+    "akce": {"ucastnici", "mista", "obliceje", *DROPPED_KEYS["akce"]},
+    "skupina": {"nazev", "obliceje", *DROPPED_KEYS["skupina"]},
+    "soubor": {"skupina", "sha256", "obliceje", "overeno",
+               *DROPPED_KEYS["soubor"]},
 }
 
 TECHNICAL_KEYS = ("datum", "pristroj", "gps")
@@ -130,16 +132,15 @@ def _place_gps(doc, result):
 
 
 def clean(doc):
-    """Před uložením: `osoby` pryč ze všech úrovní, `obliceje` jen u souborů.
+    """Před uložením: pryč vypuštěné klíče schématu /2 (`DROPPED_KEYS`,
+    mj. starší `osoby`) a `obliceje` mimo soubory.
 
     Osoby na fotce jsou jména z `obliceje`, které zapisuje jen
     synchronizace z Immiche. Dokument mění na místě a vrací ho.
     """
+    drop_keys(doc)
     for record in [doc.get("akce") or {}, *(doc.get("skupiny") or {}).values()]:
-        record.pop("osoby", None)
         record.pop("obliceje", None)
-    for record in (doc.get("soubory") or {}).values():
-        record.pop("osoby", None)
     return doc
 
 

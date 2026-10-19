@@ -3,7 +3,8 @@ import json
 import pytest
 
 from fotoarchiv.__main__ import main
-from fotoarchiv.archive import Collision, Conflict, Workspace, version_of
+from fotoarchiv.archive import (SCHEMA, SCHEMA_V1, Collision, Conflict,
+                                Workspace, version_of)
 from .conftest import make_tree, snapshot
 
 EVENT = "2026-04-28 kontrola Stezky"
@@ -64,6 +65,24 @@ def test_save_success_and_conflict(ws):
         ws.save(EVENT, {"n": 4}, v2)
     assert json.loads(ws.metadata_path(EVENT).read_text()) == {"n": 3}
     assert e.value.current_version == ws.load(EVENT)[1]
+
+
+def test_load_upgrades_v1_without_writing(ws):
+    """Dokument /1 se načte převedený na /2, soubor na disku zůstane;
+    uložení s vrácenou verzí projde a zapíše /2."""
+    path = ws.metadata_path(EVENT)
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({
+        "schema": SCHEMA_V1, "akce": {"nazev": "x", "autori": ["A, B"]},
+        "skupiny": {}, "soubory": {"a.jpg": {"osoby": ["C, D"]}}}))
+    before = path.read_bytes()
+    doc, version = ws.load(EVENT)
+    assert doc == {"schema": SCHEMA, "akce": {"nazev": "x"}, "skupiny": {},
+                   "soubory": {"a.jpg": {}}}
+    assert path.read_bytes() == before
+    assert version == version_of(before)
+    ws.save(EVENT, doc, version)
+    assert json.loads(path.read_text())["schema"] == SCHEMA
 
 
 def test_save_new_when_file_exists_conflicts(ws):
@@ -325,3 +344,92 @@ def test_samples_spread_over_large_event():
                                       "175.jpg"]
     assert samples({"b.jpg", "a.jpg"}, None) == ["a.jpg", "b.jpg"]
     assert samples(set(), None) == []
+
+
+# --- migrovat (schéma /1 → /2) ---------------------------------------------
+
+def write_v1(ws, name, doc):
+    path = ws.metadata_path(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = json.dumps(dict(doc, schema=SCHEMA_V1)).encode("utf-8")
+    path.write_bytes(data)
+    return version_of(data)
+
+
+def mark_exported(ws, name, version):
+    path = ws.export_record_path(name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"version": version, "zapis": ws.zapis}))
+
+
+def cli_migrate(ws, *flags):
+    main(["migrovat", "--archiv", str(ws.archiv), "--work", str(ws.work),
+          *flags])
+
+
+OSOBY = {"akce": {"nazev": "x"}, "skupiny": {"g": {"nazev": "G"}},
+         "soubory": {n: {"skupina": "g", "osoby": ["Vzorný, Tomáš"]}
+                     for n in ("a.jpg", "b.jpg", "c.jpg")}}
+AUTORI = {"akce": {"nazev": "y", "autori": ["Příkladný, Daniel"]},
+          "skupiny": {"g": {"nazev": "G"},
+                      "m": {"nazev": "M", "autori": ["Modelová, Zuzana"]}},
+          "soubory": {"a.jpg": {"skupina": "g"},
+                      "b.jpg": {"skupina": "g",
+                                "autori": ["Modelová, Zuzana"]},
+                      "c.jpg": {"skupina": "m"}}}
+OLDER = "2025-01-02 starší"
+
+
+def test_cli_migrate_dry_run(ws_prod, capsys):
+    write_v1(ws_prod, EVENT, OSOBY)
+    before = snapshot(ws_prod.archiv)
+    cli_migrate(ws_prod)
+    out = capsys.readouterr().out
+    assert f"převede: {EVENT} (soubor.osoby 3)" in out
+    assert "K převodu: 1" in out and "Archiv beze změny" in out
+    assert snapshot(ws_prod.archiv) == before
+
+
+def test_cli_migrate(ws_prod, capsys):
+    v1 = write_v1(ws_prod, EVENT, dict(OSOBY, dokonceno="2026-05-01"))
+    mark_exported(ws_prod, EVENT, v1)
+    va = write_v1(ws_prod, OLDER, dict(AUTORI, dokonceno="2026-05-01"))
+    mark_exported(ws_prod, OLDER, va)
+    cli_migrate(ws_prod, "--zapis-do-archivu")
+    out = capsys.readouterr().out
+    assert f"převedeno: {EVENT} (soubor.osoby 3)" in out
+    assert (f"převedeno: {OLDER} (akce.autori 1); souborů, které ztratí "
+            "autory celé akce: 1") in out
+    assert "Převedeno: 2" in out
+    doc = json.loads(ws_prod.metadata_path(EVENT).read_text())
+    assert doc["schema"] == SCHEMA
+    assert all("osoby" not in r for r in doc["soubory"].values())
+    # Sidecary se převodem nemění: záznam o exportu jde na novou verzi.
+    assert ws_prod.export_version(EVENT) == ws_prod.load(EVENT)[1]
+    # Akce s autory celé akce: sidecary se změní, záznam zůstane starý.
+    doc = json.loads(ws_prod.metadata_path(OLDER).read_text())
+    assert doc["akce"] == {"nazev": "y"}
+    assert ws_prod.export_version(OLDER) == va != ws_prod.load(OLDER)[1]
+    # Opakované spuštění nic nezmění.
+    before = snapshot(ws_prod.archiv)
+    cli_migrate(ws_prod, "--zapis-do-archivu")
+    assert "Převedeno: 0" in capsys.readouterr().out
+    assert snapshot(ws_prod.archiv) == before
+
+
+def test_cli_migrate_failure_continues(ws_prod, capsys, monkeypatch):
+    write_v1(ws_prod, EVENT, OSOBY)
+    write_v1(ws_prod, OLDER, OSOBY)
+    save = Workspace.save
+
+    def fail_one(self, name, doc, version):
+        if name == EVENT:
+            raise Conflict("jiná")
+        return save(self, name, doc, version)
+    monkeypatch.setattr(Workspace, "save", fail_one)
+    with pytest.raises(SystemExit) as e:
+        cli_migrate(ws_prod, "--zapis-do-archivu")
+    assert e.value.code == 1
+    out = capsys.readouterr().out
+    assert f"selhalo: {EVENT}: soubor se mezitím změnil" in out
+    assert f"převedeno: {OLDER}" in out

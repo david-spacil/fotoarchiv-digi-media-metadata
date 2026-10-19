@@ -354,11 +354,11 @@ počet označených souborů a nabídnout provedení úklidu.
 Existuje-li k akci bez `_metadata.json` návrh skupin z importu, SHALL
 průvodce prvním otevřením v kroku skupiny a autoři použít jeho skupiny
 (i s autory) a přiřazení pro soubory, které návrh uvádí a jsou
-v kořeni akce, a autory celé akce z návrhu. Ostatní soubory SHALL
-dostat automatický návrh podle přístroje a vzoru názvu. Po prvním
-uložení `_metadata.json` SHALL server návrh smazat. Chybí-li návrh
-(např. smazaný pracovní adresář), průvodce SHALL postupovat jako
-dosud.
+v kořeni akce. Autory celé akce ze staršího návrhu MUST NOT převzít.
+Ostatní soubory SHALL dostat automatický návrh podle přístroje a vzoru
+názvu. Po prvním uložení `_metadata.json` SHALL server návrh smazat.
+Chybí-li návrh (např. smazaný pracovní adresář), průvodce SHALL
+postupovat jako dosud.
 
 #### Scenario: Podsložky z importu jako skupiny
 - **WHEN** uživatel otevře existující akci bez `_metadata.json`, do
@@ -377,6 +377,11 @@ dosud.
 - **WHEN** uživatel v průvodci poprvé uloží `_metadata.json`
 - **THEN** návrh skupin z importu přestane existovat a další otevření
   ho nepoužije
+
+#### Scenario: Starší návrh s autory akce
+- **WHEN** návrh skupin z dřívějšího importu obsahuje autory celé akce
+  `Příkladný, Daniel` a uživatel akci poprvé uloží
+- **THEN** `_metadata.json` nemá `akce.autori`
 
 ### Requirement: Kalendář u data pořízení
 Pole Datum pořízení SHALL mít dva samostatné vstupy: den a čas
@@ -466,36 +471,6 @@ akce ano (viz Chybějící údaje v navigátoru).
 #### Scenario: Formulář skupiny
 - **WHEN** uživatel vybere skupinu v navigátoru
 - **THEN** formulář pole osob nemá
-
-### Requirement: Autoři akce v průvodci
-Krok skupiny a autoři průvodce SHALL nad skupinami nabídnout pole
-autoři celé akce, které upravuje `autori` akce a ukazuje jejich
-uloženou hodnotu. Skupina bez vlastních autorů SHALL v tomto kroku
-ukázat autory akce jako zděděné a MUST se nepočítat mezi skupiny bez
-autorů. Autoři akce se MUST NOT kopírovat do skupin; skupina je SHALL
-moci přepsat vlastními. Krok údaje akce pole autorů neukazuje.
-
-#### Scenario: Autoři celé akce
-- **WHEN** uživatel v kroku skupiny a autoři zadá autory celé akce
-  `Příkladný, Daniel` a `Modelová, Zuzana`
-- **THEN** akce má `autori` = [`Příkladný, Daniel`, `Modelová, Zuzana`]
-  a skupina `g9` bez vlastních autorů je ukazuje jako zděděné z akce
-
-#### Scenario: Dokončení bez upozornění
-- **WHEN** akce má autory a žádná skupina vlastní autory nemá
-- **THEN** dokončení průvodce neupozorní na skupiny bez autorů
-  a skupiny se uloží bez pole `autori`
-
-#### Scenario: Skupina s vlastními autory
-- **WHEN** akce má autory `Příkladný, Daniel` a skupina `g9` má vlastní
-  autory `Modelová, Zuzana`
-- **THEN** skupina `g9` si ponechá `Modelová, Zuzana` jako zadané
-  u skupiny
-
-#### Scenario: Předvyplnění
-- **WHEN** akce už má autory (zadané dřív na ploše) a uživatel se
-  v průvodci vrátí ke kroku skupiny a autoři
-- **THEN** pole autoři celé akce je ukazuje
 
 ### Requirement: Přepínač zobrazení
 Pracovní plocha SHALL mít přepínač Po skupinách / Podle data, který

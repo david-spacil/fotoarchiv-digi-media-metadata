@@ -1,7 +1,7 @@
 {
   "popis": "Bez vlastního GPS se bere GPS z souradnice_mist výsledného místa; EXIF GPS ani GPS skupiny se nepřepisuje, null = bez souřadnic",
   "metadata": {
-    "schema": "fotoarchiv-digi-media-metadata/1",
+    "schema": "fotoarchiv-digi-media-metadata/2",
     "akce": {"mista": ["Holštejn"]},
     "souradnice_mist": {
       "Holštejn": {"gps": [49.4063, 16.7777], "popis": "Holštejn, okres Blansko"},

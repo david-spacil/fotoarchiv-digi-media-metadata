@@ -1,7 +1,7 @@
 {
   "popis": "Jediné místo akce se dědí jako misto; skupina i soubor ho přepíší",
   "metadata": {
-    "schema": "fotoarchiv-digi-media-metadata/1",
+    "schema": "fotoarchiv-digi-media-metadata/2",
     "akce": {"mista": ["Holštejn"]},
     "skupiny": {"s": {"nazev": "S", "misto": "Molenburk"}},
     "soubory": {

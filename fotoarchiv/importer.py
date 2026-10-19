@@ -566,8 +566,7 @@ def group_plan(entries, chosen, devices, existing, volba, pripojit=None):
 
 DESCRIPTION_KEYS = ("akce", "skupiny", "soubory", "pripojit")
 # Údaje nové akce, které popis importu zapíše do `_metadata.json`.
-EVENT_KEYS = ("nazev", "datum_od", "datum_do", "popis", "mista", "ucastnici",
-              "autori")
+EVENT_KEYS = ("nazev", "datum_od", "datum_do", "popis", "mista", "ucastnici")
 
 
 def check_description(popis):
@@ -638,17 +637,16 @@ def describe(popis, done, existing, known):
     return result
 
 
-def merge_proposal(proposal, groups, autori=None):
+def merge_proposal(proposal, groups):
     """Doplní návrh skupin (`skupiny`, `prirazeni`) o skupiny importu
-    (`describe`); dřívější přiřazení zůstávají. `autori` (není-li
-    None) = nové autory celé akce."""
+    (`describe`); dřívější přiřazení zůstávají. Autory celé akce ze
+    staršího návrhu zahodí (schéma /2 je nemá)."""
     proposal = proposal or {"skupiny": {}, "prirazeni": {}}
+    proposal.pop("akce", None)
     for gid, group in groups["skupiny"].items():
         proposal["skupiny"].setdefault(gid, group)
     for name, gid in groups["prirazeni"].items():
         proposal["prirazeni"].setdefault(name, gid)
-    if autori is not None:
-        proposal.setdefault("akce", {})["autori"] = autori
     return proposal
 
 
@@ -1335,14 +1333,11 @@ class Imports:
         return (self.work / "cache" / "sha256"
                 / f"{event_name(event_dir)}.json")
 
-    def set_target(self, id, jmeno, cil, nova, autori=None):
-        """Uloží zamýšlený cíl (název akce, nová?) pro návrat k importu
-        a autory celé akce cíle (`cil_autori`, měřítko změny při
-        zápisu popisu)."""
+    def set_target(self, id, jmeno, cil, nova):
+        """Uloží zamýšlený cíl (název akce, nová?) pro návrat k importu."""
         with self._mutex:
             record = self.get(id, jmeno)
-            record.update(cil=cil, nova=bool(nova), cil_autori=autori,
-                          aktivita=self.clock())
+            record.update(cil=cil, nova=bool(nova), aktivita=self.clock())
             self._write(self.dir(id), record)
 
     def set_description(self, id, jmeno, popis):
@@ -1501,20 +1496,18 @@ class Imports:
         return self.work / PROPOSALS / f"{akce}.json"
 
     def proposal(self, akce):
-        """Návrh skupin z importu ({skupiny, prirazeni, akce?: {autori}}),
-        nebo None."""
+        """Návrh skupin z importu ({skupiny, prirazeni}), nebo None."""
         try:
             return json.loads(self._proposal_path(akce)
                               .read_text(encoding="utf-8"))
         except (FileNotFoundError, ValueError):
             return None
 
-    def add_proposal(self, akce, groups, autori=None):
-        """Doplní návrh akce o skupiny importu (`describe`), případně
-        autory celé akce (`merge_proposal`)."""
+    def add_proposal(self, akce, groups):
+        """Doplní návrh akce o skupiny importu (`merge_proposal`)."""
         path = self._proposal_path(akce)
         with self._mutex:
-            proposal = merge_proposal(self.proposal(akce), groups, autori)
+            proposal = merge_proposal(self.proposal(akce), groups)
             path.parent.mkdir(parents=True, exist_ok=True)
             tmp = path.with_suffix(".tmp")
             tmp.write_text(json.dumps(proposal, ensure_ascii=False, indent=1),

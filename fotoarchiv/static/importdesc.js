@@ -1,8 +1,8 @@
 // Popis importu: dokument ve tvaru `_metadata.json` (`akce`, `skupiny`,
 // `soubory: {název: {skupina}}`) plus `pripojit` (nová skupina →
 // existující skupina cíle) a pracovní klíče klienta: `cil` (pro který cíl
-// jsou skupiny sestavené), `typ` (`akce` nese údaje nové akce, nebo jen
-// autory stávající), `nova_akce` (odložené údaje nové akce) a `upraveno`.
+// jsou skupiny sestavené), `typ` (`akce` nese údaje nové akce; u stávající
+// je prázdná), `nova_akce` (odložené údaje nové akce) a `upraveno`.
 // Server zapíše při provedení jen nové skupiny s přenesenými soubory
 // (`importer.describe`); existující skupiny cíle jsou v popisu jen kopie
 // ke čtení a dědění.
@@ -40,8 +40,6 @@ export function freshDescription(defaults, popis) {
     result.typ = "stavajici";
     const nova = old.typ === "nova" ? old.akce : old.nova_akce;
     if (nova) result.nova_akce = nova;
-    const autori = defaults.akce_autori || [];
-    if (autori.length) result.akce.autori = [...autori];
   }
   for (const f of defaults.soubory) {
     const gid = defaults.prirazeni[f.nazev];
@@ -89,7 +87,7 @@ export function effectiveDoc(popis) {
   return doc;
 }
 
-// Skupiny přenášených médií bez autorů (ani zděděných z akce).
+// Skupiny přenášených médií bez autorů.
 export function groupsWithoutAuthors(popis) {
   return missing(effectiveDoc(popis)).skupinyBezAutoru;
 }

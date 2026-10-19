@@ -1,0 +1,52 @@
+{
+  "popis": "Rozsah dat skupiny a starší osoby (vypuštěné klíče schématu /2) se nedědí ani neukazují na své úrovni",
+  "metadata": {
+    "schema": "fotoarchiv-digi-media-metadata/2",
+    "akce": {
+      "nazev": "kontrola Stezky",
+      "osoby": [
+        "Vzorný, Tomáš"
+      ]
+    },
+    "skupiny": {
+      "g9": {
+        "nazev": "G9",
+        "datum_od": "2026-04-28",
+        "datum_do": "2026-04-29",
+        "osoby": [
+          "Vzorný, Tomáš"
+        ],
+        "autori": [
+          "Příkladný, Daniel"
+        ]
+      }
+    },
+    "soubory": {
+      "P1503712.JPG": {
+        "skupina": "g9",
+        "osoby": [
+          "Vzorný, Tomáš"
+        ],
+        "datum": "2026-04-28T10:15:00"
+      }
+    }
+  },
+  "ocekavano": {
+    "P1503712.JPG": {
+      "nazev": {
+        "hodnota": "kontrola Stezky",
+        "uroven": "akce"
+      },
+      "autori": {
+        "hodnota": [
+          "Příkladný, Daniel"
+        ],
+        "uroven": "skupina"
+      },
+      "datum": {
+        "hodnota": "2026-04-28T10:15:00",
+        "uroven": "soubor"
+      }
+    }
+  }
+}

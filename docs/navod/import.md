@@ -102,7 +102,8 @@ popisovalo jen to, co se opravdu přenese.
   Výchozí rozdělení počítá server z posledního plánu bez nového
   porovnání; změna po ručních úpravách nebo autorech skupin se ptá.
   Pod tím úpravy skupin (přejmenovat, sloučit, nová skupina z výběru,
-  přesun), autoři celé akce a u každé skupiny náhledy a autoři.
+  přesun) a u každé skupiny náhledy a autoři. Na autory celé akce se
+  krok neptá, ani při doimportu do stávající akce.
   Nové skupiny se s existujícími (v `_metadata.json` nebo návrhu)
   samy nesloučí ani při shodě: název nové dostane případně pořadové
   číslo a u každé jde zvolit „nová skupina“ nebo „připojit ke skupině
@@ -144,15 +145,14 @@ popisovalo jen to, co se opravdu přenese.
   Po přenosu server zapíše popis z `import.json` jen pro skutečně
   přenesená média; blokované, duplicitní a selhané záznam nedostanou
   a skupina bez přeneseného souboru nevznikne. **Nová akce:**
-  `_metadata.json` vznikne rovnou s údaji akce z kroku cíl (včetně
-  autorů celé akce), skupinami a přenesenými soubory s technickými
+  `_metadata.json` vznikne rovnou s údaji akce z kroku cíl,
+  skupinami a přenesenými soubory s technickými
   údaji; akce je *rozpracovaná* a otevře se rovnou plocha. **Akce
   s `_metadata.json`:** přenesené soubory (s technickými údaji, jako
   při otevření akce), nové skupiny s autory, připojení a přiřazení
-  jdou do `_metadata.json` pod zámkem importu; autoři celé akce jen
-  při změně proti stavu v době plánu; stávající záznamy a skupiny se
-  nemění. **Akce bez něj:** `_metadata.json` nevznikne, skupiny
-  s autory, přiřazení a autoři akce jdou do návrhu
+  jdou do `_metadata.json` pod zámkem importu; údaje akce, stávající
+  záznamy a skupiny se nemění. **Akce bez něj:** `_metadata.json`
+  nevznikne, skupiny s autory a přiřazení jdou do návrhu
   `.work/navrhy-skupin/<akce>.json` (i v produkčním režimu; další
   import ho doplní) a použije ho průvodce akce. Když zápis selže
   (např. `_metadata.json` mezitím upravený mimo aplikaci), soubory

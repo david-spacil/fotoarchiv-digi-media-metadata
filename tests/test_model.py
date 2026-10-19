@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from fotoarchiv import model
+from fotoarchiv import archive, model
 
 FIXTURES = sorted((Path(__file__).parent / "fixtures" / "inheritance")
                   .glob("*.json"))
@@ -28,7 +28,7 @@ def test_new_document_prefill():
               "prirazeni": {"a.jpg": "x", "b.jpg": "x", "c.jpg": "x"}}
     doc = model.new_document(
         "2026-04-28 kontrola Stezky Drahanskou vrchovinou", files, groups)
-    assert doc["schema"] == "fotoarchiv-digi-media-metadata/1"
+    assert doc["schema"] == "fotoarchiv-digi-media-metadata/2"
     assert doc["akce"] == {"nazev": "kontrola Stezky Drahanskou vrchovinou",
                            "datum_od": "2026-04-28",
                            "datum_do": "2026-04-29"}
@@ -108,12 +108,58 @@ def test_keep_faces_from_stored_version():
 
 
 def test_incomplete_authors_only_on_event():
+    # `akce.autori` je ve schématu /2 vypuštěný: soubory autory nemají.
     doc = {"akce": {"autori": ["Příkladný, Daniel"]},
            "skupiny": {"g9": {"nazev": "G9"}},
            "soubory": {"P1503712.JPG": {"skupina": "g9"},
                        "IMG-20260428-WA0001.jpg": {}}}
     present = {"P1503712.JPG", "IMG-20260428-WA0001.jpg"}
-    assert "autori" not in model.incomplete(doc, present)
+    assert "autori" in model.incomplete(doc, present)
+
+
+def test_clean_drops_v1_keys():
+    """Uložení odebere vypuštěné klíče schématu /2 a `obliceje` mimo
+    soubory; ostatní pole (i `sha256` a `osm`) zůstanou."""
+    doc = {"schema": "fotoarchiv-digi-media-metadata/2",
+           "akce": {"nazev": "x", "autori": ["Příkladný, Daniel"],
+                    "osoby": ["Vzorný, Tomáš"], "obliceje": []},
+           "souradnice_mist": {"Brno": {"gps": [49.2, 16.6], "popis": "Brno",
+                                        "osm": "relation/1"}},
+           "skupiny": {"g9": {"nazev": "G9", "autori": ["Modelová, Zuzana"],
+                              "datum_od": "2026-04-28",
+                              "datum_do": "2026-04-29", "osoby": []}},
+           "soubory": {"a.jpg": {"skupina": "g9", "sha256": "abc",
+                                 "osoby": ["Vzorný, Tomáš"],
+                                 "obliceje": [{"jmeno": "Vzorný, Tomáš"}]}}}
+    model.clean(doc)
+    assert doc["akce"] == {"nazev": "x"}
+    assert doc["skupiny"]["g9"] == {"nazev": "G9",
+                                    "autori": ["Modelová, Zuzana"]}
+    assert doc["soubory"]["a.jpg"] == {
+        "skupina": "g9", "sha256": "abc",
+        "obliceje": [{"jmeno": "Vzorný, Tomáš"}]}
+    assert doc["souradnice_mist"]["Brno"]["osm"] == "relation/1"
+
+
+def test_upgrade_v1():
+    doc = {"schema": "fotoarchiv-digi-media-metadata/1",
+           "akce": {"nazev": "x", "autori": ["Příkladný, Daniel"]},
+           "skupiny": {"g9": {"datum_od": "2026-04-28", "osoby": []}},
+           "soubory": {"a.jpg": {"osoby": []}, "b.jpg": {"osoby": []},
+                       "c.jpg": {"datum": "2026-04-28"}}}
+    removed = archive.upgrade(doc)
+    assert removed == {"akce.autori": 1, "skupina.datum_od": 1,
+                       "skupina.osoby": 1, "soubor.osoby": 2}
+    assert doc["schema"] == archive.SCHEMA
+    assert doc["akce"] == {"nazev": "x"}
+    assert doc["skupiny"]["g9"] == {}
+    assert doc["soubory"]["c.jpg"] == {"datum": "2026-04-28"}
+
+
+def test_upgrade_ignores_v2():
+    doc = {"schema": archive.SCHEMA, "akce": {"autori": ["Příkladný, Daniel"]}}
+    assert archive.upgrade(doc) is None
+    assert doc["akce"] == {"autori": ["Příkladný, Daniel"]}
 
 
 def test_completeness_counts_per_field():
