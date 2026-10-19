@@ -49,5 +49,5 @@
 - [x] 3.2 Celé sady `.venv/bin/python -m pytest -q` a `node --test
   tests/js/*.test.mjs` zelené; `openspec validate vyloucit-z-importu
   --strict`.
-- [ ] 3.3 Ruční zkouška uživatelem na mobilu/desktopu (vzhled
+- [x] 3.3 Ruční zkouška uživatelem na mobilu/desktopu (vzhled
   vyloučené dlaždice, dialog RAW).
