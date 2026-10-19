@@ -20,11 +20,11 @@
 
 ## 2. Klient: vyloučení v kroku skupiny a autoři
 
-- [ ] 2.1 Nový modul `static/vylouceni.js` (přepnutí nad výběrem, páry
+- [x] 2.1 Nový modul `static/vylouceni.js` (přepnutí nad výběrem, páry
   fotka–RAW podle cesty bez přípony bez ohledu na velikost písmen,
   počet pro Importovat) s testem `tests/js/vylouceni.test.mjs`;
   ověřit `node --test tests/js/*.test.mjs` (číst řádek `# tests`).
-- [ ] 2.2 `app.js`: Del v kroku importu jako přepínač vyloučit / vrátit,
+- [x] 2.2 `app.js`: Del v kroku importu jako přepínač vyloučit / vrátit,
   tlačítko v nástrojích skupin se stejným přepínáním a popiskem podle
   výběru („Vyloučit z importu“ / „Vrátit do importu“), dialog k RAWům, ukládání
   na server (debounce), třída `excluded` a ikona na dlaždici, řádek
@@ -33,20 +33,20 @@
   autory, vyloučené v „Co by se zapsalo“ chybí. Průvodce akce: Delete
   dál nic. Ověřit `importdesc.test.mjs` (upozornění na autory
   s vyloučenými) a prohlížečem (úkol 3.1).
-- [ ] 2.3 Plán a výsledek vypíší vyloučené zvlášť („vyloučeno“), u zdroje
+- [x] 2.3 Plán a výsledek vypíší vyloučené zvlášť („vyloučeno“), u zdroje
   mezi tím, co zůstalo. Ověřit prohlížečem (úkol 3.1).
-- [ ] 2.4 README (Import → Skupiny a autoři, Výsledek; průvodce akce —
+- [x] 2.4 README (Import → Skupiny a autoři, Výsledek; průvodce akce —
   Delete tam dál nic) ve stejném kroku; ověřit grepem, že žádné místo
   netvrdí, že Delete v kroku importu nic nedělá.
 
 ## 3. Ověření
 
-- [ ] 3.1 Prohlížeč nad vygenerovanými dummy daty ve scratch (nahraný
+- [x] 3.1 Prohlížeč nad vygenerovanými dummy daty ve scratch (nahraný
   import JPG+RW2 páry, zdroj `přetřídit`), vývojový i produkční režim
   na kopii: Del a tlačítko, dialog RAW (obě volby), počty, návrat přes
   Pokračovat, změna výchozího rozdělení, zpět na plán, provedení
   a výsledek, soubory na disku. Reálná data se nepoužívají.
-- [ ] 3.2 Celé sady `.venv/bin/python -m pytest -q` a `node --test
+- [x] 3.2 Celé sady `.venv/bin/python -m pytest -q` a `node --test
   tests/js/*.test.mjs` zelené; `openspec validate vyloucit-z-importu
   --strict`.
 - [ ] 3.3 Ruční zkouška uživatelem na mobilu/desktopu (vzhled
