@@ -100,7 +100,9 @@ prvním/posledním.
 stejně jako dnes v pásu. Třída se odvozuje ze `state.current`, takže
 zůstane i při fokusu ve formuláři. Vzhled: vnitřní stín
 `box-shadow: inset 0 0 0 2px var(--current)`, který nekoliduje s okrajem
-výběru (`border-color`) ani s obrysem poškození (`outline`). Nový token
+výběru (`border-color`) ani s obrysem poškození (`outline`). Kreslí ho
+překryv `.tile.current::before` nad náhledem: stín samotné dlaždice by
+náhled zakryl a `::after` už nese pruh autorů. Nový token
 `--current` pro oba režimy se přidá do `contrast.test.mjs` proti
 `--tile-surface`, `--selected` a `--stage` (grafika 3 : 1).
 
@@ -140,6 +142,9 @@ stránky. Esc v kroku skupin volá totéž co Esc v mřížce plochy:
   (stovky `getBoundingClientRect` na stisk). Měřit se bude
   v prohlížeči na akci s ~500 soubory. Kdyby byl stisk znatelně pomalý,
   přejde se na čtení jen oddílu aktuálního a sousedních oddílů.
+  *Změřeno* (headless Chromium, smyšlená akce s 500 soubory, 4 sloupce):
+  stisk šipky dolů na ploše včetně vynuceného layoutu 3–4 ms (medián,
+  nejvýš 15 ms), v kroku skupin 4–17 ms. Zúžení není potřeba.
 - **Fokus na videu v lupě:** handler přebírá i Home/End/PageUp/PageDown
   při fokusu na přehrávači, jako dnes šipky. Ovládání videa zůstává
   myší.
