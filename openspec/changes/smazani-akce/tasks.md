@@ -57,21 +57,23 @@
 
 ## 4. Klient
 
-- [ ] 4.1 Plocha akce: tlačítko „Smazat akci…“ jen pro admina, dialog
+- [x] 4.1 Plocha akce (i průvodce prvním otevřením — nezpracovanou
+  akci admin smaže bez průchodu průvodcem): tlačítko „Smazat akci…“
+  jen pro admina, dialog
   s opsáním názvu a důvodem (potvrzení aktivní až při shodě), po
   smazání návrat na seznam; ve vývojovém režimu zobrazení plánu. Čistou
   logiku shody názvu do malého modulu s testem v `tests/js/`; ověřit
   `node --test tests/js/*.test.mjs`.
-- [ ] 4.2 Stránka Koš (odkaz ze seznamu jen pro admina): název, kdo,
+- [x] 4.2 Stránka Koš (odkaz ze seznamu jen pro admina): název, kdo,
   kdy, důvod, počet souborů, datum trvalého smazání, Obnovit; neznámé
   složky bez tlačítka. Ověřit ručně na dummy archivu v produkčním
   režimu (smazat, zobrazit v koši, obnovit).
-- [ ] 4.3 Návod `docs/navod/smazani-akce.md` a odkaz z
+- [x] 4.3 Návod `docs/navod/smazani-akce.md` a odkaz z
   `docs/README.md`. Ověřit, že popsaný postup odpovídá UI z 4.1–4.2.
 
 ## 5. Integrace
 
-- [ ] 5.1 Celé testy: `.venv/bin/python -m pytest -q`
+- [x] 5.1 Celé testy: `.venv/bin/python -m pytest -q`
   a `node --test tests/js/*.test.mjs` zelené.
 - [ ] 5.2 Ověřit proti testovacímu Immichi (ne produkčnímu, s dummy
   fotkami): dokončená akce smazaná do koše → sken → obnovení → sken;
