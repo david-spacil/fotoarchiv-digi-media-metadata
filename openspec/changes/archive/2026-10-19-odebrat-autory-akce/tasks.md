@@ -83,5 +83,5 @@
   `renderGroupsPanel` s průvodcem a souhrn kryje `importdesc.test.mjs`.
 - [x] 5.3 `migrovat` nad kopií dummy archivu: výpis, převod, plocha
   dokončené akce bez „neexportované změny“.
-- [ ] 5.4 Ruční kontrola uživatelem po nasazení: výpis `migrovat` nad
+- [x] 5.4 Ruční kontrola uživatelem po nasazení: výpis `migrovat` nad
   produkcí a převod při zastaveném serveru.
