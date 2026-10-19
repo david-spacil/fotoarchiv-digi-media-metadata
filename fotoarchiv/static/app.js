@@ -18,6 +18,7 @@ import {
 import { icon } from "./icons.js";
 import { immichStav } from "./immichstav.js";
 import { showNaming } from "./naming.js";
+import { klavesa, naPas, oddil, radek, stranka } from "./pohyb.js";
 import {
   byDay, dayLabel, personIndex, sectionInfo, stripeSegments, stripeStops,
 } from "./sections.js";
@@ -448,13 +449,26 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 document.addEventListener("keydown", (e) => {
-  if (state.mode !== "workspace" ||
-      e.target.closest("input, textarea, select") ||
+  const ws = state.mode === "workspace";
+  // Skupinový krok (průvodce, import): klávesy jen když stránka má mřížku.
+  const krok = (state.mode === "wizard" || state.mode === "import") &&
+    !!document.getElementById("grid");
+  if (!ws && !krok) return;
+  if (e.target.closest("input, textarea, select") ||
       document.querySelector("dialog[open]")) return;
-  const loupe = state.view === "loupe";
+  const loupe = ws && state.view === "loupe";
+  const k = klavesa(e);
+  if (k) {
+    e.preventDefault(); // ať šipky neposouvají stránku a Ctrl+A text
+    if (k.druh === "vse") select(new Set(state.order), null);
+    else moveTo(cilPohybu(k, loupe), k.rozsir);
+    return;
+  }
   if (e.key === "Escape") {
     if (loupe) setView("grid");
     else select(new Set(), null);
+  } else if (!ws) {
+    // Delete, Enter a P ve skupinovém kroku nic nedělají.
   } else if (e.key === "Delete") {
     e.preventDefault();
     toggleDiscard();
@@ -465,10 +479,6 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "Enter" && !loupe && !e.target.closest("button, a")) {
     e.preventDefault();
     setView("loupe");
-  } else if ((e.key === "ArrowRight" || e.key === "ArrowLeft") && loupe &&
-             !e.altKey && !e.ctrlKey && !e.metaKey) {
-    e.preventDefault();
-    step(e.key === "ArrowRight" ? 1 : -1, e.shiftKey);
   }
 });
 
@@ -1432,15 +1442,19 @@ function tile(f, markOf) {
     })
     : h("div", { class: "ph" }, "chybí v kořeni");
   const ws = state.mode === "workspace";
+  // Dlaždice jsou na tabulátor i ve skupinovém kroku (pohyb klávesnicí).
+  const tabulator = ws || state.mode === "wizard" || state.mode === "import";
   const text = [h("span", { class: "fn" }, f),
     h("span", { class: "dt" }, datum ? datum.replace("T", " ") : "bez data"),
     mark && h("span", { class: "gn" }, mark.label)];
   return h("div", {
     class: `tile${present ? "" : " missing"}${info.video ? " video" : ""}` +
-      `${state.sel.has(f) ? " selected" : ""}${discarded(f) ? " discard" : ""}` +
+      `${state.sel.has(f) ? " selected" : ""}` +
+      `${f === state.current ? " current" : ""}` +
+      `${discarded(f) ? " discard" : ""}` +
       d.cls + m.cls,
     dataset: { file: f }, title: d.title || m.title, style: m.style,
-    tabindex: ws ? 0 : null,
+    tabindex: tabulator ? 0 : null,
     draggable: ws && !state.readonly ? "true" : null,
   }, thumb,
   // Plocha: bez popisku, ikony v rohu a překryv při najetí či fokusu.
@@ -1542,9 +1556,7 @@ function select(files, group, opts = {}) {
   for (const el of document.querySelectorAll("#grid .tile, #film .ftile")) {
     el.classList.toggle("selected", files.has(el.dataset.file));
   }
-  for (const el of document.querySelectorAll("#film .ftile")) {
-    el.classList.toggle("current", el.dataset.file === state.current);
-  }
+  markCurrent();
   for (const el of document.querySelectorAll("#grid .ghead, #film .fhead")) {
     el.classList.toggle("selected", !!group && el.dataset.group === group);
   }
@@ -1553,6 +1565,14 @@ function select(files, group, opts = {}) {
   if (!opts.keepPanel) {
     state.placeOpen = opts.place ?? null;
     renderPanel();
+  }
+}
+
+// Přepne třídu `current` na dlaždicích mřížky i pásu podle
+// `state.current` (bez překreslení panelu).
+function markCurrent() {
+  for (const el of document.querySelectorAll("#grid .tile, #film .ftile")) {
+    el.classList.toggle("current", el.dataset.file === state.current);
   }
 }
 
@@ -1599,6 +1619,16 @@ function setupGrid(grid) {
     const t = e.target.closest(".tile");
     if (t) clickFile(t.dataset.file, e);
     else if (!e.target.closest("details")) select(new Set(), null);
+  });
+
+  // Klávesnice: fokus dlaždice ji udělá aktuální bez změny výběru
+  // ani kotvy; při kliknutí přijde focusin před click a clickFile
+  // nastaví totéž.
+  grid.addEventListener("focusin", (e) => {
+    const t = e.target.closest(".tile");
+    if (!t || !state.order.includes(t.dataset.file)) return;
+    state.current = t.dataset.file;
+    markCurrent();
   });
 
   // Přesun do skupiny: tažení dlaždice na řádek skupiny v navigátoru.
@@ -2230,21 +2260,81 @@ function setLayout(layout) {
   }
 }
 
-// Šipky v lupě: další/předchozí soubor; se Shiftem rozšíří výběr od kotvy.
-function step(dir, extend) {
-  const i = state.order.indexOf(state.current);
-  const f = state.order[i < 0 ? 0 : i + dir];
+// Pohyb na soubor: bez Shiftu jediný vybraný s kotvou na něm, se
+// Shiftem rozsah od kotvy (bez platné kotvy se jí stane výchozí
+// soubor). V mřížce přesune fokus na dlaždici a posune ji; v lupě
+// pás posune `revealCurrent` přes `select` → `renderBig`.
+function moveTo(f, extend) {
   if (!f) return;
+  const vychozi = state.current;
   state.current = f;
   if (extend) {
     if (!state.order.includes(state.anchor)) {
-      state.anchor = state.order[Math.max(i, 0)];
+      state.anchor = state.order.includes(vychozi) ? vychozi : f;
     }
     select(new Set(range(state.anchor, f)), null);
   } else {
     state.anchor = f;
     select(new Set([f]), null);
   }
+  if (state.view === "grid") {
+    const el = document.querySelector(
+      `#grid .tile[data-file="${CSS.escape(f)}"]`);
+    el?.focus({ preventScroll: true });
+    el?.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// Obdélníky dlaždic mřížky v pořadí `state.order`; DOM pořadí mu
+// odpovídá (renderGrid), kdyby ne, mapujeme přes `data-file`.
+function tileRects() {
+  const els = [...document.querySelectorAll("#grid .tile")];
+  const inOrder = els.length === state.order.length &&
+    els.every((el, i) => el.dataset.file === state.order[i]);
+  const ordered = inOrder
+    ? els
+    : state.order.map((f) => els.find((el) => el.dataset.file === f))
+        .filter(Boolean);
+  return ordered.map((el) => el.getBoundingClientRect());
+}
+
+// Kolik souborů se vejde na šířku pásu lupy (PageUp/PageDown). Krok
+// dlaždice je rozestup dvou sousedních (šířka i s mezerou).
+function krokPasu() {
+  const film = document.getElementById("film");
+  const [a, b] = document.querySelectorAll("#film .fsec .ftile");
+  if (!film || !a) return 1;
+  const ra = a.getBoundingClientRect();
+  const rb = b?.getBoundingClientRect();
+  const krok = rb && rb.left > ra.left ? rb.left - ra.left : ra.width;
+  return naPas(film.clientWidth, krok);
+}
+
+// Cílový soubor klávesového pohybu; null když se má zůstat (prázdná
+// mřížka, vodorovný pohyb mimo rozsah). Bez aktuálního souboru
+// končí pohyb na prvním, End na posledním.
+function cilPohybu(k, loupe) {
+  const n = state.order.length;
+  if (!n) return null;
+  const i = state.order.indexOf(state.current);
+  let j;
+  if (i < 0) {
+    j = k.druh === "kraj" && k.smer > 0 ? n - 1 : 0;
+  } else if (k.druh === "vodorovne") {
+    j = i + k.smer;
+    if (j < 0 || j >= n) return null;
+  } else if (k.druh === "kraj") {
+    j = k.smer > 0 ? n - 1 : 0;
+  } else if (loupe) {
+    if (k.druh === "svisle") j = oddil(state.order, state.secOf, i, k.smer);
+    else j = Math.min(n - 1, Math.max(0, i + k.smer * krokPasu()));
+  } else if (k.druh === "svisle") {
+    j = radek(tileRects(), i, k.smer);
+  } else {
+    j = stranka(tileRects(), i, k.smer,
+      document.getElementById("grid").clientHeight);
+  }
+  return state.order[j];
 }
 
 function filmTile(f, markOf) {

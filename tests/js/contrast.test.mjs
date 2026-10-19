@@ -83,6 +83,8 @@ const GRAPHIC = [
   ["--accent", "--surface"], ["--accent", "--stage"],
   ["--accent", "--tile-surface"], ["--focus", "--bg"],
   ["--loupe-current", "--loupe-surface"],
+  ["--current", "--tile-surface"], ["--current", "--selected"],
+  ["--current", "--stage"],
 ];
 const PEOPLE = [0, 1, 2, 3, 4, 5, 6, 7].map((i) => `--p${i}`);
 
