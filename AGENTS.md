@@ -48,6 +48,9 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv migrovat --archiv … --work .work
 # → převede _metadata.json ze schématu /1 na /2 (bez autorů akce);
 #   bez --zapis-do-archivu jen výpis, spouštět při zastaveném serveru
+.venv/bin/python -m fotoarchiv vysypat --archiv … --work .work
+# → vypíše koš smazaných akcí; s --zapis-do-archivu trvale smaže akce
+#   po 7denní lhůtě a jejich alba v Immichi (server to dělá denně sám)
 .venv/bin/python -m fotoarchiv zkontrolovat [AKCE] --archiv … --work .work
 # → kontrola poškozených souborů + nálezy konzistence akcí;
 #   --rychle jen konzistence, --zapis-do-archivu i náprava přesuny
@@ -93,9 +96,9 @@ poruší:
 - **Do Immiche zapisuje jen nástroj pojmenování** (`naming.py`
   a endpointy `/api/akce/<nazev>/osoby…`: jméno, skrytí, sloučení vždy
   jedné osoby), **dokončení a synchronizace** (`albums.py`: alba akcí
-  se jen doplňují a odebírají z nich assety, nikdy se nemaže album ani
-  asset; sken knihovny jen hlídač po dokončení, ne pravidelná
-  synchronizace). Zapisuje se i ve vývojovém režimu, testy jen proti
+  se jen doplňují a odebírají z nich assety, nikdy se nemaže asset;
+  album smaže jen vysypání koše u trvale smazané akce; sken knihovny
+  jen hlídač po dokončení, ne pravidelná synchronizace). Zapisuje se i ve vývojovém režimu, testy jen proti
   `FakeImmich`. Nástroj smí archivář a admin (`g.user["archivar"]`,
   ne `ADMIN_PREFIXES`), bez zámku akce a nikdy nemění `_metadata.json`.
   Stav nástroje a Immiche je jen ve `.work/`: `immich-alba.json` (akce →
@@ -130,6 +133,11 @@ poruší:
   `Workspace.event_dir`, nikdy `archiv / název` přímo. Obě složky
   zároveň = kolize, nic se nepřesouvá.
 - Přesun souborů nikdy nepřepíše existující soubor.
+- **Jediné trvalé mazání je vysypání koše** (`trash.py`). Smazání akce
+  (jen admin) ji přesune do `_kos.ignored/<ID>/` se záznamem
+  `_smazano.json`, který nese i její stav vyjmutý z `.work`; obnovení
+  ho vrátí. Vysypání po 7 dnech rozhoduje jen podle času v záznamu,
+  složku bez platného záznamu nikdy nesmaže.
 - Formát XMP: co Immich nemá vlastní pole, jde do tagů podle konvencí
   `arubrno/archiv-immich` (viz docs/navrh/vystupy.md).
 - Datum u WhatsApp fotek (`IMG-YYYYMMDD-WA*`) jen z názvu souboru, EXIF

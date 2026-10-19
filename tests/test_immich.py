@@ -195,6 +195,9 @@ class FakeImmich:
                 return None
             if rest not in self.albums:
                 raise immich.ImmichError(f"HTTP 404 {url}", status=404)
+            if method == "DELETE":
+                del self.albums[rest]
+                return None
             return self._album(self.albums[rest])
         if parts.path == "/api/libraries":
             if self.no_admin:
@@ -307,6 +310,7 @@ def test_connection_read_only_key_warns_but_passes(setup):
     assert r.status_code == 200 and r.json["ok"] is True
     assert "person.update" in r.json["chybi"]
     assert "album.create" in r.json["chybi"]
+    assert "album.delete" in r.json["chybi"]
     assert "person.read" not in r.json["chybi"]
     assert len(r.json["varovani"]) == 1
     assert "Čtení osob a obličejů funguje" in r.json["varovani"][0]

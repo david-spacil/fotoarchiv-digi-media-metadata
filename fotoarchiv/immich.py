@@ -36,11 +36,12 @@ HLIDAC_LIMIT = 60 * 60
 # Fronty, které musí stát, než lze ohlásit „obličeje rozpoznány“.
 FRONTY_ML = ("faceDetection", "facialRecognition")
 
-# Oprávnění klíče pro alba akcí, sken knihovny, stav rozpoznávání
-# a nástroj pojmenování (klíč s `all` má vše).
+# Oprávnění klíče pro alba akcí (i smazání alba akce vysypané z koše),
+# sken knihovny, stav rozpoznávání a nástroj pojmenování (klíč s `all`
+# má vše).
 OPRAVNENI = ("person.read", "asset.read", "face.read", "asset.view",
              "person.update", "person.merge", "album.read", "album.create",
-             "albumAsset.create", "albumAsset.delete", "library.read",
+             "album.delete", "albumAsset.create", "albumAsset.delete", "library.read",
              "library.update", "queue.read")
 
 log = logging.getLogger(__name__)
@@ -212,6 +213,10 @@ class Client:
     def create_album(self, name, asset_ids):
         return self._call("POST", "/api/albums",
                           {"albumName": name, "assetIds": list(asset_ids)})
+
+    def delete_album(self, album_id):
+        """Smaže album (assety zůstanou); jen pro vysypání koše."""
+        return self._call("DELETE", f"/api/albums/{album_id}")
 
     def add_album_assets(self, album_id, asset_ids):
         return self._call("PUT", f"/api/albums/{album_id}/assets",
