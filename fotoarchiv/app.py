@@ -987,6 +987,18 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             return refused(e, 400 if e.code == "neplatna_volba" else 409)
         return {"povolene": povolene}
 
+    @app.post("/api/import/<id>/vyloucene")
+    def import_excluded(id):
+        """Cesty, které uživatel vyloučil z importu (jen z výběru)."""
+        body = request.get_json(force=True)
+        jmeno = owner(body)
+        check_import(id, jmeno)
+        try:
+            vyloucene = imports.set_excluded(id, jmeno, body.get("vyloucene"))
+        except importer.Refused as e:
+            return refused(e, 400 if e.code == "neplatna_volba" else 409)
+        return {"vyloucene": vyloucene}
+
     @app.delete("/api/import/<id>/soubor")
     def import_delete_damaged(id):
         """Smaže poškozený soubor importu (jen po kontrole, nezměněný).

@@ -9,8 +9,9 @@
   spotřebuje): soubor, který od plánu ze zdroje zmizel, je selhaný,
   změněný blokovaný a přibylý se nepřesune a výsledek ho uvede zvlášť.
   Přesun nepřepíše existující soubor; přesun na jiný svazek je
-  selhání souboru. Duplicity, blokované, poškozené a nepodporované
-  soubory zůstanou ve zdroji. Kontrola přečte každý soubor zdroje
+  selhání souboru. Duplicity, blokované, poškozené, vyloučené a
+  nepodporované soubory zůstanou ve zdroji, stránka Přetřídit složku
+  dál nabízí. Kontrola přečte každý soubor zdroje
   jednou a tentýž průchod uloží sha256 do `.work/cache/sha256/`, takže
   plán zdroj znovu nečte; jinak by se sha256 počítal jen u souborů,
   jejichž velikost má soubor v kořeni cílové akce nebo jiný soubor

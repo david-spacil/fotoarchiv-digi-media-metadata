@@ -54,6 +54,7 @@ OK = "ok"
 DUPLICATE = "duplicita"
 DAMAGED = "poskozeny"     # poškozený soubor (kontrola), nepřenáší se
 NO_LOCATION = "bez_polohy"  # telefon odebral polohu, nepřenáší se, nelze povolit
+EXCLUDED = "vylouceny"    # uživatel vyloučil z importu, nepřenáší se
 
 
 class Refused(Exception):
@@ -373,11 +374,13 @@ def prune_source(path):
     return True
 
 
-def plan(event_dir, entries, sha_cache=None, damaged=None):
-    return _drain(iter_plan(event_dir, entries, sha_cache, damaged))
+def plan(event_dir, entries, sha_cache=None, damaged=None, excluded=None):
+    return _drain(iter_plan(event_dir, entries, sha_cache, damaged,
+                            excluded))
 
 
-def iter_plan(event_dir, entries, sha_cache=None, damaged=None):
+def iter_plan(event_dir, entries, sha_cache=None, damaged=None,
+              excluded=None):
     """Plán importu souborů `entries` (záznamy z `import.json`); generátor
     průběhu porovnání (`iter_root_hashes`), plán vrátí.
 
@@ -388,8 +391,12 @@ def iter_plan(event_dir, entries, sha_cache=None, damaged=None):
     `damaged` = {cesta: výsledek} souborů, které se nepřenesou
     (stav `poskozeny`, `poskozeni` = podezrely / necitelny / bez_polohy
     — fotce s odebranou polohou nepomůže ani povolení).
+    `excluded` = cesty, které uživatel vyloučil z importu: soubor, který
+    by se přenesl, dostane stav `vylouceny` až po určení duplicit a kolizí
+    jmen, takže vyloučení nemění, co je duplicita nebo blokované.
     """
     damaged = damaged or {}
+    excluded = excluded or set()
     entries = sorted((e for e in entries if not is_skipped(e["nazev"])),
                      key=lambda e: e["cesta"])
     supported = [e for e in entries if kind(e["nazev"]) != "nepodporovany"]
@@ -432,6 +439,10 @@ def iter_plan(event_dir, entries, sha_cache=None, damaged=None):
                      duvod="stejné jméno má jiný soubor výběru")
         elif name in (raw if in_raw else root):
             o.update(blocked=True, stav=BLOCKED, duvod="cíl už existuje")
+    for o in ops:
+        if o["stav"] == OK and o["z"] in excluded:
+            o.update(blocked=True, stav=EXCLUDED,
+                     duvod="vyloučeno z importu")
     return {
         "operace": ops,
         "nepodporovane": [e["cesta"] for e in entries
@@ -802,7 +813,8 @@ def move_from_source(entry, event_dir, dst):
     return _move(entry["zdroj"], event_dir, dst)
 
 
-def execute(event_dir, entries, transfer, sha_cache=None, damaged=None):
+def execute(event_dir, entries, transfer, sha_cache=None, damaged=None,
+            excluded=None):
     """Sestaví plán znovu a přenese jeho neblokované soubory.
 
     `transfer(záznam, akce, cíl)` = generátor přenosu (`copy_from`,
@@ -814,17 +826,19 @@ def execute(event_dir, entries, transfer, sha_cache=None, damaged=None):
     staré dočasné soubory). Selhání jednoho souboru ostatní nezastaví.
     Záznam s `po_planu` (zdroj: `zmizel` / `zmenil` od plánu) skončí
     jako chyba / blokovaný bez přenosu. Poškozené (`damaged`, viz
-    `iter_plan`) se nepřenesou a zůstanou ve stavu `poskozeny`.
+    `iter_plan`) se nepřenesou a zůstanou ve stavu `poskozeny`, vyloučené
+    (`excluded`) ve stavu `vylouceny`.
     """
     removed = purge_tmp(event_dir)
-    result = yield from iter_plan(event_dir, entries, sha_cache, damaged)
+    result = yield from iter_plan(event_dir, entries, sha_cache, damaged,
+                                  excluded)
     by_path = {e["cesta"]: e for e in entries}
     todo = [o for o in result["operace"] if not o["blocked"]]
     yield {"typ": "start", "souboru": len(todo),
            "bajtu": sum(o["velikost"] for o in todo)}
     for o in result["operace"]:
         o["chyba"] = None
-        if o["stav"] not in (DUPLICATE, DAMAGED):
+        if o["stav"] not in (DUPLICATE, DAMAGED, EXCLUDED):
             entry = by_path[o["z"]]
             try:
                 if entry.get("po_planu") == "zmizel":
@@ -1058,6 +1072,25 @@ class Imports:
             record["aktivita"] = self.clock()
             self._write(self.dir(id), record)
         return record["povolene_poskozene"]
+
+    def set_excluded(self, id, jmeno, vyloucene):
+        """Uloží cesty, které uživatel vyloučil z importu (`vyloucene`);
+        cesty mimo výběr importu zahodí. Během provedení odmítne."""
+        if not isinstance(vyloucene, list) or \
+                not all(isinstance(c, str) for c in vyloucene):
+            raise Refused("neplatna_volba")
+        with self._mutex:
+            self.check_idle(id)
+            record = self.get(id, jmeno)
+            known = {e["cesta"] for e in self.entries(record)}
+            record["vyloucene"] = sorted(set(vyloucene) & known)
+            record["aktivita"] = self.clock()
+            self._write(self.dir(id), record)
+        return record["vyloucene"]
+
+    @staticmethod
+    def _excluded(record):
+        return set(record.get("vyloucene") or [])
 
     def delete_damaged(self, id, jmeno, cesta):
         """Smaže poškozený soubor importu: nahraný z pracovního adresáře,
@@ -1324,6 +1357,7 @@ class Imports:
             "popis": record.get("popis"),
             "zdroj": record.get("zdroj"),
             "povolene_poskozene": record.get("povolene_poskozene") or [],
+            "vyloucene": record.get("vyloucene") or [],
             "jinde": self.activity(id, relace),
         }
 
@@ -1354,8 +1388,10 @@ class Imports:
     def defaults(self, id, jmeno, existing, volba):
         """Výchozí rozdělení médií posledního plánu podle `volba`
         (`group_plan` se `shody`) a `soubory` = ta média (název, cesta,
-        datum, přístroj). Volbu a id skupin cíle (`existujici`) uloží,
-        plán nepočítá znovu; bez plánu Refused `bez_planu`."""
+        datum, přístroj), včetně vyloučených. `raw` = cesty RAWů plánu
+        (párování s fotkou při vyloučení), `vyloucene` = uložené vyloučené
+        cesty. Volbu a id skupin cíle (`existujici`) uloží, plán nepočítá
+        znovu; bez plánu Refused `bez_planu`."""
         with self._mutex:
             record = self.get(id, jmeno)
             if record.get("plan_ok") is None:
@@ -1377,6 +1413,10 @@ class Imports:
              "video": kind(e["nazev"]) == "video"}
             for e in sorted(entries, key=lambda e: e["cesta"])
             if e["cesta"] in chosen and kind(e["nazev"]) in ("foto", "video")]
+        groups["raw"] = sorted(e["cesta"] for e in entries
+                               if e["cesta"] in chosen
+                               and kind(e["nazev"]) == "raw")
+        groups["vyloucene"] = record.get("vyloucene") or []
         return groups
 
     def file_path(self, id, jmeno, cesta):
@@ -1399,8 +1439,9 @@ class Imports:
 
     def plan(self, id, jmeno, event_dir):
         """Generátor průběhu porovnání, nakonec událost `plan`. Cesty
-        přenositelných souborů uloží (`plan_ok`) pro výchozí rozdělení
-        do skupin (`defaults`)."""
+        přenositelných souborů uloží (`plan_ok`, i vyloučené, ať je jde
+        v kroku skupin vrátit) pro výchozí rozdělení do skupin
+        (`defaults`)."""
         record = self.get(id, jmeno)
         # Kontrola před hashy: u zdroje spočítá sha256 do cache, změněné
         # soubory od kontroly přečte znovu.
@@ -1412,11 +1453,12 @@ class Imports:
             self._set_snapshot(id, jmeno, self._snapshot(entries))
         result = yield from iter_plan(event_dir, entries,
                                       self.sha_cache(event_dir),
-                                      self._blocked(id, record, checked))
+                                      self._blocked(id, record, checked),
+                                      self._excluded(record))
         with self._mutex:
             record = self.get(id, jmeno)
             record["plan_ok"] = [o["z"] for o in result["operace"]
-                                 if o["stav"] == OK]
+                                 if o["stav"] in (OK, EXCLUDED)]
             self._write(self.dir(id), record)
         yield dict(result, typ="plan")
 
@@ -1454,7 +1496,8 @@ class Imports:
             transfer = move_from_source if folder else copy_from(path)
             for event in execute(event_dir, entries, transfer,
                                  self.sha_cache(event_dir),
-                                 self._blocked(id, record, checked)):
+                                 self._blocked(id, record, checked),
+                                 self._excluded(record)):
                 if event["typ"] == "soubor" and \
                         event["operace"]["stav"] == DONE and not folder:
                     self._moved(id, jmeno, by_path[event["operace"]["z"]])

@@ -945,6 +945,22 @@ def test_import_owner_from_login(login_app):
     assert admin.get(f"/api/import/{id}").json["pocty"] == {"foto": 1}
 
 
+def test_import_excluded_owner_from_login(login_app):
+    app, _ = login_app
+    admin = logged_in(app, "prikladny")
+    id = admin.post("/api/import", json={}).json["id"]
+    admin.post(f"/api/import/{id}/soubor", data=b"a",
+               query_string={"cesta": "a.jpg", "mtime": 1})
+    # Jméno z těla se ignoruje, platí relace.
+    r = admin.post(f"/api/import/{id}/vyloucene", json={
+        "jmeno": "Podvržené, Jméno", "vyloucene": ["a.jpg"]})
+    assert r.status_code == 200 and r.json == {"vyloucene": ["a.jpg"]}
+    user = logged_in(app, "modelova")
+    assert user.post(f"/api/import/{id}/vyloucene", json={
+        "jmeno": "Příkladný, Daniel", "vyloucene": []}).status_code == 404
+    assert admin.get(f"/api/import/{id}").json["vyloucene"] == ["a.jpg"]
+
+
 def test_import_new_event_writes_editors(login_app):
     app, archiv = login_app
     user = logged_in(app, "modelova")
