@@ -18,6 +18,7 @@ import {
 import { icon } from "./icons.js";
 import { immichStav } from "./immichstav.js";
 import { showNaming } from "./naming.js";
+import { osmUrl } from "./osm.js";
 import { klavesa, naPas, oddil, radek, stranka } from "./pohyb.js";
 import {
   applyToggle, excludedCounts, importCount, planToggle, withExcluded,
@@ -2688,6 +2689,15 @@ function editor(type, value, placeholder, update, inheritedValue) {
 
 const OSM = "© OpenStreetMap contributors";
 
+// Odkaz na objekt OSM, ze kterého jsou souřadnice; neplatné `osm` → null.
+// Nová karta, aby neuložené úpravy plochy zůstaly.
+function osmLink(osm) {
+  const href = osmUrl(osm);
+  return href && h("a", { href, target: "_blank",
+    rel: "noopener noreferrer", class: "osm",
+    title: `Objekt na OpenStreetMap (${osm})` }, "OSM");
+}
+
 // Soubor nemá vlastní ani zděděné GPS (GPS z místa se nepočítá).
 function withoutGps(f) {
   const gps = resolve(state.doc, f).gps;
@@ -2739,9 +2749,11 @@ function placeBlock(misto, box) {
   } else if (decision === null) {
     body.append(h("p", { class: "meta" }, "Bez souřadnic."), open);
   } else {
+    const link = osmLink(decision.osm);
     body.append(h("p", { class: "meta" },
       `${decision.gps.join(", ")}`,
-      decision.popis ? h("br") : null, decision.popis || null), open);
+      decision.popis ? h("br") : null, decision.popis || null,
+      link ? " " : null, link), open);
   }
   return fs;
 }
@@ -2833,11 +2845,15 @@ function placeChooser(misto, rerender) {
     list.replaceChildren(...[
       found.length ? null : h("p", { class: "meta" },
         "Služba místo nenašla – zadejte souřadnice ručně."),
-      ...found.map((k, i) => h("label", { class: "candidate" },
-        h("input", { type: "radio", name, value: String(i),
-          checked: i === pre }),
-        h("span", {}, h("b", {}, k.nazev), " ", k.popis,
-          h("span", { class: "meta" }, ` (${k.gps.join(", ")})`)))),
+      ...found.map((k, i) => {
+        const link = osmLink(k.osm);
+        return h("label", { class: "candidate" },
+          h("input", { type: "radio", name, value: String(i),
+            checked: i === pre }),
+          h("span", {}, h("b", {}, k.nazev), " ", k.popis,
+            h("span", { class: "meta" }, ` (${k.gps.join(", ")})`),
+            link ? " " : null, link));
+      }),
       found.length ? h("p", { class: "meta attribution" }, OSM) : null,
     ].filter(Boolean));
     if (!found.length) manual.focus();

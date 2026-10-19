@@ -64,6 +64,14 @@ def test_second_query_from_cache(tmp_path):
     assert list(stored) == ["holštejn"]
 
 
+def test_candidate_without_osm_object():
+    item = {k: v for k, v in HOLSTEJN.items()
+            if k not in ("osm_type", "osm_id")}
+    assert "osm" not in geocode.candidate(item)
+    assert "osm" not in geocode.candidate({**HOLSTEJN, "osm_id": None})
+    assert geocode.candidate(HOLSTEJN)["osm"] == "relation/439179"
+
+
 def test_interval_between_queries(tmp_path):
     service = FakeService()
     g = geocoder(tmp_path, service)

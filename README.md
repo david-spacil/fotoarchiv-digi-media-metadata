@@ -144,7 +144,7 @@ automaticky podle přístroje a vzoru názvu, uživatel je může upravit.
   "souradnice_mist": {
     "Vzorov": {"gps": [49.12, 16.58],
                "popis": "Vzorov, okres Vzorový, …",
-                 "osm": "relation/…"},
+               "osm": "relation/…"},
     "u rybníka": null
   },
   "skupiny": {
@@ -194,7 +194,11 @@ automaticky podle přístroje a vzoru názvu, uživatel je může upravit.
   `misto`. Jediné místo akce se na fotky dědí; při víc místech se místo
   doplňuje u skupiny nebo fotky (návrhy z míst akce).
 - **Souřadnice míst (`souradnice_mist`)** jsou rozhodnutí pro akci:
-  přesný název `misto` → `{gps, popis}`, nebo `null` = „bez souřadnic“.
+  přesný název `misto` → `{gps, popis[, osm]}`, nebo `null` = „bez
+  souřadnic“. `osm` (např. `relation/439179`) je objekt OpenStreetMap,
+  ze kterého souřadnice pocházejí; ukládá ho jen volba kandidáta
+  z Nominatimu, slouží k ověření zdroje (rozlišení stejnojmenných míst)
+  a nejde do sidecarů ani indexu.
   Nedědí se, platí pro všechny fotky akce s tím místem. Výsledné `gps`
   fotky je vlastní nebo zděděné `gps`, jinak souřadnice jejího místa
   (úroveň `misto`); k souboru se neukládají a GPS z EXIF nepřepisují.
@@ -203,8 +207,9 @@ automaticky podle přístroje a vzoru názvu, uživatel je může upravit.
   akcemi, smazatelné). User-Agent nese kontakt provozovatele, který
   nastavuje admin v Nastavení (jeden pro server, předvyplní se jeho
   e-mail); bez kontaktu je geokódování vypnuté. Předvybraný je kandidát nejbližší fotkám akce
-  s GPS; potvrzuje ho uživatel. Přejmenování místa rozhodnutí
-  nepřenese.
+  s GPS; potvrzuje ho uživatel. Každý kandidát i uložené místo s `osm`
+  má odkaz „OSM“ na objekt na openstreetmap.org (otevře se v nové
+  kartě). Přejmenování místa rozhodnutí nepřenese.
 - **Autorů může být víc.** `autori` znamená „fotil někdo z uvedených“;
   zpětně se nedá zjistit, kdo kdy držel foťák.
 - Údaje z EXIF (datum, přístroj, GPS) zapisuje průvodce, u WhatsAppu

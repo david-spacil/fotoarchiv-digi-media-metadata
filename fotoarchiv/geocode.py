@@ -56,13 +56,16 @@ def fetch_nominatim(query, user_agent):
 
 
 def candidate(item):
-    return {
+    """`osm` (objekt, ze kterého souřadnice jsou) jen s typem i id."""
+    result = {
         "nazev": item.get("name") or item["display_name"].split(",")[0],
         "popis": item["display_name"],
         "gps": [float(item["lat"]), float(item["lon"])],
-        "osm": f"{item.get('osm_type')}/{item.get('osm_id')}",
-        "typ": item.get("addresstype") or item.get("type"),
     }
+    if item.get("osm_type") and item.get("osm_id"):
+        result["osm"] = f"{item['osm_type']}/{item['osm_id']}"
+    result["typ"] = item.get("addresstype") or item.get("type")
+    return result
 
 
 class Contact:
