@@ -23,13 +23,15 @@
   pro přímé potomky koše, záznam se maže poslední, log. Ověřit testy
   s podvrženým časem: 6 dní zůstane, 8 dní zmizí, složka bez záznamu
   zůstane, symlink ven se nesmaže.
-- [ ] 2.2 Úklid `.work` po vysypání (cache, kontrola, export,
-  `immich-alba.json`, `immich-osoby.json`, `pojmenovani.json`), který
-  se vynechá, existuje-li akce stejného názvu. Ověřit testy obou
-  případů.
-- [ ] 2.3 `albums.py`: smazání alba podle ID ze záznamu přes klient
-  Immiche; vazba se odstraní jen po úspěchu; test připojení hlásí
-  `album.delete`. Ověřit testy proti `FakeImmich` (úspěch, chyba
+- [ ] 2.2 Stav `.work` putuje se záznamem: smazání vyjme položky
+  `immich-alba.json`, `immich-osoby.json`, `pojmenovani.json` a záznam
+  exportu do `_smazano.json` (cache kontroly a návrh importu zahodí),
+  obnovení je vrátí; vysypání smaže náhledy souborů z cache. Ověřit
+  testy: nová akce stejného názvu po smazání nemá vazbu na album,
+  obnovení vrátí stav, vysypání smaže náhledy.
+- [ ] 2.3 `albums.py`: fronta alb ke smazání `.work/kos-alba.json`,
+  smazání alba podle ID přes klient Immiche (úspěch nebo 404 odebere
+  z fronty); test připojení hlásí `album.delete`. Ověřit testy proti `FakeImmich` (úspěch, chyba
   Immiche ponechá vazbu a další běh smaže album, synchronizace album
   akce v koši nemění).
 - [ ] 2.4 Denní vlákno v serveru (start + 24 h, nic ve vývojovém režimu)

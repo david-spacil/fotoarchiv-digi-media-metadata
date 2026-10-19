@@ -45,9 +45,24 @@ přesto použije pravidlo „nikdy nepřepsat“ (cíl nesmí existovat).
 
 ### Záznam `_smazano.json` uvnitř složky v koši
 Obsah: `nazev`, `slozka` (původní název složky včetně `.ignored`),
-`smazal` (jméno z relace), `smazano` (ISO čas), `duvod`, verze schématu.
+`smazal` (jméno z relace), `smazano` (ISO čas), `duvod`, verze schématu
+a `stav` = stav akce vyjmutý z `.work` (položky z `immich-alba.json`,
+`immich-osoby.json`, `pojmenovani.json` po loginech a záznam exportu).
 Zapisuje se atomicky **do složky akce před přesunem**; selže-li
-přesun, záznam se smaže a akce zůstane beze změny. Záznam ve složce
+přesun, záznam se smaže a akce zůstane beze změny. Stav se z `.work`
+odebere až po úspěšném přesunu.
+
+### Stav `.work` putuje se záznamem
+`.work` je klíčovaný názvem akce. Kdyby stav zůstal ve `.work`, nová
+akce stejného názvu by převzala vazbu na album smazané akce:
+synchronizace by do starého alba doplnila nové fotky a vysypání by
+smazalo album, které už patří nové akci. Proto smazání stav vyjme do
+záznamu a obnovení ho vrátí (obnovení se odmítne, je-li název obsazený,
+takže nic nepřepíše). Cache kontroly a návrh skupin z importu se při
+smazání zahodí — jde o cache, která se znovu vytvoří.
+*Alternativa:* nechat stav ve `.work` a jen vynechat úklid při
+existující akci stejného názvu — neřeší sloučení alb během pobytu
+v koši. Záznam ve složce
 akce v kořeni archivu je mezistav jen na dobu operace pod zámkem.
 O vysypání rozhoduje výhradně `smazano` v záznamu — ne ID, ne mtime;
 složka bez čitelného záznamu se nikdy nesmaže a stránka Koš ji ukáže
@@ -59,9 +74,8 @@ a hrozilo by mazání naslepo nebo věčné ležení.
 Vrací se `slozka` ze záznamu: nedokončená akce zůstane skrytá před
 Immichem, dokončená se vrátí bez přípony a Immich ji při skenu najde
 na stejné cestě. Kontrola obsazenosti porovnává název akce s příponou
-i bez (jako kolize přípony). `.work` akce (cache, export, stav alba) se
-během pobytu v koši nemaže, takže obnova je úplná včetně vazby na
-album.
+i bez (jako kolize přípony). Stav ze záznamu se vrátí do `.work`, takže
+obnova je úplná včetně vazby na album.
 
 ### Vysypání v serveru i příkazem
 Server spustí vysypání při startu a pak jednou za 24 h ve vlastním
@@ -73,15 +87,15 @@ Mazání složky: `shutil.rmtree` jen pod `_kos.ignored`, s ověřením, že
 cesta je přímý potomek koše (žádné symlinky ven).
 
 ### Pořadí při vysypání
-1. smazat album v Immichi (je-li vazba a Immich nastaven),
-2. smazat složku z koše,
-3. uklidit `.work` akce — ale vazbu na album jen, když se album
-   smazalo (jinak zůstane a další vysypání smazání alba zopakuje i bez
-   složky).
-`.work` je klíčovaný názvem akce; pokud mezitím vznikla nová akce
-stejného názvu, úklid `.work` se **vynechá** (patří nové akci)
-a smazání alba se provede jen podle vazby, kterou záznam zachytil
-v okamžiku smazání (`album` ID v `_smazano.json`), ne podle názvu.
+1. album ze záznamu zapsat do `.work/kos-alba.json` (fronta alb ke
+   smazání), aby přežilo smazání složky,
+2. smazat náhledy souborů z cache (klíč náhledu je z cesty, velikosti
+   a mtime; cesta = původní `slozka`, přesun mtime nemění),
+3. smazat složku z koše (záznam jako poslední),
+4. zkusit smazat alba z fronty; úspěch nebo 404 je z fronty odebere,
+   jiná chyba je tam nechá do dalšího vysypání.
+`.work` akce stejného názvu se nemění: stav smazané akce je jen
+v záznamu.
 
 ### Smazání alba = výjimka v `albums.py`
 Nová funkce smazání alba podle ID; synchronizace ani udržování alba

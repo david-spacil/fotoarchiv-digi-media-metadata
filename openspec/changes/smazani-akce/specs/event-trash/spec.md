@@ -48,10 +48,12 @@ zapsáno do logu serveru (akce, ID v koši, kdo, důvod).
 ### Requirement: Záznam o smazání
 Smazání SHALL do složky akce v koši zapsat záznam `_smazano.json`
 s názvem akce, původním názvem složky (včetně případné přípony
-`.ignored`), jménem admina z relace, časem smazání, důvodem a ID alba
-v Immichi, má-li ho akce. Záznam
-MUST vzniknout před přesunem; nepovede-li se zapsat, složka MUST zůstat
-na místě. Jméno MUST pocházet z relace, ne z požadavku.
+`.ignored`), jménem admina z relace, časem smazání, důvodem a stavem
+akce z pracovního adresáře (vazba na album, stav v Immichi, počty osob,
+záznam exportu, odložené osoby). Ten se z pracovního adresáře SHALL
+odebrat. Záznam MUST vzniknout před přesunem; nepovede-li se přesun,
+akce i pracovní adresář MUST zůstat beze změny. Jméno MUST pocházet
+z relace, ne z požadavku.
 
 #### Scenario: Obsah záznamu
 - **WHEN** admin `Novák, Jan` smaže akci se složkou
@@ -59,6 +61,12 @@ na místě. Jméno MUST pocházet z relace, ne z požadavku.
 - **THEN** `_smazano.json` v koši uvádí název
   `2026-04-28 kontrola Stezky`, složku
   `2026-04-28 kontrola Stezky.ignored`, `Novák, Jan`, čas a `duplicita`
+
+#### Scenario: Stav akce přejde do záznamu
+- **WHEN** admin smaže dokončenou akci s albem v Immichi a pak import
+  vytvoří novou akci stejného názvu
+- **THEN** nová akce nemá vazbu na album ani stav v Immichi a záznam
+  v koši vazbu na původní album drží
 
 #### Scenario: Jméno v požadavku
 - **WHEN** požadavek na smazání obsahuje jiné jméno, než má relace
@@ -126,7 +134,8 @@ Složka v koši bez platného záznamu SHALL být uvedena jako neznámá.
 ### Requirement: Obnovení akce
 Admin SHALL moci akci z koše obnovit: složka se přesune zpět do kořene
 archivu pod původní název složky ze záznamu (s příponou `.ignored`
-nebo bez ní) a záznam `_smazano.json` se odstraní. Existuje-li v kořeni
+nebo bez ní), stav akce ze záznamu se vrátí do pracovního adresáře
+a záznam `_smazano.json` se odstraní. Existuje-li v kořeni
 akce stejného názvu (s příponou i bez ní), MUST obnovení odmítnout
 a nic nepřesunout. Obnovení SHALL být zapsáno do logu serveru.
 
@@ -135,6 +144,11 @@ a nic nepřesunout. Obnovení SHALL být zapsáno do logu serveru.
   ze složky `2026-04-28 kontrola Stezky.ignored`
 - **THEN** archiv obsahuje `2026-04-28 kontrola Stezky.ignored`
   s původním obsahem a `_metadata.json` a seznam akcí ji uvádí
+
+#### Scenario: Obnovení dokončené akce
+- **WHEN** admin obnoví dokončenou akci s albem v Immichi
+- **THEN** akce má znovu vazbu na album, stav v Immichi a záznam
+  exportu jako před smazáním
 
 #### Scenario: Název je obsazený
 - **WHEN** admin obnovuje akci `2026-04-28 kontrola Stezky` a v archivu
@@ -173,12 +187,11 @@ MUST archiv nechat beze změny.
 
 ### Requirement: Úklid po vysypání
 Trvalé smazání akce SHALL odstranit i její album v Immichi (viz
-`immich-people`) a stav akce v pracovním adresáři: cache náhledů
-a kontroly, záznam exportu, stav alba a osob a odložené osoby
-nástroje pojmenování. Album SHALL určit podle ID ze záznamu. Selže-li
-smazání alba, SHALL složka přesto zmizet, chyba SHALL být v logu
-a vazba na album MUST zůstat pro opakování. Existuje-li v archivu
-akce stejného názvu, MUST NOT úklid měnit její stav.
+`immich-people`) podle vazby ze záznamu a náhledy jejích souborů
+v cache. Selže-li smazání alba, SHALL složka přesto zmizet, chyba
+SHALL být v logu a album SHALL zůstat v pracovním adresáři ke
+smazání při dalším vysypání. Stav akce stejného názvu v archivu MUST
+NOT vysypání měnit.
 
 #### Scenario: Akce s albem
 - **WHEN** vysypání trvale smaže dokončenou akci s albem v Immichi
