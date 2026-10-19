@@ -34,7 +34,8 @@ je nezavádí, v produkci nevyplněné).
 - Import přestane přenášet autory akce do `_metadata.json` i do návrhu
   skupin v pracovním adresáři.
 - Formulář skupiny přestane nabízet pole datum od / datum do.
-- README: datový model, průvodce, import a nasazení (spustit migraci).
+- Dokumentace: datový model (`README.md`), průvodce a import
+  (`docs/navod/`), příkazy a nasazení (`docs/provoz/`).
 
 ## Capabilities
 
@@ -65,4 +66,4 @@ je nezavádí, v produkci nevyplněné).
   `test_xmp.py`, `tests/js/*.test.mjs`, fixtury
   `tests/fixtures/inheritance/`.
 - Provoz: po nasazení jednorázově spustit `migrovat
-  --zapis-do-archivu` při zastaveném serveru (README, Docker).
+  --zapis-do-archivu` při zastaveném serveru (`docs/provoz/docker.md`).

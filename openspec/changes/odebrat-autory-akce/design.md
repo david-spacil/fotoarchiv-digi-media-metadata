@@ -119,7 +119,7 @@ dědily). Ostatní vypuštěné klíče se do sidecarů nedostanou. Pravidlo:
 
 Převod při načtení na serveru záznam o exportu nemění (jeho první
 uložení akci označí jako změněnou). To je očekávaný stav, proto
-README říká spustit `migrovat` hned po nasazení.
+`docs/provoz/docker.md` říká spustit `migrovat` hned po nasazení.
 
 ### Přechodná data importu
 
@@ -146,7 +146,7 @@ skupina už nemůže autory dědit z akce.
   nebo ručně přepsat `schema` na `/1`. Obsah `/2` je podmnožinou `/1`,
   takže stará verze ho jinak přečte.
 - [Externí čtenáři `_metadata.json` kontrolují `/1`] → v repozitáři
-  žádní nejsou, změna verze je uvedená v README.
+  žádní nejsou, změna verze je uvedená v `README.md` (Datový model).
 
 ## Migration Plan
 
