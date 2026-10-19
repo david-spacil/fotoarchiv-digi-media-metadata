@@ -5,7 +5,8 @@ context: |
   All artifacts must be written in cs.
   Keep OpenSpec structural headings and SHALL/MUST keywords in English.
   Wrap lines in repository files at ~80 characters.
-  Project specification and design decisions: README.md.
+  Project specification and design decisions: README.md and docs/
+  (index docs/README.md).
   Design invariants for agents: AGENTS.md.
 
 # Per-artifact rules (optional)
