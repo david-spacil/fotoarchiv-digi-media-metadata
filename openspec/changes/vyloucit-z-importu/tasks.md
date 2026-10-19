@@ -1,17 +1,17 @@
 ## 1. Server: seznam vyloučených a plán
 
-- [ ] 1.1 `Imports.set_excluded` + `POST /api/import/<id>/vyloucene`
+- [x] 1.1 `Imports.set_excluded` + `POST /api/import/<id>/vyloucene`
   (klíč `vyloucene` v `import.json`, jen cesty z výběru, `probiha` 409,
   neplatný tvar 400, vlastník z relace); `overview` vrací `vyloucene`.
   Ověřit testy v `tests/test_import.py` (uložení, filtr cizích cest,
   odmítnutí během provádění) a `tests/test_app.py` (cizí import
   nenalezen, jméno z relace).
-- [ ] 1.2 `iter_plan` se stavem `vylouceny` po určení duplicit a kolizí;
+- [x] 1.2 `iter_plan` se stavem `vylouceny` po určení duplicit a kolizí;
   `plan_ok` ze stavů `ok` i `vylouceny`; `defaults` vrací i RAWy plánu
   pro párování. Ověřit testy: vyloučený zůstane v `defaults.soubory`,
   vyloučená kopie dál dělá z druhé kopie duplicitu, vyloučení nemění
   kolize jmen.
-- [ ] 1.3 Provedení: vyloučený soubor se nepřenese, zůstane ve stagingu
+- [x] 1.3 Provedení: vyloučený soubor se nepřenese, zůstane ve stagingu
   (import není `zahozeno`) nebo ve zdroji (`zdroj_zbyva`, import se
   nezruší), nemá záznam v `_metadata.json` ani návrhu skupin. Ověřit
   testy pro nahrání i zdroj `přetřídit` (rozšířit `test_execute_*`
