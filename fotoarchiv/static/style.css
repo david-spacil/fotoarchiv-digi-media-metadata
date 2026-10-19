@@ -54,6 +54,7 @@
   --mine-bg: #3a3523;
   --stage: #1a1a1a;
   --tile-surface: #262626;
+  --current: #e6c27a;
   --thumb-bg: #333333;
   --discard-bg: #3a2222;
   --loupe-bg: #121212;
@@ -122,6 +123,7 @@
   /* mřížka a lupa */
   --stage: var(--gray-50);
   --tile-surface: var(--gray-0);
+  --current: var(--amber-700);
   --thumb-bg: var(--gray-200);
   --discard-bg: var(--red-50);
   /* formulář a zdroj hodnoty */
@@ -570,6 +572,14 @@ dialog.nastroj-osoby > * { min-width: 0; max-width: 100%; }
 .tile .ph { display: flex; align-items: center; justify-content: center;
   color: var(--text-muted); font-size: 12px; }
 .tile.selected { border-color: var(--accent); background: var(--selected); }
+/* Aktuální soubor: vnitřní stín, který nekoliduje s okrajem výběru
+   (`border-color`) ani s obrysem poškození (`outline`). Kreslí ho
+   překryv `::before` nad náhledem (stín samotné dlaždice by náhled
+   zakryl; `::after` nese pruh autorů). */
+.tile.current { position: relative; }
+.tile.current::before { content: ""; position: absolute; inset: 0;
+  border-radius: inherit; box-shadow: inset 0 0 0 2px var(--current);
+  pointer-events: none; }
 .tile.missing { opacity: 0.6; }
 .tile.discard img, .tile.discard .ph, .ftile.discard img { opacity: 0.35; }
 .tile.discard .fn { text-decoration: line-through; color: var(--danger); }

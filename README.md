@@ -633,6 +633,9 @@ po široké monitory.
    z výběru, přesun) a u každé skupiny pole autorů; nad skupinami
    jdou zadat i autoři celé akce: skupiny bez vlastních autorů je
    zdědí (fotila-li celou akci stejná parta, stačí je zadat jednou).
+   Mřížku kroku ovládá klávesnice jako na ploše a Esc v ní zruší
+   výběr souborů i skupiny; Delete, Enter a P tam nic nedělají —
+   krok nemá lupu ani označování k vyřazení.
    Existuje-li k akci návrh skupin z importu, krok použije jeho
    skupiny (i s autory) a přiřazení pro soubory v kořeni, které návrh
    uvádí, a autory celé akce z návrhu; ostatní soubory dostanou
@@ -702,14 +705,34 @@ po široké monitory.
    čas zůstane, změna času přepíše čas a den zůstane; rozdílnou část
    vstup neukazuje a vedle stojí „rozdílné hodnoty“.
 
+   Mřížku ovládá klávesnice: ←/→ přejdou na předchozí a další soubor
+   v pořadí, ↑/↓ na vodorovně nejbližší dlaždici v řádku nad/pod
+   (i přes předěl oddílů), Home/End na první a poslední soubor
+   a PageUp/PageDown o výšku mřížky. Bez Shiftu vyberou jen cílový
+   soubor, se Shiftem rozsah od kotvy; Ctrl+A (na Macu Cmd+A) vybere
+   vše. Klávesy nepůsobí, když je kurzor v poli formuláře. Šipky už
+   mřížku nativně neposouvají; posun obstarává pohyb aktuálního
+   souboru, kolečko a posuvník zůstávají.
+
+   Aktuální soubor je v mřížce vyznačený vnitřním rámečkem odlišně od
+   výběru, i když je fokus ve formuláři. Pohyb klávesou dlaždici dá
+   fokus a posune k ní mřížku; Tab na dlaždici ji udělá aktuální bez
+   změny výběru a Enter pak na ní otevře lupu. Pohyb vychází
+   z aktuálního souboru, i když je mimo obrazovku; bez aktuálního
+   souboru vede první šipka na první soubor akce.
+
    Místo mřížky jde přepnout na **lupu** (Enter, dvojklik na dlaždici
    nebo přepínač; zpět Esc): velká fotka nebo přehrávač videa a pod ní
    filmový pás celé akce s oddíly (skupinami, nebo dny) oddělenými
-   předělem. Šipky přepínají aktuální soubor a vyberou jen jej,
-   Shift+šipky výběr rozšiřují; klik do pásu vybírá jako v mřížce.
-   Výběr i formulář jsou s mřížkou společné. Navigátor v lupě slouží
-   ke skoku: klik na oddíl udělá jeho první soubor aktuálním a jediným
-   vybraným; okraj má oddíl aktuálního souboru.
+   předělem. Lupa ukáže aktuální soubor — naposledy kliknutý, vybraný
+   nebo klávesnicí fokusovaný; klik do pásu vybírá jako v mřížce.
+   Klávesy ←/→, Shift, Home/End, PageUp/PageDown a Ctrl+A platí
+   i tady; navíc ↑ skočí na první soubor oddílu (na jeho začátku
+   na předchozí oddíl), ↓ na první soubor dalšího oddílu
+   a PageUp/PageDown se posouvají o tolik souborů, kolik se vejde
+   do pásu. Výběr i formulář jsou s mřížkou společné. Navigátor
+   v lupě slouží ke skoku: klik na oddíl udělá jeho první soubor
+   aktuálním a jediným vybraným; okraj má oddíl aktuálního souboru.
 
    **Vyřazení:** klávesa Del nebo tlačítko „Vyřadit“ v panelu označí
    vybrané soubory k vyřazení (jsou-li už všechny označené, označení
@@ -851,7 +874,9 @@ popisovalo jen to, co se opravdu přenese.
   nabízí jen pokračování ke skupinám a autorům.
 - **Skupiny a autoři:** mřížka náhledů přenášených fotek a videí
   (náhledy nahraných souborů i souborů zdroje v `přetřídit`, nic se
-  nezapisuje) a panel jako v průvodci akce. Nahoře **výchozí
+  nezapisuje) a panel jako v průvodci akce. Mřížka kroku se ovládá
+  klávesnicí jako na ploše, Esc ruší výběr souborů i skupiny;
+  Delete, Enter a P tam nejsou. Nahoře **výchozí
   rozdělení** (RAWy skupinu nedostanou): *podle podsložek* (jen má-li
   výběr podsložky; skupina = podsložka první úrovně pod nejdelší
   společnou složkou výběru, soubory přímo v ní dostanou skupinu
