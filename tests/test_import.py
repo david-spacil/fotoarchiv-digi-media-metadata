@@ -1059,7 +1059,7 @@ def test_api_groups_into_event(tmp_path, monkeypatch):
     assert d["nove"] == ["workshop"] and d["existujici"] == before["skupiny"]
     assert [f["nazev"] for f in d["soubory"]] == ["n0.jpg", "n1.jpg",
                                                  "n2.jpg"]
-    assert d["akce_autori"] is None and d["cil"] == EVENT and not d["nova"]
+    assert "akce_autori" not in d and d["cil"] == EVENT and not d["nova"]
     save_description(c, id, d, autori={"workshop": ["Modelová, Zuzana"]})
     r = stream(c.post(f"/api/import/{id}/provest",
                       json=dict(R1, cil=EVENT)))[-1]
@@ -1075,7 +1075,8 @@ def test_api_groups_into_event(tmp_path, monkeypatch):
     assert doc["soubory"]["foto.jpg"] == before["soubory"]["foto.jpg"]
     assert (archiv / EVENT / "foto.jpg").read_bytes() != b"jin\xc3\xa1"
 
-    # Zvolené připojení a autoři celé akce.
+    # Zvolené připojení; autory celé akce z rozpracovaného importu z doby
+    # schématu /1 server nezapíše, údaje akce zůstanou beze změny.
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"X/m.jpg": "m"})
     d = plan_and_defaults(c, id, {"rezim": "jedna", "nazev": "Workshop"},
@@ -1093,7 +1094,23 @@ def test_api_groups_into_event(tmp_path, monkeypatch):
     assert doc["soubory"]["m.jpg"]["skupina"] == "workshop"
     assert "workshop-2" not in doc["skupiny"]
     assert doc["skupiny"]["workshop"]["autori"] == ["Modelová, Zuzana"]
-    assert doc["akce"]["autori"] == [ME]
+    assert doc["akce"] == before["akce"]
+
+
+def test_api_old_proposal_event_authors_ignored(tmp_path, monkeypatch):
+    """Návrh skupin z doby schématu /1 s autory celé akce: první otevření
+    je nepřevezme a další import je z návrhu zahodí."""
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
+    imports = c.application.config["IMPORTS"]
+    imports._proposal_path(EVENT).parent.mkdir(parents=True, exist_ok=True)
+    imports._proposal_path(EVENT).write_text(json.dumps({
+        "skupiny": {"g": {"nazev": "G", "autori": ["Nováková, Jana"]}},
+        "prirazeni": {"foto.jpg": "g"}, "akce": {"autori": [ME]}}))
+    doc = c.get(f"/api/akce/{EVENT}").json["metadata"]
+    assert "autori" not in doc["akce"]
+    assert doc["skupiny"]["g"]["autori"] == ["Nováková, Jana"]
+    imports.add_proposal(EVENT, {"skupiny": {}, "prirazeni": {}})
+    assert "akce" not in imports.proposal(EVENT)
 
 
 def test_api_groups_conflict_keeps_files(tmp_path, monkeypatch):
@@ -1137,7 +1154,9 @@ def test_api_new_event_description(tmp_path, monkeypatch):
     d = c.get(f"/api/akce/{name}").json
     assert not d["novy"]
     doc = d["metadata"]
-    assert doc["akce"] == {k: v for k, v in akce.items() if v}
+    # Autoři celé akce (vypuštěný klíč schématu /2) se nezapíší.
+    assert doc["akce"] == {k: v for k, v in akce.items()
+                           if v and k != "autori"}
     # Duplicita bez záznamu, skupina bez přeneseného souboru nevznikne.
     assert doc["skupiny"] == {"g": {"nazev": "G", "autori": [ME]}}
     assert {n: r["skupina"] for n, r in doc["soubory"].items()} == {
@@ -1146,7 +1165,6 @@ def test_api_new_event_description(tmp_path, monkeypatch):
     assert e["stav"] == "rozpracovano"
     row = next(line for line in (archiv / "_INDEX.md").read_text()
                .splitlines() if "kontrola Stezky" in line)
-    # Skupina přepisuje autory akce vlastními.
     assert "Příkladný" in row and "Modelová" not in row
     assert 'data-stav="rozpracovano"' in (archiv / "_INDEX.html").read_text()
 
@@ -1159,7 +1177,7 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
                        "DOD 2015/DOD 2015_Pavla/b.jpg": "b"})
     volba = {"rezim": "podslozky"}
     d = plan_and_defaults(c, id, volba, cil=EVENT)
-    assert d["existujici"] == {} and d["akce_autori"] is None
+    assert d["existujici"] == {} and "akce_autori" not in d
     save_description(c, id, d, akce={"autori": [ME]},
                      autori={"dod-2015-jana": ["Nováková, Jana"]})
     r = stream(c.post(f"/api/import/{id}/provest",
@@ -1177,7 +1195,7 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     d = plan_and_defaults(c, id, volba, cil=EVENT)
     assert d["nove"] == ["dod-2015-jana-2"]
     assert d["shody"] == {"dod-2015-jana-2": ["dod-2015-jana"]}
-    assert d["akce_autori"] == [ME]
+    assert "akce_autori" not in d
     save_description(c, id, d, akce={"autori": [ME]},
                      autori={"dod-2015-jana-2": ["Pokusná, Bára"]})
     stream(c.post(f"/api/import/{id}/provest", json=dict(R1, cil=EVENT)))
@@ -1190,7 +1208,7 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     d = c.get(f"/api/akce/{EVENT}").json
     assert d["novy"]
     doc = d["metadata"]
-    assert doc["akce"]["autori"] == [ME]
+    assert "autori" not in doc["akce"]
     named = {n: doc["skupiny"][r["skupina"]] for n, r in
              doc["soubory"].items() if r.get("skupina")}
     assert named["a.jpg"] == {"nazev": "DOD 2015_Jana",

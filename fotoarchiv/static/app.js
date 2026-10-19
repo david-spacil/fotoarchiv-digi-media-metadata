@@ -2458,9 +2458,8 @@ const F = {
 };
 
 const FIELDS = {
-  akce: ["nazev", "datum_od", "datum_do", "popis", "mista", "ucastnici",
-    "autori"],
-  skupina: ["autori", "pristroj", "popis", "misto", "datum_od", "datum_do"],
+  akce: ["nazev", "datum_od", "datum_do", "popis", "mista", "ucastnici"],
+  skupina: ["autori", "pristroj", "popis", "misto"],
   soubor: ["datum", "autori", "popis", "osoby", "misto", "pristroj", "gps"],
 };
 
@@ -3875,8 +3874,7 @@ function renderEventStep() {
   const onChange = () => { nav[1].disabled = !ok(); };
   app.replaceChildren(...wizardFrame(h("main", { class: "wizard form" },
     h("p", { class: "meta" }, "Předvyplněno z názvu složky a dat souborů."),
-    FIELDS.akce.filter((k) => k !== "autori")
-      .map((k) => fieldRow(targets, k, onChange))), nav));
+    FIELDS.akce.map((k) => fieldRow(targets, k, onChange))), nav));
 }
 
 // Poslední krok průvodce: skupiny a autoři, pak pracovní plocha. Změny
@@ -3958,9 +3956,7 @@ function renderGroupsPanel(panel) {
     renderGrid();
     renderPanel();
   };
-  // Řádek autorů skupiny; po změně autorů akce se nahradí novým, ať
-  // ukazuje aktuální zděděnou hodnotu.
-  const rows = {};
+  // Řádek autorů skupiny.
   const authorsRow = (gid) => {
     const target = ctx.join?.target(gid);
     if (target) {
@@ -3969,19 +3965,6 @@ function renderGroupsPanel(panel) {
     if (fixedGroup(gid)) return authorsReadonly(gid, "skupina v akci");
     return fieldRow(targetsFor("skupina", [gid]), "autori", ctx.onChange);
   };
-  const onEventChange = () => {
-    for (const gid of Object.keys(rows)) {
-      const row = authorsRow(gid);
-      rows[gid].replaceWith(row);
-      rows[gid] = row;
-    }
-    ctx.onChange();
-  };
-  const eventBox = h("fieldset", { class: "tools" },
-    h("legend", {}, "Celá akce"),
-    h("p", { class: "meta" },
-      "Skupiny bez vlastních autorů zdědí autory akce."),
-    fieldRow(targetsFor("akce", []), "autori", onEventChange));
   const groups = groupIds().map((gid) => {
     const fixed = fixedGroup(gid);
     const files = sortedFiles(Object.keys(state.doc.soubory).filter((f) =>
@@ -4008,7 +3991,7 @@ function renderGroupsPanel(panel) {
     }))),
     fixed ? null : ctx.join?.choice(gid, after),
     fixed || ctx.join?.target(gid) ? null : mergeTools(gid, after),
-    rows[gid] = authorsRow(gid));
+    authorsRow(gid));
   });
   panel.replaceChildren(h("h2", {}, "Skupiny a autoři"),
     ...[ctx.top?.(),
@@ -4019,7 +4002,7 @@ function renderGroupsPanel(panel) {
       h("p", { class: "meta" }, "Soubory vyberte v mřížce (klik, Ctrl, " +
         "Shift, tažení) a přesuňte do skupiny. Autoři = fotil někdo " +
         "z uvedených; u jednotlivých fotek je jde přepsat na ploše."),
-      groupTools(after), eventBox, ...groups].filter(Boolean));
+      groupTools(after), ...groups].filter(Boolean));
   panel.querySelector("fieldset.current")?.scrollIntoView({ block: "nearest" });
 }
 
@@ -4756,7 +4739,7 @@ function renderTarget() {
     const targets = [{ obj: a, level: "akce", eff: (k) =>
       k in a ? { hodnota: a[k], uroven: "akce" } : undefined }];
     const onChange = () => descChanged(false);
-    const rows = Object.fromEntries(FIELDS.akce.filter((k) => k !== "autori")
+    const rows = Object.fromEntries(FIELDS.akce
       .map((k) => [k, fieldRow(targets, k, onChange)]));
     created = h("div", { class: "folder" },
       h("div", { class: "row" },
@@ -5060,7 +5043,6 @@ function descriptionLines() {
       (a.mista?.length ? `, místa ${a.mista.join("; ")}` : "") +
       (a.ucastnici?.length ? `, účastníci ${a.ucastnici.join("; ")}` : ""));
   }
-  lines.push(`Autoři celé akce: ${(a.autori || []).join("; ") || "—"}`);
   const counts = new Map();
   for (const r of Object.values(doc.soubory)) {
     counts.set(r.skupina || "", (counts.get(r.skupina || "") || 0) + 1);

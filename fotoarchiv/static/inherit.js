@@ -4,17 +4,27 @@
 // ověřují proti fixturám v `tests/fixtures/inheritance/` (JS přes
 // `node --test tests/js`).
 
+// Klíče vypuštěné ve schématu /2 (jako `DROPPED_KEYS` ve
+// `fotoarchiv/archive.py`): autoři celé akce, starší `osoby` a rozsah dat
+// skupiny. Server je při načtení i uložení odebírá; tady se jen nedědí.
+export const DROPPED_KEYS = {
+  akce: ["autori", "osoby"],
+  skupina: ["datum_od", "datum_do", "osoby"],
+  soubor: ["osoby"],
+};
+
 // Klíče, které patří jen své úrovni a nedědí se. `obliceje` (jen
-// u souboru, zapisuje synchronizace z Immiche) a starší `osoby` se do
+// u souboru, zapisuje synchronizace z Immiche) a vypuštěné klíče se do
 // výsledných hodnot nedostanou na žádné úrovni.
 export const LOCAL_KEYS = {
   // Účastníci a místa akce jsou výčty pro celou akci, ne údaje každé
   // fotky. Jediné místo akce se ale jako `misto` dědí (viz collect).
   // `overeno` je ruční potvrzení integrity u konkrétního souboru
   // (issue #10) — nikdy se nedění ani nedostane do výstupů.
-  akce: new Set(["ucastnici", "mista", "obliceje", "osoby"]),
-  skupina: new Set(["nazev", "obliceje", "osoby"]),
-  soubor: new Set(["skupina", "sha256", "obliceje", "osoby", "overeno"]),
+  akce: new Set(["ucastnici", "mista", "obliceje", ...DROPPED_KEYS.akce]),
+  skupina: new Set(["nazev", "obliceje", ...DROPPED_KEYS.skupina]),
+  soubor: new Set(["skupina", "sha256", "obliceje", "overeno",
+    ...DROPPED_KEYS.soubor]),
 };
 
 // `levels` začíná vždy akcí. `misto` se z akce dědí, jen když má akce
@@ -58,7 +68,7 @@ function placeGps(doc, result) {
   return (doc.souradnice_mist || {})[misto]?.gps || null;
 }
 
-// Výsledné hodnoty polí skupiny (zděděné z akce).
+// Výsledné hodnoty polí skupiny (s poli zděděnými z akce).
 export function resolveGroup(doc, groupId) {
   return collect([
     ["akce", doc.akce],

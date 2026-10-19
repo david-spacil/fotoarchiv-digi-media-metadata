@@ -1,7 +1,7 @@
 {
   "popis": "Autor přepsaný u fotky, ostatní soubory skupiny dědí oba",
   "metadata": {
-    "schema": "fotoarchiv-digi-media-metadata/1",
+    "schema": "fotoarchiv-digi-media-metadata/2",
     "akce": {"nazev": "kontrola", "datum_od": "2026-04-28"},
     "skupiny": {
       "g9": {

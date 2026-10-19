@@ -1,9 +1,12 @@
 {
-  "popis": "Autoři zadaní jen u akce: skupina bez autorů i soubor bez skupiny je dědí, skupina s vlastními autory je přepisuje",
+  "popis": "Autoři zadaní u akce (vypuštěný klíč schématu /2) se nedědí: skupina bez autorů ani soubor bez skupiny je nemají, skupina s vlastními autory je má ze skupiny",
   "metadata": {
-    "schema": "fotoarchiv-digi-media-metadata/1",
+    "schema": "fotoarchiv-digi-media-metadata/2",
     "akce": {
-      "autori": ["Příkladný, Daniel", "Modelová, Zuzana"]
+      "autori": [
+        "Příkladný, Daniel",
+        "Modelová, Zuzana"
+      ]
     },
     "skupiny": {
       "g9": {
@@ -12,7 +15,9 @@
       },
       "mobil": {
         "nazev": "Mobil",
-        "autori": ["Modelová, Zuzana"]
+        "autori": [
+          "Modelová, Zuzana"
+        ]
       }
     },
     "soubory": {
@@ -27,10 +32,6 @@
   },
   "ocekavano": {
     "P1503712.JPG": {
-      "autori": {
-        "hodnota": ["Příkladný, Daniel", "Modelová, Zuzana"],
-        "uroven": "akce"
-      },
       "pristroj": {
         "hodnota": "Panasonic DC-G9",
         "uroven": "skupina"
@@ -38,15 +39,12 @@
     },
     "20260428_101500.jpg": {
       "autori": {
-        "hodnota": ["Modelová, Zuzana"],
+        "hodnota": [
+          "Modelová, Zuzana"
+        ],
         "uroven": "skupina"
       }
     },
-    "IMG-20260428-WA0001.jpg": {
-      "autori": {
-        "hodnota": ["Příkladný, Daniel", "Modelová, Zuzana"],
-        "uroven": "akce"
-      }
-    }
+    "IMG-20260428-WA0001.jpg": {}
   }
 }

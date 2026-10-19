@@ -1,7 +1,7 @@
 {
   "popis": "Pole zadané jen u akce dědí všechny soubory, i soubor bez skupiny",
   "metadata": {
-    "schema": "fotoarchiv-digi-media-metadata/1",
+    "schema": "fotoarchiv-digi-media-metadata/2",
     "akce": {
       "popis": "kontrola",
       "datum_od": "2026-04-28"

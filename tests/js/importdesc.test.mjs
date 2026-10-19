@@ -16,7 +16,6 @@ const defaults = {
   skupiny: { jana: { nazev: "Jana" }, pavla: { nazev: "Pavla" } },
   prirazeni: { "a.jpg": "jana", "b.jpg": "pavla" },
   existujici: { g9: { nazev: "G9", autori: ["Příkladný, Daniel"] } },
-  akce_autori: ["Modelová, Zuzana"],
 };
 
 test("nový popis z výchozího rozdělení", () => {
@@ -25,8 +24,14 @@ test("nový popis z výchozího rozdělení", () => {
   assert.deepEqual(Object.keys(p.skupiny), ["g9", "jana", "pavla"]);
   assert.deepEqual(p.soubory, { "a.jpg": { skupina: "jana" },
     "b.jpg": { skupina: "pavla" }, "c.jpg": {} });
-  assert.deepEqual(p.akce, { autori: ["Modelová, Zuzana"] });
+  assert.deepEqual(p.akce, {});
   assert.equal(p.upraveno, false);
+});
+
+test("autory akce ze staršího serveru popis nepřevezme", () => {
+  const p = freshDescription(
+    { ...defaults, akce_autori: ["Modelová, Zuzana"] }, null);
+  assert.deepEqual(p.akce, {});
 });
 
 test("údaje nové akce zůstanou, stávající cíl je odloží", () => {
@@ -37,7 +42,7 @@ test("údaje nové akce zůstanou, stávající cíl je odloží", () => {
   assert.equal(nova.typ, "nova");
   assert.deepEqual(nova.akce, akce);
   const stavajici = freshDescription(defaults, nova);
-  assert.deepEqual(stavajici.akce, { autori: ["Modelová, Zuzana"] });
+  assert.deepEqual(stavajici.akce, {});
   assert.deepEqual(stavajici.nova_akce, akce);
   assert.equal(stavajici.typ, "stavajici");
   const zpet = freshDescription({ ...defaults, nova: true }, stavajici);
@@ -62,13 +67,14 @@ test("sladění s novým plánem zachová ruční úpravy", () => {
 });
 
 test("připojená skupina dědí autory existující", () => {
-  const p = freshDescription({ ...defaults, akce_autori: [] }, null);
+  const p = freshDescription(defaults, null);
   p.pripojit = { pavla: "g9" };
   const doc = effectiveDoc(p);
   assert.equal(doc.soubory["b.jpg"].skupina, "g9");
   assert.equal(doc.skupiny.pavla, undefined);
-  // jana nemá autory ani je nedědí; pavla je připojená k g9 s autory.
+  // jana nemá autory; pavla je připojená k g9 s autory.
   assert.deepEqual(groupsWithoutAuthors(p), ["jana"]);
+  // Autoři akce (rozpracovaný import z doby před schématem /2) nepomohou.
   p.akce.autori = ["Příkladný, Daniel"];
-  assert.deepEqual(groupsWithoutAuthors(p), []);
+  assert.deepEqual(groupsWithoutAuthors(p), ["jana"]);
 });

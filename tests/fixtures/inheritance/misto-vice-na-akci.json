@@ -1,7 +1,7 @@
 {
   "popis": "Víc míst akce se nedědí; místo se doplňuje u skupiny nebo souboru",
   "metadata": {
-    "schema": "fotoarchiv-digi-media-metadata/1",
+    "schema": "fotoarchiv-digi-media-metadata/2",
     "akce": {"mista": ["Molenburk", "Housko", "Holštejn"]},
     "skupiny": {"s": {"nazev": "S"}},
     "soubory": {

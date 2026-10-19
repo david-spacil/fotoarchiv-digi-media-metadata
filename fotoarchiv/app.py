@@ -272,9 +272,6 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             doc = model.new_document(
                 nazev, files, importer.apply_proposal(files, proposal)
                 if proposal else scan.propose_groups(files))
-            autori = ((proposal or {}).get("akce") or {}).get("autori")
-            if autori:
-                doc["akce"]["autori"] = autori
         else:
             nove, chybejici = model.merge_scan(doc, files)
         return {
@@ -836,30 +833,28 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         response.call_on_close(events.close)
         return response
 
-    def target_state(nazev, path):
-        """(skupiny, autoři celé akce) cíle importu: z `_metadata.json`,
-        jinak z návrhu; nová akce nic."""
+    def target_groups(nazev, path):
+        """Skupiny cíle importu: z `_metadata.json`, jinak z návrhu; nová
+        akce žádné."""
         if path is None:
-            return {}, None
+            return {}
         doc, _ = ws.load(nazev)
         if doc is None:
             doc = imports.proposal(nazev) or {}
-        return doc.get("skupiny") or {}, (doc.get("akce") or {}).get("autori")
+        return doc.get("skupiny") or {}
 
     def write_description(nazev, path, created, had_doc, record, done,
                           jmeno):
         """Zapíše popis importu (`record["popis"]`) pro přenesená média
         `done`: nové akci založí `_metadata.json`, akci s ním doplní nové
         skupiny a přiřazení, akci bez něj návrh skupin. Autory celé akce
-        u stávající akce jen při změně proti cíli v době plánu. Do
+        (schéma /1, starší rozpracovaný import) nezapíše nikam. Do
         `upravili` zapíše `jmeno` (kdo import provedl; volá se ze streamu,
         mimo kontext požadavku). Vrátí výsledek `importer.describe`
         se {"zapsano", "navrh", "chyba"?}."""
         cas = datetime.now().isoformat(timespec="seconds")
         popis = record.get("popis") or {}
         akce = popis.get("akce") or {}
-        autori = akce.get("autori") or []
-        changed = autori != (record.get("cil_autori") or [])
         known = set(record.get("existujici") or [])
         groups = importer.describe(popis, done, {}, set())
         try:
@@ -874,9 +869,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 proposal = imports.proposal(nazev) or {}
                 groups = importer.describe(
                     popis, done, proposal.get("skupiny") or {}, known)
-                if groups["prirazeni"] or changed:
-                    imports.add_proposal(nazev, groups,
-                                         autori if changed else None)
+                if groups["prirazeni"]:
+                    imports.add_proposal(nazev, groups)
                 return dict(groups, zapsano=True, navrh=True)
             doc, version = ws.load(nazev)
             if doc is None:
@@ -890,11 +884,6 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 record = doc["soubory"].get(name)
                 if record is not None and not record.get("skupina"):
                     record["skupina"] = gid
-            if changed:
-                if autori:
-                    doc.setdefault("akce", {})["autori"] = autori
-                else:
-                    doc.get("akce", {}).pop("autori", None)
             model.touch(doc, doc, jmeno, cas)
             ws.save(nazev, doc, version)
         except Conflict:
@@ -1047,8 +1036,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             nazev, path = import_target(body)
         except importer.Refused as e:
             return refused(e)
-        imports.set_target(id, jmeno, nazev, path is None,
-                           target_state(nazev, path)[1])
+        imports.set_target(id, jmeno, nazev, path is None)
 
         def events():
             for event in imports.plan(id, jmeno, path):
@@ -1061,7 +1049,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     def import_groups(id):
         """Výchozí rozdělení přenášených médií posledního plánu podle
         volby `skupiny` (`Imports.defaults`), se skupinami cíle
-        (`existujici`) a jeho autory (`akce_autori`)."""
+        (`existujici`)."""
         body = request.get_json(force=True)
         jmeno = owner(body)
         record = check_import(id, jmeno)
@@ -1069,7 +1057,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             return {"chyba": "bez_planu"}, 409
         nazev = record["cil"]
         path = None if record.get("nova") else event_dir(nazev)
-        existing, _ = target_state(nazev, path)
+        existing = target_groups(nazev, path)
         volba = body.get("skupiny")
         try:
             importer.check_groups(volba, existing)
@@ -1077,7 +1065,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         except importer.Refused as e:
             return refused(e)
         return dict(result, existujici=existing, cil=nazev,
-                    nova=path is None, akce_autori=record.get("cil_autori"))
+                    nova=path is None)
 
     @app.put("/api/import/<id>/popis")
     def import_description(id):

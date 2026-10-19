@@ -126,12 +126,13 @@ ostatní (XMP sidecary, index) se z něj generuje.
 Hodnoty se dědí **akce → skupina → soubor**; nižší úroveň přepisuje
 vyšší. **Každé pole jde přepsat na kterékoli nižší úrovni**, včetně
 autorů u jednotlivé fotky. Výjimkou jsou účastníci a místa akce (viz
-níže). Skupiny průvodce navrhne automaticky podle
-přístroje a vzoru názvu, uživatel je může upravit.
+níže). **Autoři jsou jen u skupiny a souboru**, akce je nemá: fotky
+jedné akce bývají od víc lidí (issue #43). Skupiny průvodce navrhne
+automaticky podle přístroje a vzoru názvu, uživatel je může upravit.
 
 ```json
 {
-  "schema": "fotoarchiv-digi-media-metadata/1",
+  "schema": "fotoarchiv-digi-media-metadata/2",
   "akce": {
     "nazev": "průzkum u Vzorova",
     "popis": "…",
@@ -179,8 +180,16 @@ přístroje a vzoru názvu, uživatel je může upravit.
   fotky zobrazené se správnou orientací (střed a velikost, tvar MWG),
   zaokrouhlené na 4 místa. Je to i záloha pojmenovaných obličejů,
   ze které jde Immich obnovit (viz
-  [Výstupy](docs/navrh/vystupy.md)). Starší pole `osoby` se
-  ignoruje a při uložení odstraní.
+  [Výstupy](docs/navrh/vystupy.md)).
+- **Schéma `/2`** proti `/1` vypustilo autory celé akce
+  (`akce.autori`), starší pole `osoby` (všechny úrovně) a datum od/do
+  u skupiny (`datum_od`, `datum_do`). Vypuštěné klíče se nedědí, do
+  výstupů nejdou a uložení je odstraní; dokument `/1` server při
+  načtení převede (soubor se přepíše až dalším uložením) a příkaz
+  `migrovat` převede celý archiv naráz. U dokončené akce bez autorů
+  celé akce převod sidecary nemění, takže zůstane exportovaná; akce
+  s nimi ukáže neexportované změny (soubory, které autory jen dědily,
+  je po převodu nemají).
 - **Místa akce (`mista`) jsou výčet**, fotka nebo skupina má jedno
   `misto`. Jediné místo akce se na fotky dědí; při víc místech se místo
   doplňuje u skupiny nebo fotky (návrhy z míst akce).

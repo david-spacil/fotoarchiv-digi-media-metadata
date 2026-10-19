@@ -14,7 +14,16 @@ import tempfile
 import threading
 from pathlib import Path
 
-SCHEMA = "fotoarchiv-digi-media-metadata/1"
+SCHEMA = "fotoarchiv-digi-media-metadata/2"
+SCHEMA_V1 = "fotoarchiv-digi-media-metadata/1"
+# Klíče vypuštěné ve verzi /2 po úrovních: autoři celé akce (issue #43),
+# starší `osoby` (osoby na fotce jsou jména z `obliceje`) a nepoužívaný
+# rozsah dat skupiny. Nedědí se, nejdou do výstupů a uložení je smaže.
+DROPPED_KEYS = {
+    "akce": ("autori", "osoby"),
+    "skupina": ("datum_od", "datum_do", "osoby"),
+    "soubor": ("osoby",),
+}
 EVENT_RE = re.compile(r"^(\d{4}-\d{2}-\d{2}) (.+)$")
 METADATA_NAME = "_metadata.json"
 TMP_PREFIX = ".metadata-"
@@ -25,6 +34,43 @@ UNSORTED = "přetřídit"
 # Přípona ignorované složky: Immich ji vylučuje (`**/*.ignored/**`).
 # U složky akce znamená nedokončenou akci skrytou před Immichem.
 IGNORED = ".ignored"
+
+
+def _levels(doc):
+    """(úroveň, záznam) všech záznamů dokumentu, které nesou pole."""
+    yield "akce", doc.get("akce") or {}
+    for record in (doc.get("skupiny") or {}).values():
+        yield "skupina", record
+    for record in (doc.get("soubory") or {}).values():
+        yield "soubor", record
+
+
+def drop_keys(doc):
+    """Odebere z dokumentu vypuštěné klíče (`DROPPED_KEYS`).
+
+    Mění dokument na místě; vrací počty odebraných {"úroveň.klíč": n}.
+    """
+    removed = {}
+    for level, record in _levels(doc):
+        for key in DROPPED_KEYS[level]:
+            if key in record:
+                del record[key]
+                name = f"{level}.{key}"
+                removed[name] = removed.get(name, 0) + 1
+    return removed
+
+
+def upgrade(doc):
+    """Dokument verze /1 převede na místě na /2; jiný nechá být.
+
+    Vrací počty odebraných klíčů (viz `drop_keys`), u dokumentu, který
+    převod nepotřeboval, None.
+    """
+    if not isinstance(doc, dict) or doc.get("schema") != SCHEMA_V1:
+        return None
+    removed = drop_keys(doc)
+    doc["schema"] = SCHEMA
+    return removed
 
 
 def is_skipped(name):
@@ -263,13 +309,20 @@ class Workspace:
         return record.get("version")
 
     def load(self, name):
-        """Vrátí (dokument, verze), nebo (None, None), když soubor není."""
+        """Vrátí (dokument, verze), nebo (None, None), když soubor není.
+
+        Dokument verze /1 vrátí převedený na /2 (`upgrade`), soubor na
+        disku nemění; verze je dál hash souboru, takže uložení převedeného
+        dokumentu s ní projde.
+        """
         path = self.metadata_path(name)
         try:
             data = path.read_bytes()
         except FileNotFoundError:
             return None, None
-        return json.loads(data), version_of(data)
+        doc = json.loads(data)
+        upgrade(doc)
+        return doc, version_of(data)
 
     def save(self, name, doc, version):
         """Atomicky uloží dokument; při neshodě verze vyhodí Conflict.

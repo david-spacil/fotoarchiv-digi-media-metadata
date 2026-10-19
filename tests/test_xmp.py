@@ -17,7 +17,7 @@ NS = {"rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
 
 def doc_with(**soubory):
     return {
-        "schema": "fotoarchiv-digi-media-metadata/1",
+        "schema": "fotoarchiv-digi-media-metadata/2",
         "dokonceno": None,
         "akce": {"nazev": "kontrola", "mista": ["Holštejn"],
                  "ucastnici": ["Účastník, Jan"]},
@@ -60,6 +60,16 @@ def test_inherited_authors_place_gps_and_event_tag():
     for leaked in ("Holštejn", "Panasonic", "Účastník", "G9", "Novák",
                    "Vzorný", "mwg-rs"):
         assert leaked not in text
+
+
+def test_event_authors_not_exported():
+    """Autoři u akce (vypuštěný klíč schématu /2) se do sidecaru
+    nedostanou; skupina bez autorů zůstane bez tagu autor/."""
+    doc = doc_with(**{"a.jpg": {"skupina": "bez"}})
+    doc["akce"]["autori"] = ["Vzorný, Tomáš"]
+    doc["skupiny"]["bez"] = {"nazev": "Bez autorů"}
+    r = parse(xmp.sidecar(doc, EVENT, "a.jpg"))
+    assert r["tagy"] == [f"akce/{EVENT}"]
 
 
 def test_tag_slash_and_duplicates():

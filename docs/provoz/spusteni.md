@@ -42,6 +42,14 @@ Jednorázové skrytí nedokončených akcí před Immichem (viz
 .venv/bin/python -m fotoarchiv skryt --archiv … --zapis-do-archivu
 ```
 
+Jednorázový převod `_metadata.json` ze schématu `/1` na `/2` (viz
+[Datový model](../../README.md#datový-model)), při zastaveném serveru;
+bez `--zapis-do-archivu` jen vypíše akce a odebrané klíče:
+
+```sh
+.venv/bin/python -m fotoarchiv migrovat --archiv … --zapis-do-archivu
+```
+
 Kontrola poškozených souborů v archivu (viz [Poškozené
 soubory](../navrh/poskozene-soubory.md)), archiv jen čte:
 

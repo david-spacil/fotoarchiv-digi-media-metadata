@@ -4,9 +4,9 @@
 
 Bez podpříkazu `python -m fotoarchiv` spustí server (přepínače viz
 [Lokální spuštění](spusteni.md)). Příkazy berou `--archiv` a `--work`
-jako server (`heslo` jen `--work`). `exportovat`, `zkontrolovat`
-a `skryt` bez `--zapis-do-archivu` archiv jen čtou; `prevzit` zapisuje
-do archivu vždy. V kontejneru se spouštějí přes
+jako server (`heslo` jen `--work`). `exportovat`, `zkontrolovat`,
+`skryt` a `migrovat` bez `--zapis-do-archivu` archiv jen čtou;
+`prevzit` zapisuje do archivu vždy. V kontejneru se spouštějí přes
 `docker compose exec fotoarchiv python -m fotoarchiv …` (viz
 [Docker](docker.md)).
 
@@ -16,4 +16,5 @@ do archivu vždy. V kontejneru se spouštějí přes
 | `exportovat [AKCE]` | zapíše XMP sidecary jedné nebo všech akcí, jen změněné; `--obliceje` přidá oblasti obličejů pro obnovu Immiche | [Ukládání a export](../navrh/ukladani-a-export.md), [Výstupy](../navrh/vystupy.md) |
 | `zkontrolovat [AKCE]` | najde poškozené soubory a nálezy konzistence akcí; `--rychle` jen konzistence, `--zapis-do-archivu` po potvrzení nápravu přesuny | [Poškozené soubory](../navrh/poskozene-soubory.md) |
 | `skryt` | skryje nedokončené akce před Immichem (přípona `.ignored`); spouštět při zastaveném serveru | [Archiv](../navrh/archiv.md) |
+| `migrovat` | převede `_metadata.json` ze schématu `/1` na `/2` (bez autorů celé akce, starších `osoby` a data od/do u skupiny); spouštět při zastaveném serveru | [Datový model](../../README.md#datový-model) |
 | `prevzit` | jednorázově převezme `_metadata.json` z `.work` do archivu | [Ukládání a export](../navrh/ukladani-a-export.md) |

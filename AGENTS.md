@@ -45,6 +45,9 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv skryt --archiv … --work .work
 # → skryje nedokončené akce před Immichem (přípona .ignored u složky);
 #   bez --zapis-do-archivu jen výpis, spouštět při zastaveném serveru
+.venv/bin/python -m fotoarchiv migrovat --archiv … --work .work
+# → převede _metadata.json ze schématu /1 na /2 (bez autorů akce);
+#   bez --zapis-do-archivu jen výpis, spouštět při zastaveném serveru
 .venv/bin/python -m fotoarchiv zkontrolovat [AKCE] --archiv … --work .work
 # → kontrola poškozených souborů + nálezy konzistence akcí;
 #   --rychle jen konzistence, --zapis-do-archivu i náprava přesuny

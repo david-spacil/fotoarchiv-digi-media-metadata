@@ -1,7 +1,7 @@
 {
   "popis": "Účastníci akce se nedědí; osoby jsou jen obličeje souboru, které se nedědí; starší pole osoby se ignoruje",
   "metadata": {
-    "schema": "fotoarchiv-digi-media-metadata/1",
+    "schema": "fotoarchiv-digi-media-metadata/2",
     "akce": {
       "nazev": "kontrola",
       "ucastnici": ["Příkladný, Daniel", "Modelová, Zuzana"],

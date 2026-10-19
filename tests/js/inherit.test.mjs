@@ -86,7 +86,8 @@ test("soubory k vyřazení se nepočítají", () => {
   assert.deepEqual(m.souboryBezMista, []);
 });
 
-test("skupina se zděděnými autory akce nechybí", () => {
+test("autoři u akce skupině autory nedodají", () => {
+  // Starší dokument s `akce.autori` (vypuštěný klíč schématu /2).
   const doc = {
     akce: { autori: ["Příkladný, Daniel"] },
     skupiny: { g9: { nazev: "G9" }, mobil: {} },
@@ -95,5 +96,5 @@ test("skupina se zděděnými autory akce nechybí", () => {
       "20260428_101500.jpg": { skupina: "mobil" },
     },
   };
-  assert.deepEqual(missing(doc).skupinyBezAutoru, []);
+  assert.deepEqual(missing(doc).skupinyBezAutoru, ["g9", "mobil"]);
 });

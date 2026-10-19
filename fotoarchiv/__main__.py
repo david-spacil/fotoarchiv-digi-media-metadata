@@ -4,7 +4,9 @@ export XMP: python -m fotoarchiv exportovat [AKCE] --archiv …,
 jednorázové heslo: python -m fotoarchiv heslo LOGIN --work …,
 skrytí nedokončených akcí před Immichem: python -m fotoarchiv skryt
 --archiv … [--zapis-do-archivu], kontrola poškozených souborů:
-python -m fotoarchiv zkontrolovat [AKCE] --archiv …."""
+python -m fotoarchiv zkontrolovat [AKCE] --archiv …, převod
+_metadata.json na schéma /2: python -m fotoarchiv migrovat --archiv …
+[--zapis-do-archivu]."""
 
 import argparse
 import json
@@ -21,8 +23,9 @@ from cheroot import wsgi
 from . import (auth, consistency, geocode, immich, importer, index,
                integrity, xmp)
 from .app import create_app
-from .archive import (IGNORED, METADATA_NAME, Collision, Workspace, adopt,
-                     event_name)
+from .archive import (IGNORED, METADATA_NAME, SCHEMA_V1, Collision,
+                      Conflict, Workspace, adopt, event_name, upgrade,
+                      version_of)
 
 
 def paths(args):
@@ -147,6 +150,87 @@ def skryt(argv):
     print(f"{verb}: {hidden}, kolizí: {collisions}")
     if not args.zapis_do_archivu and hidden:
         print("Archiv beze změny; přejmenuje až --zapis-do-archivu.")
+    if failed:
+        sys.exit(1)
+
+
+def _lost_authors(doc):
+    """Počet souborů, které mají autory jen z `akce.autori` (po převodu
+    na /2 budou bez autorů)."""
+    if not (doc.get("akce") or {}).get("autori"):
+        return 0
+    groups = doc.get("skupiny") or {}
+    return sum(
+        1 for record in (doc.get("soubory") or {}).values()
+        if not record.get("autori")
+        and not (groups.get(record.get("skupina")) or {}).get("autori"))
+
+
+def migrovat(argv):
+    parser = argparse.ArgumentParser(
+        prog="python -m fotoarchiv migrovat",
+        description="Převede _metadata.json akcí v archivu ze schématu /1 "
+                    "na /2 (odebere autory celé akce, starší osoby a datum "
+                    "od/do u skupiny). Bez --zapis-do-archivu jen vypíše, "
+                    "co by změnil. Spouštět, když server neběží.")
+    common(parser)
+    parser.add_argument("--zapis-do-archivu", action="store_true",
+                        help="_metadata.json v archivu opravdu přepsat")
+    args = parser.parse_args(argv)
+    archiv, work = paths(args)
+    ws = Workspace(archiv, work, zapis=True)
+    count, failed = 0, False
+    for event in ws.list_events():
+        name = event["nazev"]
+        if event["stav"] == "kolize":
+            print(f"přeskočeno: {name} (složka s příponou .ignored i bez ní)")
+            continue
+        path = ws.metadata_path(name)
+        try:
+            data = path.read_bytes()
+        except FileNotFoundError:
+            continue
+        try:
+            doc = json.loads(data)
+        except ValueError as e:
+            print(f"selhalo: {name}: {e}")
+            failed = True
+            continue
+        if not isinstance(doc, dict) or doc.get("schema") != SCHEMA_V1:
+            continue
+        lost = _lost_authors(doc)
+        removed = upgrade(doc)
+        detail = ", ".join(f"{k} {n}" for k, n in sorted(removed.items()))
+        note = f" ({detail})" if detail else ""
+        if lost:
+            note += f"; souborů, které ztratí autory celé akce: {lost}"
+        if not args.zapis_do_archivu:
+            print(f"převede: {name}{note}")
+            count += 1
+            continue
+        version = version_of(data)
+        exported = ws.export_version(name) == version
+        try:
+            new = ws.save(name, doc, version)
+            # Sidecary převod nemění, pokud akce neměla autory celé akce
+            # (jiné vypuštěné klíče se do nich nedostanou).
+            if exported and "akce.autori" not in removed:
+                xmp.write_atomic(ws.export_record_path(name), json.dumps(
+                    {"version": new, "zapis": ws.zapis}).encode("utf-8"))
+        except Conflict:
+            print(f"selhalo: {name}: soubor se mezitím změnil")
+            failed = True
+            continue
+        except OSError as e:
+            print(f"selhalo: {name}: {e}")
+            failed = True
+            continue
+        print(f"převedeno: {name}{note}")
+        count += 1
+    verb = "Převedeno" if args.zapis_do_archivu else "K převodu"
+    print(f"{verb}: {count}")
+    if not args.zapis_do_archivu and count:
+        print("Archiv beze změny; převede až --zapis-do-archivu.")
     if failed:
         sys.exit(1)
 
@@ -421,6 +505,8 @@ def main(argv=None):
         return zkontrolovat(argv[1:])
     if argv[:1] == ["skryt"]:
         return skryt(argv[1:])
+    if argv[:1] == ["migrovat"]:
+        return migrovat(argv[1:])
     parser = argparse.ArgumentParser(
         prog="python -m fotoarchiv",
         description="Průvodce metadaty fotoarchivu. Převzetí metadat "
@@ -429,7 +515,8 @@ def main(argv=None):
                     "jednorázové heslo: python -m fotoarchiv heslo, "
                     "skrytí nedokončených akcí před Immichem: "
                     "python -m fotoarchiv skryt, kontrola poškozených "
-                    "souborů: python -m fotoarchiv zkontrolovat.")
+                    "souborů: python -m fotoarchiv zkontrolovat, převod "
+                    "na schéma /2: python -m fotoarchiv migrovat.")
     common(parser)
     parser.add_argument("--zapis-do-archivu", action="store_true",
                         help="produkční režim: _metadata.json ve složkách "
