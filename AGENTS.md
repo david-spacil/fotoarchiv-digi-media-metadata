@@ -16,8 +16,9 @@ a import se provádějí; cache a nahrané soubory importu (`.work/import/`)
 zůstávají v `.work/`. Zámek akcí je v paměti serveru (`lock.py`) — **server
 smí běžet jen jako jeden proces**.
 
-`README.md` je specifikace (archiv, datový model, jména osob, výstupy,
-aplikace). Při změně návrhu ho aktualizovat; tady ho neopakovat.
+Specifikace je `README.md` (úvod, struktura archivu, datový model)
+spolu s `docs/` (rozcestník `docs/README.md`: návod, provoz, návrh).
+Při změně návrhu je aktualizovat; tady je neopakovat.
 
 Změny se vedou přes OpenSpec (`openspec/`, příkazy `/opsx:*`). Úpravy v
 `openspec/` se řeší samostatnými commity, ne zároveň s kódem. Nové úpravy
@@ -50,7 +51,7 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 # → poškozené soubory (nuly od 64 KiB, dekódování, ffprobe) jedné/všech
 #   akcí; archiv jen čte, report do .work/kontrola/, cache v .work/cache/
 cp .env.example .env && docker compose up -d --build
-# → nasazení na server (produkční režim, ./work), viz README, Docker
+# → nasazení na server (produkční režim, ./work), viz docs/provoz/docker.md
 
 .venv/bin/python -m pytest -q                       # testy Pythonu
 .venv/bin/python -m pytest tests/test_cleanup.py::test_collision_blocks
@@ -68,7 +69,8 @@ obě se testují proti `tests/fixtures/inheritance/*.json` — měnit spolu.
 
 ## Invarianty návrhu
 
-Pravidla, která se táhnou přes víc částí README a snadno se poruší:
+Pravidla, která se táhnou přes víc částí specifikace a snadno se
+poruší:
 
 - **Zdroj pravdy je `_metadata.json` ve složce akce.** XMP sidecary a index
   (`_INDEX.html`, `_INDEX.md`, `index.py`) jsou čistě generované výstupy —
@@ -126,6 +128,6 @@ Pravidla, která se táhnou přes víc částí README a snadno se poruší:
   zároveň = kolize, nic se nepřesouvá.
 - Přesun souborů nikdy nepřepíše existující soubor.
 - Formát XMP: co Immich nemá vlastní pole, jde do tagů podle konvencí
-  `arubrno/archiv-immich` (viz README, Výstupy).
+  `arubrno/archiv-immich` (viz docs/navrh/vystupy.md).
 - Datum u WhatsApp fotek (`IMG-YYYYMMDD-WA*`) jen z názvu souboru, EXIF
   nemají.

@@ -3,7 +3,7 @@
 XML se skládá v Pythonu podle pevné šablony, ne exiftoolem: obsah závisí
 jen na metadatech a názvu složky akce (bez časových razítek a verze
 nástroje), takže změnu sidecaru pozná porovnání s obsahem na disku.
-Mapování polí a konvence tagů viz README, Výstupy.
+Mapování polí a konvence tagů viz docs/navrh/vystupy.md.
 """
 
 import json
@@ -93,7 +93,8 @@ def stored_area(oblast, orientation):
     """Oblast vůči otočené fotce → vůči fotce v uloženém tvaru.
 
     Immich čte `mwg-rs:Regions` vůči uloženému obrázku a sám je otočí
-    podle EXIF Orientation (ověřeno, viz README, Obnova obličejů).
+    podle EXIF Orientation (ověřeno, viz docs/navrh/vystupy.md,
+    Obnova obličejů).
     """
     x, y, w, h = oblast
     point = {
