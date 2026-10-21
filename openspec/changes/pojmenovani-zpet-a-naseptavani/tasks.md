@@ -71,9 +71,9 @@
 
 ## 5. Ruční zkouška se skutečným Immichem (uživatel)
 
-- [ ] 5.1 Uživatel na své instanci: pojmenovat osobu, Zpět → v Immichi
+- [x] 5.1 Uživatel na své instanci: pojmenovat osobu, Zpět → v Immichi
   je osoba bez jména a nástroj ji znovu nabídne; skrýt, Zpět → osoba
   v Immichi viditelná. Potvrzuje, že Immich bere `name: ""` jako „bez
   jména“ (design.md, Risks).
-- [ ] 5.2 Uživatel na telefonu: návrhy v nástroji i v panelu nejsou
+- [x] 5.2 Uživatel na telefonu: návrhy v nástroji i v panelu nejsou
   oříznuté ani schované pod klávesnicí.
