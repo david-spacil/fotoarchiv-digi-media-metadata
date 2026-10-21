@@ -1,4 +1,5 @@
-# Release: image z GHCR (docker compose pull && docker compose up -d).
+# Release: image z GHCR (docker compose pull && docker compose up -d),
+# tag z FOTOARCHIV_TAG v .env (výchozí latest = poslední release).
 # Build z pracovní kopie (např. větev před releasem): docker compose
 # up -d --build; image dostane stejné jméno, další pull ho nahradí
 # releasem. Co běží, ukazuje verze v hlavičce aplikace.
@@ -7,7 +8,7 @@
 services:
   fotoarchiv:
     build: .
-    image: ghcr.io/david-spacil/fotoarchiv-digi-media-metadata:latest
+    image: ghcr.io/david-spacil/fotoarchiv-digi-media-metadata:${FOTOARCHIV_TAG:-latest}
     # init: Python jinak ignoruje SIGTERM (je PID 1) a kontejner
     # by končil až timeoutem.
     init: true
