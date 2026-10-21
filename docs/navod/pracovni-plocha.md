@@ -108,3 +108,11 @@ a PageUp/PageDown se posouvají o tolik souborů, kolik se vejde
 do pásu. Výběr i formulář jsou s mřížkou společné. Navigátor
 v lupě slouží ke skoku: klik na oddíl udělá jeho první soubor
 aktuálním a jediným vybraným; okraj má oddíl aktuálního souboru.
+
+   **Rámečky obličejů:** při kurzoru nad velkou fotkou ukáže lupa
+rámečky kolem pojmenovaných obličejů z Immiche (`obliceje`
+v `_metadata.json`); jinak je fotka čistá. Najetí na rámeček ukáže
+u něj jméno a zvýrazní ho v poli „Osoby na fotce“; najetí na jméno
+v poli naopak ukáže jen rámečky té osoby. Při výběru víc souborů
+jsou v poli ztlumená jména, která na aktuální fotce nejsou. Rámečky
+se obnoví až po synchronizaci a znovunačtení akce.

@@ -662,9 +662,25 @@ table.damaged tr.locked { opacity: 0.55; }
   background: var(--loupe-bg); color: var(--loupe-text); }
 .big { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .big .media { flex: 1; min-height: 0; position: relative; display: flex;
-  align-items: center; justify-content: center; }
+  align-items: center; justify-content: center; container-type: size;
+  overflow: hidden; }
 .big img, .big video { width: 100%; height: 100%; object-fit: contain;
   display: block; }
+/* Obal fotky: s poměrem stran (--ar) má rozměr viditelné fotky,
+   rámečky obličejů jsou v procentech obalu. */
+.big .frame { position: relative; width: 100%; height: 100%; }
+.big .frame.fit { width: min(100cqw, 100cqh * var(--ar)); height: auto;
+  aspect-ratio: var(--ar); }
+.big .face { position: absolute; display: none; box-sizing: border-box;
+  border: 2px solid var(--loupe-text); border-radius: 3px;
+  box-shadow: 0 0 0 1px var(--loupe-bg), inset 0 0 0 1px var(--loupe-bg); }
+.big .frame:hover .face, .big .frame.focus-name .face.hl { display: block; }
+.big .face:hover, .big .face.hl { border-color: var(--loupe-current); }
+.big .face .label { display: none; position: absolute; top: 100%; left: 50%;
+  transform: translateX(-50%); margin-top: 3px; white-space: nowrap;
+  font-size: 12px; padding: 1px 6px; border-radius: var(--radius);
+  background: var(--loupe-bg); color: var(--loupe-text); }
+.big .face:hover .label { display: block; }
 .big .ph { color: var(--loupe-muted); }
 .big .vmsg { position: absolute; left: 0; right: 0; bottom: 8px; margin: 0;
   text-align: center; color: var(--loupe-current); }
@@ -728,6 +744,11 @@ fieldset.panel-body { border: 0; margin: 0; padding: 0; min-width: 0; }
 .field.readonly .readonly-value { color: var(--text-muted);
   background: var(--field-inherited-bg); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 4px 6px; }
+/* Osoba ve formuláři: zvýrazněná při najetí na její rámeček v lupě,
+   ztlumená, když na aktuální fotce není. */
+.osoba.hl { color: var(--text); text-decoration: underline;
+  text-decoration-color: var(--focus); text-decoration-thickness: 2px; }
+.osoba.off { opacity: .55; }
 
 fieldset.place .candidate { display: flex; gap: 6px; align-items: baseline;
   margin: 4px 0; font-size: 13px; }

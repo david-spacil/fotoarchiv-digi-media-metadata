@@ -19,6 +19,7 @@ import { icon } from "./icons.js";
 import { immichStav } from "./immichstav.js";
 import { lzeSmazat, nazevSedi, zbyvaText } from "./kos.js";
 import { showNaming } from "./naming.js";
+import { jmenaOsob, ramecek } from "./obliceje.js";
 import { osmUrl } from "./osm.js";
 import { klavesa, naPas, oddil, radek, stranka } from "./pohyb.js";
 import {
@@ -1761,6 +1762,8 @@ function select(files, group, opts = {}) {
   if (!opts.keepPanel) {
     state.placeOpen = opts.place ?? null;
     renderPanel();
+  } else {
+    markOsoby();
   }
 }
 
@@ -2420,6 +2423,7 @@ function setView(view) {
     b.classList.toggle("active", b.dataset.view === view);
   }
   markVisible();
+  markOsoby();
   if (loupe) {
     renderFilm();
     renderBig();
@@ -2615,11 +2619,19 @@ function renderBig() {
     }));
   } else {
     const img = h("img", { src: thumbUrl(f), alt: "", draggable: false,
-      onerror: () => img.replaceWith(placeholder("bez náhledu")) });
+      onerror: () => frame.replaceWith(placeholder("bez náhledu")) });
+    const frame = h("div", { class: "frame" }, img);
+    // Rámečky až s poměrem stran prvního náhledu: obal pak má rozměr
+    // viditelné fotky (CSS), velký náhled má poměr stejný.
+    img.addEventListener("load", () => {
+      frame.style.setProperty("--ar", img.naturalWidth / img.naturalHeight);
+      frame.classList.add("fit");
+      frame.append(...faceBoxes(f));
+    }, { once: true });
     const large = new Image();
     large.onload = () => { if (big.dataset.file === f) img.src = large.src; };
     large.src = thumbUrl(f, LARGE);
-    media.append(img);
+    media.append(frame);
   }
   const datum = resolve(state.doc, f).datum?.hodnota;
   const i = state.order.indexOf(f);
@@ -2633,6 +2645,43 @@ function renderBig() {
       im.src = thumbUrl(g, LARGE);
       return im;
     });
+}
+
+// Rámečky pojmenovaných obličejů velké fotky; vidět jsou jen při
+// kurzoru nad fotkou nebo nad jménem ve formuláři (CSS).
+function faceBoxes(f) {
+  return (state.doc.soubory[f]?.obliceje || []).map((o) =>
+    h("div", { class: "face", dataset: { jmeno: o.jmeno },
+      style: Object.entries(ramecek(o.oblast))
+        .map(([k, v]) => `${k}: ${v}`).join("; "),
+      onmouseenter: () => markName(o.jmeno, true),
+      onmouseleave: () => markName(o.jmeno, false) },
+    h("span", { class: "label" }, o.jmeno)));
+}
+
+const byName = (sel, jmeno) =>
+  document.querySelectorAll(`${sel}[data-jmeno="${CSS.escape(jmeno)}"]`);
+
+// Kurzor nad rámečkem: zvýraznit jméno ve formuláři.
+function markName(jmeno, on) {
+  for (const el of byName(".osoba", jmeno)) el.classList.toggle("hl", on);
+}
+
+// Kurzor nad jménem ve formuláři: ukázat jen rámečky té osoby.
+function markFaces(jmeno, on) {
+  document.querySelector("#big .frame")?.classList.toggle("focus-name", on);
+  for (const el of byName("#big .face", jmeno)) el.classList.toggle("hl", on);
+}
+
+// Jména mimo aktuální fotku ztlumit (jen lupa s víc vybranými).
+function markOsoby() {
+  const els = document.querySelectorAll(".osoba");
+  if (!els.length) return;
+  const files = [...state.sel];
+  const aktualni = state.view === "loupe" && files.length > 1
+    ? state.current : null;
+  const tady = new Set(jmenaOsob(state.doc.soubory, files, aktualni).naFotce);
+  for (const el of els) el.classList.toggle("off", !tady.has(el.dataset.jmeno));
 }
 
 // --- formulář ----------------------------------------------------------------
@@ -2707,14 +2756,15 @@ function facesRow(files) {
   if (!state.info?.immich) {
     text = "Immich není napojen";
   } else {
-    const names = new Set();
-    for (const f of files) {
-      for (const face of state.doc.soubory[f]?.obliceje || []) {
-        names.add(face.jmeno);
-      }
-    }
-    text = [...names].sort((a, b) => a.localeCompare(b, "cs")).join("; ") ||
-      "nikdo pojmenovaný";
+    // Jména jako samostatné položky: najetí ukáže rámečky v lupě.
+    const { naFotce } = jmenaOsob(state.doc.soubory, files, null);
+    text = naFotce.flatMap((jmeno, i) => [i ? "; " : null,
+      h("span", { class: "osoba", dataset: { jmeno },
+        onmouseenter: (e) => {
+          if (!e.target.classList.contains("off")) markFaces(jmeno, true);
+        },
+        onmouseleave: () => markFaces(jmeno, false) }, jmeno)]);
+    if (!text.length) text = "nikdo pojmenovaný";
   }
   return h("div", { class: "field readonly from-immich" },
     h("label", {}, F.osoby.label, note),
@@ -3868,6 +3918,7 @@ function renderPanel() {
     FIELDS[level].map((k) => fieldRow(targets, k, onChange))),
   level === "soubor" ? placeBox : null));
   if (level === "soubor") renderPlaces(placeBox);
+  markOsoby();
 }
 
 // --- průvodce --------------------------------------------------------------
