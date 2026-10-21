@@ -22,7 +22,10 @@ Při změně návrhu je aktualizovat; tady je neopakovat.
 
 Změny se vedou přes OpenSpec (`openspec/`, příkazy `/opsx:*`). Úpravy v
 `openspec/` se řeší samostatnými commity, ne zároveň s kódem. Nové úpravy
-agent dává do větve `agents/<agent>/<nazev-zmeny>`.
+agent dává do větve `agents/<agent>/<nazev-zmeny>`, kde `<nazev-zmeny>` je
+název změny v OpenSpec (např. `agents/claude/docker-image-ghcr`). Toto
+pravidlo má přednost před větví, kterou agentovi přidělí prostředí
+(např. `claude/<náhodný-název>` v cloudových relacích Claude Code).
 
 ## Příkazy
 
