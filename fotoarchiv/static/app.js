@@ -653,6 +653,13 @@ function eventLink(e) {
     class: "nazev" }, e.nazev.slice(11));
 }
 
+// Ikona stažení ZIPu celé akce; odkaz s `download`, plochu neotevře.
+function eventDownload(e) {
+  const label = "Stáhnout akci (ZIP)";
+  return h("a", { class: "stahnout", href: eventUrl(e.nazev, "/zip"),
+    download: "", "aria-label": label, title: label }, icon("stahnout"));
+}
+
 function eventMeta(e) {
   return h("span", { class: "meta" },
     `${e.datum} · ${plural(e.souboru, "soubor", "soubory", "souborů")}`);
@@ -755,7 +762,9 @@ function eventTile(e) {
   }
   return h("article", { class: `karta stav-${e.stav}` },
     eventThumbs(e) || h("div", { class: "nahledy prazdne" }),
-    h("div", { class: "telo" }, eventMeta(e), eventLink(e),
+    h("div", { class: "telo" },
+      h("div", { class: "hlava" }, eventMeta(e), eventDownload(e)),
+      eventLink(e),
       h("div", { class: "stitky" }, eventBadges(e)), done, eventPeople(e)));
 }
 
@@ -778,7 +787,8 @@ function eventRow(e) {
     : h("div", { class: "hotovost" }, startLink(e));
   return h("article", { class: `karta stav-${e.stav}` },
     eventThumbs(e) || h("div", { class: "nahledy prazdne" }),
-    h("div", { class: "telo" }, eventLink(e),
+    h("div", { class: "telo" },
+      h("div", { class: "hlava" }, eventLink(e), eventDownload(e)),
       h("div", { class: "stitky" }, eventMeta(e), eventBadges(e)),
       eventPeople(e)),
     done);
@@ -3913,16 +3923,55 @@ function renderPanel() {
     title = "Akce";
   }
   const targets = targetsFor(level, ids);
-  // Jen ke čtení: fieldset disabled zakáže všechna pole a tlačítka panelu.
-  panel.replaceChildren(h("fieldset", { class: "panel-body",
-    disabled: !!state.readonly },
-  h("h2", {}, title),
-  ...extra.filter(Boolean),
-  h("div", { class: "form" },
-    FIELDS[level].map((k) => fieldRow(targets, k, onChange))),
-  level === "soubor" ? placeBox : null));
+  // Jen ke čtení: fieldset disabled zakáže všechna pole a tlačítka panelu;
+  // stažení jen čte, a proto stojí mimo něj.
+  panel.replaceChildren(...[h("h2", {}, title),
+    level === "soubor" ? downloadButton(ids) : null,
+    h("fieldset", { class: "panel-body", disabled: !!state.readonly },
+      ...extra.filter(Boolean),
+      h("div", { class: "form" },
+        FIELDS[level].map((k) => fieldRow(targets, k, onChange))),
+      level === "soubor" ? placeBox : null)].filter(Boolean));
   if (level === "soubor") renderPlaces(placeBox);
   markOsoby();
+}
+
+// Stažení výběru: jeden soubor jako originál, víc jako ZIP s metadaty.
+// Jen čte, takže i bez zámku; soubory, které na disku chybí, nejdou.
+function downloadButton(ids) {
+  const files = ids.filter((f) => state.present.has(f));
+  if (!files.length) return null;
+  return h("div", { class: "row stahnout" }, h("button", {
+    class: "ico", onclick: () => downloadFiles(files),
+    title: files.length === 1 ? "Stáhnout originál"
+      : "Stáhnout originály jako ZIP s _metadata.json a sidecary",
+  }, icon("stahnout"), `Stáhnout (${files.length})`));
+}
+
+// Stahování řídí prohlížeč (ne fetch, který by ZIP držel v paměti);
+// formulář POST míří do skrytého rámu, takže chybová odpověď plochu
+// nepřepíše.
+function downloadFiles(files) {
+  if (files.length === 1) {
+    const a = h("a", { download: "", href: eventUrl(state.name,
+      `/soubor/${encodeURIComponent(files[0])}?stahnout=1`) });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    return;
+  }
+  let frame = document.querySelector("iframe[name=stahovani]");
+  if (!frame) {
+    frame = h("iframe", { name: "stahovani", hidden: true });
+    document.body.append(frame);
+  }
+  const form = h("form", { method: "post", target: "stahovani",
+    action: eventUrl(state.name, "/zip"), hidden: true },
+  files.map((f) => h("input", { type: "hidden", name: "soubory",
+    value: f })));
+  document.body.append(form);
+  form.submit();
+  form.remove();
 }
 
 // --- průvodce --------------------------------------------------------------

@@ -19,9 +19,9 @@ from pathlib import Path
 from flask import (Flask, Response, abort, g, jsonify, make_response,
                    redirect, request, send_file, session)
 
-from . import (albums, auth, cleanup, consistency, geocode, immich,
-               importer, integrity, lock, model, naming, names, scan,
-               thumbs, trash, unsorted, version, xmp)
+from . import (albums, auth, cleanup, consistency, download, geocode,
+               immich, importer, integrity, lock, model, naming, names,
+               scan, thumbs, trash, unsorted, version, xmp)
 from . import index as archive_index
 from .archive import SCHEMA, UNSORTED, Collision, Conflict, Workspace
 
@@ -935,7 +935,45 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         src = root_file(nazev, soubor)
         if scan.extension(soubor) not in scan.MEDIA_EXT:
             abort(404)
-        return send_file(src, conditional=True)
+        # `?stahnout=1` = příloha pod názvem z disku, jinak inline (lupa).
+        return send_file(src, conditional=True,
+                         as_attachment=bool(request.args.get("stahnout")),
+                         download_name=src.name)
+
+    def zip_response(nazev, files, name):
+        """Streamovaný ZIP médií `files` se sidecary a `_metadata.json`.
+        Jen čte; přerušené spojení generátor zavře."""
+        path = event_dir(nazev)
+        data, doc = download.load_metadata(ws, nazev)
+        if files is None:
+            files = download.event_media(path, doc)
+        chunks = download.stream(
+            download.entries(path, nazev, files, data, doc))
+        response = Response(chunks, mimetype="application/zip")
+        response.headers["Content-Disposition"] = download.attachment(
+            name or f"{nazev}.zip")
+        response.headers["Cache-Control"] = "no-store"
+        response.call_on_close(chunks.close)
+        return response
+
+    @app.get("/api/akce/<nazev>/zip")
+    def akce_zip(nazev):
+        # Celá akce: média kořene bez vyřazených; bez zámku i role.
+        return zip_response(nazev, None, None)
+
+    @app.post("/api/akce/<nazev>/zip")
+    def akce_zip_selection(nazev):
+        # Výběr z formuláře (stahování řídí prohlížeč, ne fetch); všechny
+        # názvy se ověří před prvním bajtem, vyřazené se nevynechají.
+        files = list(dict.fromkeys(request.form.getlist("soubory")))
+        if not files:
+            abort(400)
+        for soubor in files:
+            root_file(nazev, soubor)
+            if scan.extension(soubor) not in scan.MEDIA_EXT:
+                abort(404)
+        return zip_response(nazev, files,
+                            download.selection_name(nazev, len(files)))
 
     # --- import ------------------------------------------------------------
 

@@ -1,10 +1,13 @@
-# Kontejner se staví z repozitáře (Dockerfile). Work je bind mount
-# na hostiteli — správce ručně edituje work/uzivatele.json, proto není
-# pojmenovaný volume.
+# Release: image z GHCR (docker compose pull && docker compose up -d).
+# Build z pracovní kopie (např. větev před releasem): docker compose
+# up -d --build; image dostane stejné jméno, další pull ho nahradí
+# releasem. Co běží, ukazuje verze v hlavičce aplikace.
+# Work je bind mount na hostiteli — správce ručně edituje
+# work/uzivatele.json, proto není pojmenovaný volume.
 services:
   fotoarchiv:
     build: .
-    image: fotoarchiv-digi-media-metadata:latest
+    image: ghcr.io/david-spacil/fotoarchiv-digi-media-metadata:latest
     # init: Python jinak ignoruje SIGTERM (je PID 1) a kontejner
     # by končil až timeoutem.
     init: true

@@ -26,6 +26,10 @@
   sidecaru nejdou (osoby má Immich z vlastního rozpoznávání obličejů;
   obličeje jen při obnově, viz níže). Sidecar skládá aplikace sama (ne exiftool), takže obsah
   závisí jen na `_metadata.json` a názvu složky akce.
+  Stejně vzniká i sidecar v ZIPu stažené akce nebo výběru, a to
+  v paměti z přibaleného `_metadata.json`; sidecary na disku se pro
+  ZIP nečtou (viz
+  [Stažení originálů](../navod/pracovni-plocha.md#stažení-originálů)).
 
   Ověřeno na Immichi 3.2 (5. 10. 2026): osoby (`Person`) vznikají jen
   z obličejů se souřadnicemi — `PersonInImage` ani tagy se jmény se

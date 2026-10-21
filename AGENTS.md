@@ -22,7 +22,10 @@ Při změně návrhu je aktualizovat; tady je neopakovat.
 
 Změny se vedou přes OpenSpec (`openspec/`, příkazy `/opsx:*`). Úpravy v
 `openspec/` se řeší samostatnými commity, ne zároveň s kódem. Nové úpravy
-agent dává do větve `agents/<agent>/<nazev-zmeny>`.
+agent dává do větve `agents/<agent>/<nazev-zmeny>`, kde `<nazev-zmeny>` je
+název změny v OpenSpec (např. `agents/claude/docker-image-ghcr`). Toto
+pravidlo má přednost před větví, kterou agentovi přidělí prostředí
+(např. `claude/<náhodný-název>` v cloudových relacích Claude Code).
 
 ## Příkazy
 
@@ -56,8 +59,10 @@ python -m venv .venv && .venv/bin/pip install -r requirements.txt
 #   --rychle jen konzistence, --zapis-do-archivu i náprava přesuny
 # → poškozené soubory (nuly od 64 KiB, dekódování, ffprobe) jedné/všech
 #   akcí; archiv jen čte, report do .work/kontrola/, cache v .work/cache/
-cp .env.example .env && docker compose up -d --build
-# → nasazení na server (produkční režim, ./work), viz docs/provoz/docker.md
+cp .env.example .env && docker compose pull && docker compose up -d
+# → nasazení na server (produkční režim, ./work, image z GHCR staví
+#   .github/workflows/docker.yml); větev: docker compose up -d --build;
+#   viz docs/provoz/docker.md
 
 .venv/bin/python -m pytest -q                       # testy Pythonu
 .venv/bin/python -m pytest tests/test_cleanup.py::test_collision_blocks

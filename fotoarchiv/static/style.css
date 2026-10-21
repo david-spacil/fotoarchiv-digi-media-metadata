@@ -309,6 +309,13 @@ main.list, main.loading, main.wizard { padding: var(--space-4)
 .karta .telo { display: grid; gap: var(--space-2); align-content: start;
   min-width: 0; }
 .karta .nazev { font-weight: 600; font-size: 15px; text-wrap: balance; }
+.karta .hlava { display: flex; align-items: start;
+  justify-content: space-between; gap: var(--space-2); }
+.karta a.stahnout { flex: none; display: inline-flex; padding: 2px;
+  margin: -2px; border-radius: var(--radius); color: var(--text-muted); }
+.karta a.stahnout:hover { color: var(--text); background: var(--surface-2); }
+.karta a.stahnout .icon { width: 18px; height: 18px; }
+.panel .stahnout button { gap: var(--space-2); padding: 2px 10px; }
 .karta .meta { color: var(--text-muted); font-variant-numeric: tabular-nums;
   font-size: 12px; }
 .karta .stitky { display: flex; flex-wrap: wrap; gap: var(--space-2);
