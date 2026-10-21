@@ -190,7 +190,8 @@ def test_restore_refused_when_name_taken(setup, nova):
 def test_unknown_folder(setup):
     ws, stav = setup
     make_tree(ws.archiv, {f"{trash.TRASH}/": {"cizi/": {"x.jpg": "x"}}})
-    assert trash.entries(ws, NOW) == [{"id": "cizi", "neznama": True}]
+    assert trash.entries(ws, NOW) == [{"id": "cizi", "neznama": True,
+                                       "bajtu": None}]
     with pytest.raises(trash.Refused) as e:
         trash.restore(ws, "cizi", stav)
     assert e.value.code == "neznama"
@@ -209,9 +210,12 @@ def test_entries(setup):
     assert items[1] == {"id": first["id"], "nazev": EVENT,
                         "smazal": "Novák, Jan",
                         "smazano": "2026-10-17T14:30:12",
-                        "duvod": "duplicita", "souboru": 2,
+                        "duvod": "duplicita", "souboru": 2, "bajtu": None,
                         "vysypat": "2026-10-24T14:30:12", "zbyva_dni": 5}
     assert items[0]["zbyva_dni"] == 7
+    velikosti = {first["id"]: {"bajtu": 3_000, "cas": "2026-10-19T14:00"}}
+    items = trash.entries(ws, NOW, velikosti=velikosti)
+    assert [i["bajtu"] for i in items] == [None, 3_000]
 
 
 # --- akce v koši jinde nejsou ------------------------------------------------

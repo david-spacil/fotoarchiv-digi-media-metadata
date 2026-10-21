@@ -31,6 +31,8 @@ from .archive import (IGNORED, METADATA_NAME, SCHEMA_V1, Collision,
 
 # Vysypání koše v serveru: při startu a pak jednou denně.
 KOS_INTERVAL = 24 * 60 * 60
+# Přepočet velikostí celého archivu a koše: jednou denně.
+VELIKOST_INTERVAL = 24 * 60 * 60
 
 
 def paths(args):
@@ -604,6 +606,8 @@ def main(argv=None):
     app = create_app(archiv, work, zapis=args.zapis_do_archivu,
                      immich_interval=None if watcher else immich.INTERVAL,
                      kos_interval=None if watcher else KOS_INTERVAL,
+                     velikost_interval=None if watcher
+                     else VELIKOST_INTERVAL,
                      prihlaseni=not args.bez_prihlaseni, https=args.https)
     print(f"Archiv: {archiv.resolve()}")
     print(f"Pracovní adresář: {work.resolve()}")

@@ -196,26 +196,31 @@ def _count(path):
                    and not is_skipped(e.name) and not is_metadata(e.name))
 
 
-def entries(ws, now=None):
+def entries(ws, now=None, velikosti=None):
     """Akce v koši, nejnověji smazané první.
 
-    Položka: {id, nazev, smazal, smazano, duvod, souboru, vysypat,
-    zbyva_dni}, složka bez platného záznamu {id, neznama: True}.
+    Položka: {id, nazev, smazal, smazano, duvod, souboru, bajtu,
+    vysypat, zbyva_dni}, složka bez platného záznamu {id, neznama: True,
+    bajtu}. `bajtu` z `velikosti` (`Velikosti.kos()`), bez údaje None.
     """
     now = now or _now()
+    velikosti = velikosti or {}
     result = []
     for entry in _folders(ws):
         path = Path(entry.path)
         record = read_record(path)
+        bajtu = (velikosti.get(entry.name) or {}).get("bajtu")
         if record is None:
-            result.append({"id": entry.name, "neznama": True})
+            result.append({"id": entry.name, "neznama": True,
+                           "bajtu": bajtu})
             continue
         vysypat = purge_date(record)
         result.append({
             "id": entry.name, "nazev": record["nazev"],
             "smazal": record.get("smazal"),
             "smazano": record["smazano"], "duvod": record.get("duvod"),
-            "souboru": _count(path), "vysypat": vysypat.isoformat(),
+            "souboru": _count(path), "bajtu": bajtu,
+            "vysypat": vysypat.isoformat(),
             "zbyva_dni": max(0, math.ceil(
                 (vysypat - now).total_seconds() / 86400))})
     result.sort(key=lambda e: (e.get("smazano") or "", e["id"]),

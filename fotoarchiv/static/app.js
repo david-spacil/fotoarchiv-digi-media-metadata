@@ -12,8 +12,8 @@ import {
   odebranaPolohaFiles, toggleAllowed, unchecked,
 } from "./integrity.js";
 import {
-  FILTRY, POLE, RAZENI, filterCounts, lastEdit, listHash, parseListHash,
-  ratio, visibleEvents,
+  FILTRY, POLE, RAZENI, celkemText, filterCounts, fmtSize, lastEdit,
+  listHash, parseListHash, ratio, visibleEvents,
 } from "./fronta.js";
 import { icon } from "./icons.js";
 import { immichStav } from "./immichstav.js";
@@ -584,10 +584,12 @@ async function showList() {
   state.mode = null;
   state.name = null;
   app.replaceChildren(header(), h("main", { class: "list" }, "Načítám…"));
-  const [events, pending] = await Promise.all([
+  const [events, pending, velikost] = await Promise.all([
     api(`/api/akce?relace=${session()}`),
     userName() ? api(`/api/import?jmeno=${encodeURIComponent(userName())}`)
-      .then((r) => r.importy).catch(() => []) : []]);
+      .then((r) => r.importy).catch(() => []) : [],
+    // Součet archivu a koše; chyba = řádek se neukáže.
+    api("/api/velikost").catch(() => null)]);
   state.events = events;
   // Filtr, hledání a řazení v adrese seznamu (přežijí návrat z plochy).
   const view = parseListHash(location.hash);
@@ -634,6 +636,8 @@ async function showList() {
       state.me?.admin ? h("a", { href: "#/kos" }, "Koš") : null),
     pendingImports(pending),
     h("div", { class: "fronta-lista" }, filters, search, sort, layouts),
+    velikost ? h("p", { class: "meta celkem" },
+      celkemText(velikost.akce, velikost.kos)) : null,
     list));
 }
 
@@ -662,7 +666,8 @@ function eventDownload(e) {
 
 function eventMeta(e) {
   return h("span", { class: "meta" },
-    `${e.datum} · ${plural(e.souboru, "soubor", "soubory", "souborů")}`);
+    `${e.datum} · ${plural(e.souboru, "soubor", "soubory", "souborů")}` +
+    (e.bajtu != null ? ` · ${fmtSize(e.bajtu)}` : ""));
 }
 
 // Až 4 ukázky rovnoměrně z celé akce; načtou se až u viditelné karty.
@@ -1112,7 +1117,7 @@ async function showTrash() {
   const rows = data.akce.map((e) => {
     if (e.neznama) {
       return h("tr", { class: "meta" }, h("td", {}, h("code", {}, e.id)),
-        h("td", { colspan: 6 }, "Neznámá složka bez záznamu o smazání – ",
+        h("td", { colspan: 7 }, "Neznámá složka bez záznamu o smazání – ",
           "nesmaže se, řeší ji správce archivu ručně."));
     }
     const button = h("button", { disabled: !data.zapis,
@@ -1123,6 +1128,7 @@ async function showTrash() {
       h("td", {}, fmtDate(e.smazano)),
       h("td", {}, e.duvod || "—"),
       h("td", {}, e.souboru),
+      h("td", { class: "num" }, e.bajtu != null ? fmtSize(e.bajtu) : ""),
       h("td", { title: fmtDate(e.vysypat) }, zbyvaText(e.zbyva_dni)),
       h("td", {}, button));
   });
@@ -1138,7 +1144,7 @@ async function showTrash() {
     rows.length ? h("table", {},
       h("thead", {}, h("tr", {}, h("th", {}, "Akce"), h("th", {}, "Smazal"),
         h("th", {}, "Kdy"), h("th", {}, "Důvod"), h("th", {}, "Souborů"),
-        h("th", {}, "Trvale smaže"), h("th"))),
+        h("th", {}, "Velikost"), h("th", {}, "Trvale smaže"), h("th"))),
       h("tbody", {}, rows))
       : h("p", { class: "meta" }, "Koš je prázdný.")));
 }
@@ -4384,14 +4390,6 @@ function importUrl(rest = "") {
 function fmtDate(d) {
   const [y, m, day] = d.slice(0, 10).split("-");
   return `${+day}. ${+m}. ${y}`;
-}
-
-function fmtSize(n) {
-  const units = ["B", "kB", "MB", "GB", "TB"];
-  let i = 0;
-  while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
-  return `${n.toLocaleString("cs", { maximumFractionDigits: i ? 1 : 0 })} ` +
-    units[i];
 }
 
 async function openImport(id, params) {
