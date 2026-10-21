@@ -24,6 +24,10 @@ operace v archivu, proto potřebuje pojistku. Issue #28.
   stav akce v pracovním adresáři (cache, stav alba a osob, odložené
   osoby, záznam exportu). **Mění invariant**, že aplikace v Immichi
   nikdy nemaže album.
+- Smazání i obnovení dokončené akce spustí na pozadí **sken knihovny**
+  v Immichi (assety hned offline, resp. zpět); obnovení i hlídání
+  alba jako po dokončení. **Mění invariant**, že sken spouští jen
+  hlídač po dokončení.
 - Index se přegeneruje i po smazání, obnovení a vysypání.
 - Ve vývojovém režimu smazání jen ukáže, co by se stalo; archiv se
   nemění.

@@ -155,6 +155,34 @@ a nic nepřesunout. Obnovení SHALL být zapsáno do logu serveru.
   mezitím vznikla akce stejného názvu
 - **THEN** obnovení se odmítne a obě složky zůstanou beze změny
 
+### Requirement: Sken knihovny po přesunu dokončené akce
+Smazání dokončené akce (složka bez přípony `.ignored`) do koše
+i její obnovení SHALL v produkčním režimu spustit na pozadí sken
+knihovny vybrané v nastavení Immiche, aby Immich assety akce hned
+označil offline, resp. je vrátil. Na Immich MUST NOT čekat a chyba
+Immiche MUST NOT smazání ani obnovení zabránit. Smazání SHALL ukončit
+běžící hlídání akce po dokončení. Obnovení SHALL spustit hlídání jako
+dokončení akce (sken, udržení alba, rozpoznávání). Nedokončená akce
+sken MUST NOT spustit; bez nastaveného Immiche nebo vybrané knihovny
+se sken vynechá.
+
+#### Scenario: Smazání dokončené akce
+- **WHEN** admin smaže dokončenou akci a Immich má vybranou knihovnu
+- **THEN** smazání odpoví hned a na pozadí proběhne sken knihovny
+
+#### Scenario: Smazání nedokončené akce
+- **WHEN** admin smaže akci, jejíž složka má příponu `.ignored`
+- **THEN** sken knihovny se nespustí
+
+#### Scenario: Obnovení dokončené akce spustí sken
+- **WHEN** admin obnoví dokončenou akci
+- **THEN** na pozadí proběhne sken knihovny a album akce se udržuje
+  jako po dokončení
+
+#### Scenario: Immich nedostupný při smazání
+- **WHEN** admin smaže dokončenou akci a Immich neodpovídá
+- **THEN** akce je v koši a chyba skenu je jen v logu
+
 ### Requirement: Automatické vysypání koše
 Server SHALL při startu a pak jednou denně trvale smazat každou akci
 v koši, jejíž záznam o smazání je starší než 7 dní. Bez platného

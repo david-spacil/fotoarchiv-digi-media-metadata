@@ -103,6 +103,17 @@ dál nic nemažou. Akce v koši nejsou v `list_events`, takže je
 synchronizace nevidí a jejich album nemění. Test připojení přidá do
 oprávnění pro alba akcí `album.delete`.
 
+### Sken knihovny po smazání a obnovení
+Smazání dokončené akce spustí na pozadí sken knihovny (bez čekání,
+chyba jen do logu), aby Immich assety označil offline hned, ne až při
+svém pravidelném skenu; to by se stalo stejně, sken to jen urychlí.
+Obnovení dokončené akce spustí hlídače jako dokončení: sken vrátí
+assety z offline a hlídač dorovná album. Nedokončená akce je pro
+Immich neviditelná, sken nespouští. Smazání zároveň ukončí běžícího
+hlídače akce, aby nezapsal stav do `.work` po jeho vyjmutí.
+*Alternativa:* nechat to na pravidelném skenu Immiche — akce v koši by
+dál byla v Immichi vidět (s rozbitými náhledy) až do něj.
+
 ### Oprávnění a zámek
 Endpointy `/api/kos…` jdou do `ADMIN_PREFIXES`; smazání akce
 (`DELETE /api/akce/<nazev>` nebo `POST …/smazat`) kontroluje admina
@@ -117,9 +128,11 @@ a nic nezapíše — stejně jako úklid ve vývojovém režimu.
 
 ## Risks / Trade-offs
 
-- [Obnova dokončené akce: Immich mezitím assety označí offline
-  a po své lhůtě je vyřadí do koše Immiche] → V rámci 7 dní by sken
-  měl assety na původní cestě vrátit včetně obličejů; ověřit proti
+- [Obnova dokončené akce: Immich assety po skenu (nově hned po
+  smazání) označí offline a přesune do svého koše; ten po své lhůtě
+  (výchozí 30 dní) trvale maže, při vypnutém koši Immiche hned] →
+  V rámci 7 dní by sken po obnovení měl assety na původní cestě vrátit
+  včetně obličejů, je-li lhůta koše Immiche delší než 7 dní; ověřit proti
   skutečnému Immichi před nasazením (úkol v tasks). Pokud se nevrátí,
   zdokumentovat, že obnova dokončené akce znamená nové rozpoznání.
 - [Vysypání je nevratné] → Lhůta 7 dní, opisování názvu, důvod v logu,
