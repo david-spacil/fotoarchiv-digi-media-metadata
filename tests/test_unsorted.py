@@ -30,13 +30,13 @@ def test_listing_counts_subfolders(tmp_path):
 
 
 @pytest.mark.parametrize("name, datum, rok", [
-    ("komise_Mikulčice_31.8.2012", "2012-08-31", 2012),
+    ("komise_Vzorovice_31.8.2012", "2012-08-31", 2012),
     ("2018_10_22_Tisková konference", "2018-10-22", 2018),
     ("2019_4_8_Zlaty fond", "2019-04-08", 2019),
     ("Opavske_expozitury_Prislo_12_09_2019", "2019-09-12", 2019),
     ("AMČR 8.11.2017", "2017-11-08", 2017),
     ("DOD 2017", None, 2017),
-    ("HLOZEK", None, None),
+    ("VZORNY", None, None),
     ("x 31.2.2012", None, 2012),
 ])
 def test_name_date(name, datum, rok):
@@ -56,19 +56,19 @@ def exif_dates(dates):
 def test_details_exif_first_and_cached(tmp_path):
     root = tmp_path / "přetřídit"
     make_tree(tmp_path, {"přetřídit/": {
-        "Praha 2017/": {"a.jpg": "a", "Den 2/": {"b.jpg": "b"}},
-        "komise_Mikulčice_31.8.2012/": {"c.jpg": "c"},
+        "Vzorov 2017/": {"a.jpg": "a", "Den 2/": {"b.jpg": "b"}},
+        "komise_Vzorovice_31.8.2012/": {"c.jpg": "c"},
         "DOD 2017/": {"d.jpg": "d"}}})
     exiftool, calls = exif_dates({"a.jpg": "2017:06:15 10:00:00",
                                   "b.jpg": "2017:06:14 09:00:00"})
     cache = tmp_path / "cache"
-    d = unsorted.details(root, "Praha 2017", cache, exiftool)
+    d = unsorted.details(root, "Vzorov 2017", cache, exiftool)
     assert (d["od"], d["do"]) == ("2017-06-14", "2017-06-15")
-    assert d["navrh"] == {"datum": "2017-06-14", "nazev": "Praha 2017",
-                          "akce": "2017-06-14 Praha 2017"}
-    d = unsorted.details(root, "komise_Mikulčice_31.8.2012", cache, exiftool)
+    assert d["navrh"] == {"datum": "2017-06-14", "nazev": "Vzorov 2017",
+                          "akce": "2017-06-14 Vzorov 2017"}
+    d = unsorted.details(root, "komise_Vzorovice_31.8.2012", cache, exiftool)
     assert d["navrh"]["akce"] == \
-        "2012-08-31 komise_Mikulčice_31.8.2012"
+        "2012-08-31 komise_Vzorovice_31.8.2012"
     d = unsorted.details(root, "DOD 2017", cache, exiftool)
     assert d["navrh"] == {"datum": None, "nazev": "DOD 2017", "akce": None}
 
@@ -78,7 +78,7 @@ def test_details_exif_first_and_cached(tmp_path):
     assert calls == []
     assert [e["typ"] for e in events] == ["vypis"] + ["slozka"] * 3
     assert [e["nazev"] for e in events[0]["slozky"]] == [
-        "DOD 2017", "Praha 2017", "komise_Mikulčice_31.8.2012"]
+        "DOD 2017", "Vzorov 2017", "komise_Vzorovice_31.8.2012"]
     assert events[2]["navrh"]["datum"] == "2017-06-14"
     assert events[0]["slozky"][0]["z_nazvu"] == {"datum": None, "rok": 2017}
     assert list(unsorted.iter_overview(root, cache, exiftool, exif=False)) \

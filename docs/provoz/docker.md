@@ -32,7 +32,7 @@ CIFS musí odpovídat vlastníkovi, kterého určují volby mountu (soubor
 s přihlašovacími údaji číst netřeba):
 
 ```sh
-A=/mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
+A=/cesta/k/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
 stat -c '%u:%g' "$A"
 findmnt -no OPTIONS -T "$A"   # volby uid=, gid=, file_mode=, dir_mode=
 ```

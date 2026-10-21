@@ -42,11 +42,11 @@ i dvoucifernými dny a měsíci); samotný rok MUST NOT dát celé datum.
 Navržený název SHALL být název složky.
 
 #### Scenario: Datum jen v názvu
-- **WHEN** složka `komise_Mikulčice_31.8.2012` nemá EXIF datum
-- **THEN** navržená akce je `2012-08-31 komise_Mikulčice_31.8.2012`
+- **WHEN** složka `komise_Vzorovice_31.8.2012` nemá EXIF datum
+- **THEN** navržená akce je `2012-08-31 komise_Vzorovice_31.8.2012`
 
 #### Scenario: EXIF má přednost
-- **WHEN** složka `Praha 2017` má fotky s EXIF datem 14. a 15. 6. 2017
+- **WHEN** složka `Vzorov 2017` má fotky s EXIF datem 14. a 15. 6. 2017
 - **THEN** navržené datum je `2017-06-14`
 
 #### Scenario: Jen rok
@@ -69,7 +69,7 @@ bajtů, i uvnitř velkých souborů. Tentýž průchod SHALL spočítat sha256
 souborů a uložit ho do cache, aby plán soubory zdroje znovu nečetl.
 
 #### Scenario: Plán po kontrole
-- **WHEN** kontrola zdroje `HLOZEK` doběhne a uživatel nechá ukázat
+- **WHEN** kontrola zdroje `VZORNY` doběhne a uživatel nechá ukázat
   plán
 - **THEN** plán soubory zdroje znovu nečte
 ### Requirement: Import ze složky přetřídit
@@ -86,7 +86,7 @@ zdroje v kroku Soubory SHALL nenabídnout.
 
 #### Scenario: Import celé složky
 - **WHEN** uživatel na stránce Přetřídit klikne na `Vánoční večírek
-  2019_Pavlov` s podsložkami `Pavlov` a `Pavlov2`
+  2019_Vzorkovice` s podsložkami `Vzorkovice` a `Vzorkovice2`
 - **THEN** průvodce ukáže přehled jejích 174 fotek, cíl nová akce
   s navrženým datem a názvem a předvolbu skupin podle podsložek
 
@@ -115,10 +115,10 @@ zvlášť. Duplicity, blokované a nepodporované soubory MUST zůstat ve
 zdroji. Ve vývojovém režimu MUST zdroj i archiv zůstat beze změny.
 
 #### Scenario: Přesun do nové akce
-- **WHEN** uživatel v produkčním režimu provede import `BONGO ZK`
-  (40 JPG) do nové akce `2017-05-10 BONGO ZK`
+- **WHEN** uživatel v produkčním režimu provede import `MODEL ZK`
+  (40 JPG) do nové akce `2017-05-10 MODEL ZK`
 - **THEN** 40 JPG je v kořeni akce se stejným obsahem a časem změny
-  a ve složce `přetřídit/BONGO ZK` už nejsou
+  a ve složce `přetřídit/MODEL ZK` už nejsou
 
 #### Scenario: Duplicita zůstane
 - **WHEN** jeden soubor zdroje má stejný obsah jako soubor v kořeni
@@ -147,15 +147,15 @@ jít jen v produkčním režimu, jen pokud se soubor od kontroly nezměnil,
 a MUST NOT probíhat, když zdroj drží zámek jiné relace.
 
 #### Scenario: Poškozený soubor zůstane
-- **WHEN** import složky `HLOZEK` přesune všechna média kromě
+- **WHEN** import složky `VZORNY` přesune všechna média kromě
   nečitelného `20151107_140851.jpg`
-- **THEN** soubor zůstane v `přetřídit/HLOZEK`, složka nezanikne
+- **THEN** soubor zůstane v `přetřídit/VZORNY`, složka nezanikne
   a výsledek ho uvede jako poškozený
 
 #### Scenario: Smazání ze zdroje
 - **WHEN** uživatel v produkčním režimu potvrdí smazání nečitelného
-  `20151107_140851.jpg` ze zdroje `HLOZEK`
-- **THEN** soubor zmizí z `přetřídit/HLOZEK` a z přehledu importu
+  `20151107_140851.jpg` ze zdroje `VZORNY`
+- **THEN** soubor zmizí z `přetřídit/VZORNY` a z přehledu importu
 
 #### Scenario: Vývojový režim
 - **WHEN** uživatel ve vývojovém režimu chce smazat poškozený soubor

@@ -119,7 +119,7 @@ o poškozených souborech rozhodnout před volbou cíle.
 ### U videa nuly jen v obrazových datech (modul `fotoarchiv/mp4.py`)
 První průchod archivem (8. 10. 2026, 1320 souborů) nahlásil 5 videí,
 nezávislé ověření (rozbor atomů) ukázalo, že všech 5 je zdravých:
-nuly ležely v atomu `free` (Telč, rezerva pro `moov`) a v pevně velkých
+nuly ležely v atomu `free` (Ukázkov, rezerva pro `moov`) a v pevně velkých
 `udta`/`meta` (Panasonic). Panasonic navíc ukládá zvuk jako PCM
 (`pcm_s16be`): ticho je doslova řada nul, 1 s stereo 48 kHz je
 ~188 KiB, takže delší ticho by práh přesáhlo i v `mdat` (v archivu

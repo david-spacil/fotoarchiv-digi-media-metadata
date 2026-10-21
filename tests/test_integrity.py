@@ -325,7 +325,7 @@ def test_ffprobe_timeout(tmp_path, monkeypatch):
 
 # --- příkaz zkontrolovat ------------------------------------------------------
 
-A = "2015-11-07 Hlozek"
+A = "2015-11-07 Vzorny"
 B = "2026-04-28 kontrola"
 
 

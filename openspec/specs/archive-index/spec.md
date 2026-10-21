@@ -17,10 +17,10 @@ a ze souborů v kořeni složky akce; jiný zdroj (zejména
 `_metadata.xlsx`) MUST NOT být čten.
 
 #### Scenario: Zpracovaná i nezpracovaná akce
-- **WHEN** archiv obsahuje akci `2026-09-14 Atrium Summer School 2026`
-  s `_metadata.json` a akci `2026-06-19 židovská synagoga u Vlněny`
+- **WHEN** archiv obsahuje akci `2026-09-14 Vzorová letní škola 2026`
+  s `_metadata.json` a akci `2026-06-19 stará fara u Vzorné`
   bez něj
-- **THEN** oba indexy obsahují obě akce, Atrium Summer School první
+- **THEN** oba indexy obsahují obě akce, Vzorová letní škola první
 
 #### Scenario: Akce bez metadat
 - **WHEN** akce nemá `_metadata.json`
@@ -37,7 +37,7 @@ akce (`akce.mista`), bez míst jednotlivých souborů. Fotili SHALL
 obsahovat zkrácená jména (`Příjmení J.`).
 
 #### Scenario: Řádek akce
-- **WHEN** akce `Konference Dějiny archeologie` od 8. 9. 2026 má místa
+- **WHEN** akce `Konference Příkladné metody` od 8. 9. 2026 má místa
   akce `Markušovce` a `Spišská Nová Ves`, 108 fotek a 1 video
   a soubory s místem `Poprad`
 - **THEN** její řádek má datum `2026-09-08`, místa `Markušovce;
@@ -67,10 +67,10 @@ generování; upozornění SHALL být jen v komentáři zdrojového kódu.
 - **THEN** stránka ukazuje všechny karty akcí
 
 #### Scenario: Odkaz na skrytou akci
-- **WHEN** akce `2026-04-28 kontrola Stezky` má složku s příponou
+- **WHEN** akce `2026-04-28 kontrola Naučné stezky` má složku s příponou
   `.ignored`
 - **THEN** karta ukazuje název bez přípony a odkazuje na
-  `./2026-04-28 kontrola Stezky.ignored/`
+  `./2026-04-28 kontrola Naučné stezky.ignored/`
 
 ### Requirement: Řazení autorů
 Fotografové akce SHALL být v obou indexech seřazeni sestupně podle

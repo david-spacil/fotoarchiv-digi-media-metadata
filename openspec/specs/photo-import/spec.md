@@ -14,7 +14,7 @@ předvybraného cíle) a z pracovní plochy akce (s touto akcí jako
 předvybraným cílem).
 
 #### Scenario: Import z pracovní plochy
-- **WHEN** uživatel na ploše akce `2026-04-28 kontrola Stezky…` spustí
+- **WHEN** uživatel na ploše akce `2026-04-28 kontrola Naučné stezky…` spustí
   import
 - **THEN** průvodce má jako cíl předvybranou tuto akci
 
@@ -53,9 +53,9 @@ než uživatel import potvrdí. Průvodce SHALL ukazovat průběh nahrávání.
 
 #### Scenario: Zdroj místo nahrání
 - **WHEN** uživatel v kroku Soubory zvolí ze složky `přetřídit` složku
-  `HLOZEK`
+  `VZORNY`
 - **THEN** průvodce nic nenahrává a přejde na přehled souborů
-  `HLOZEK`
+  `VZORNY`
 
 ### Requirement: Podporované soubory
 Import SHALL přijmout média, která aplikace zpracovává (jpg, jpeg,
@@ -154,19 +154,19 @@ a Immich je uvidí hned.
   stávající
 
 #### Scenario: Existující skrytá akce
-- **WHEN** archiv obsahuje `2026-04-28 kontrola Stezky.ignored`
-  a uživatel zadá novou akci `2026-04-28 kontrola Stezky`
+- **WHEN** archiv obsahuje `2026-04-28 kontrola Naučné stezky.ignored`
+  a uživatel zadá novou akci `2026-04-28 kontrola Naučné stezky`
 - **THEN** průvodce název odmítne a nabídne zvolit tu akci jako
   stávající
 
 #### Scenario: Nová akce skrytá
 - **WHEN** uživatel v produkčním režimu importuje do nové akce
-  `2026-04-28 kontrola Stezky`
-- **THEN** soubory leží ve složce `2026-04-28 kontrola Stezky.ignored`
+  `2026-04-28 kontrola Naučné stezky`
+- **THEN** soubory leží ve složce `2026-04-28 kontrola Naučné stezky.ignored`
 
 #### Scenario: Cizí akce jako cíl
 - **WHEN** uživatel bez role vybírá stávající akci a akce
-  `2026-04-28 kontrola Stezky` jeho jméno v `upravili` nemá
+  `2026-04-28 kontrola Naučné stezky` jeho jméno v `upravili` nemá
 - **THEN** průvodce ji mezi cíli nenabídne
 
 ### Requirement: Údaje nové akce v cíli
@@ -179,8 +179,8 @@ nenabízí.
 
 #### Scenario: Předvyplnění údajů nové akce
 - **WHEN** nahrané fotky mají EXIF data 28. a 29. 4. 2026 a uživatel
-  zadá název složky `kontrola Stezky`
-- **THEN** údaje akce mají název `kontrola Stezky`, datum od
+  zadá název složky `kontrola Naučné stezky`
+- **THEN** údaje akce mají název `kontrola Naučné stezky`, datum od
   `2026-04-28` a datum do `2026-04-29`
 
 #### Scenario: Stávající akce
@@ -238,7 +238,7 @@ a autoři jen zobrazit a do archivu nic nezapsat.
 
 #### Scenario: Import do nové akce
 - **WHEN** uživatel v produkčním režimu potvrdí import 40 JPG a 40 RW2
-  do nové akce `2026-04-28 kontrola Stezky`
+  do nové akce `2026-04-28 kontrola Naučné stezky`
 - **THEN** složka vznikne, 40 JPG je v jejím kořeni, 40 RW2
   v `RAW.ignored/` a akce je v seznamu jako *rozpracováno*
 
@@ -381,9 +381,9 @@ SHALL průvodce po návratu k rozpracovanému importu předvyplnit.
 
 #### Scenario: Podsložky od autorů
 - **WHEN** uživatel nahraje složku `DOD 2015` s podsložkami
-  `DOD 2015_Jana` a `DOD 2015_Pavla`
+  `DOD 2015_Lenka` a `DOD 2015_Olga`
 - **THEN** předvolba je „podle podsložek“ a krok skupiny a autoři
-  ukáže skupiny `DOD 2015_Jana` a `DOD 2015_Pavla`, každou se soubory
+  ukáže skupiny `DOD 2015_Lenka` a `DOD 2015_Olga`, každou se soubory
   své podsložky, i když jsou v jedné podsložce fotky ze dvou přístrojů
 
 #### Scenario: Výběr bez podsložek
@@ -421,8 +421,8 @@ slučují podle zvoleného rozdělení bez ptaní (např. automaticky dva
 telefony stejného modelu do jedné skupiny).
 
 #### Scenario: Podsložka se jménem existující skupiny
-- **WHEN** akce má skupinu `DOD 2015_Jana` a uživatel do ní importuje
-  podsložky `DOD 2015_Jana` a `DOD 2015_Verca`
+- **WHEN** akce má skupinu `DOD 2015_Lenka` a uživatel do ní importuje
+  podsložky `DOD 2015_Lenka` a `DOD 2015_Mira`
 - **THEN** krok skupiny a autoři navrhne dvě nové skupiny, u `DOD
   2015_Jana` uvede shodu s existující skupinou a připojí ji, jen když
   to uživatel zvolí
@@ -435,7 +435,7 @@ telefony stejného modelu do jedné skupiny).
 
 #### Scenario: Zvolené připojení
 - **WHEN** uživatel v kroku skupiny a autoři u navržené skupiny `DOD
-  2015_Jana` zvolí „připojit ke skupině `DOD 2015_Jana`“ a import
+  2015_Jana` zvolí „připojit ke skupině `DOD 2015_Lenka`“ a import
   provede
 - **THEN** přenesené soubory patří do existující skupiny, nová skupina
   nevznikne a autoři existující skupiny se nezmění
@@ -576,7 +576,7 @@ GPS a fotka s číselnými souřadnicemi MUST se importovat jako dosud.
 
 #### Scenario: Fotka s polohou
 - **WHEN** uživatel nahraje fotku s `GPSVersionID` `2 2 0 0`
-  a souřadnicemi 49.18931 N, 16.62088 E
+  a souřadnicemi 49.13579 N, 16.24680 E
 - **THEN** import ji přenese
 
 #### Scenario: Smíšený import

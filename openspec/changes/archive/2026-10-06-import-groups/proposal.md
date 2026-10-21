@@ -3,7 +3,7 @@
 Import podsložky zploští a o skupinách nerozhoduje: u nové akce je
 navrhne až průvodce podle přístroje a vzoru názvu, u stávající akce
 skončí nové soubory „bez skupiny“. Podsložky ale často nesou dělení od
-autora (např. `přetřídit/DOD 2015/DOD 2015_Jana`, `…_Pavla` = kdo
+autora (např. `přetřídit/DOD 2015/DOD 2015_Lenka`, `…_Olga` = kdo
 fotil) a dávka přidaná do stávající akce je obvykle sama o sobě
 skupinou. Obojí se dnes musí na ploše dělat ručně.
 

@@ -26,8 +26,8 @@ v mřížce aspoň zčásti vidět, SHALL mít v navigátoru vyznačený okraj,
 průběžně při posouvání mřížky.
 
 #### Scenario: Oddíly po skupinách
-- **WHEN** akce má skupiny `DOD 2015_Jana` (21 souborů)
-  a `DOD 2015_Pavla` (66 souborů) a je zvoleno Po skupinách
+- **WHEN** akce má skupiny `DOD 2015_Lenka` (21 souborů)
+  a `DOD 2015_Olga` (66 souborů) a je zvoleno Po skupinách
 - **THEN** navigátor pod řádkem Akce ukáže řádky obou skupin s počty
   21 a 66
 
@@ -44,7 +44,7 @@ průběžně při posouvání mřížky.
   v poměru 2 : 1
 
 #### Scenario: Výběr skupiny z navigátoru
-- **WHEN** uživatel klikne na řádek skupiny `DOD 2015_Pavla`
+- **WHEN** uživatel klikne na řádek skupiny `DOD 2015_Olga`
 - **THEN** skupina je vybraná, formulář upravuje skupinu a mřížka je
   posunutá na její první soubory s předělem nad nimi
 
@@ -59,8 +59,8 @@ průběžně při posouvání mřížky.
 - **THEN** výběr je prázdný a formulář upravuje akci
 
 #### Scenario: Viditelné oddíly
-- **WHEN** mřížka ukazuje konec skupiny `DOD 2015_Jana` a celou
-  skupinu `DOD 2015_Pavla`
+- **WHEN** mřížka ukazuje konec skupiny `DOD 2015_Lenka` a celou
+  skupinu `DOD 2015_Olga`
 - **THEN** oba řádky mají v navigátoru vyznačený okraj, ostatní ne
 
 ### Requirement: Chybějící údaje v navigátoru
@@ -89,7 +89,7 @@ Bez zámku akce (jen ke čtení) SHALL údaje zůstat vidět a klik vybírat.
   vybere skupinu
 
 #### Scenario: Soubory bez data ve skupině
-- **WHEN** 10 souborů skupiny `DOD 2015_Jana` nemá datum ani zděděné
+- **WHEN** 10 souborů skupiny `DOD 2015_Lenka` nemá datum ani zděděné
 - **THEN** řádek skupiny ukáže ikonu data s počtem 10 a klik na ni
   vybere těch 10 souborů
 
@@ -123,14 +123,14 @@ GPS. Kliknutí na místo SHALL vybrat dotčené soubory a otevřít volbu
 souřadnic.
 
 #### Scenario: Nerozhodnuté místo
-- **WHEN** 12 souborů bez GPS má místo `Vysočany` a `souradnice_mist`
+- **WHEN** 12 souborů bez GPS má místo `Zkušebná` a `souradnice_mist`
   ho neobsahuje
-- **THEN** řádek Akce ukáže `Vysočany` bez souřadnic a kliknutí vybere
+- **THEN** řádek Akce ukáže `Zkušebná` bez souřadnic a kliknutí vybere
   12 souborů a otevře volbu souřadnic
 
 #### Scenario: Všechny soubory mají GPS
-- **WHEN** všechny soubory s místem `Holštejn` mají GPS z EXIF
-- **THEN** řádek Akce `Holštejn` neukazuje
+- **WHEN** všechny soubory s místem `Vzorkov` mají GPS z EXIF
+- **THEN** řádek Akce `Vzorkov` neukazuje
 
 ### Requirement: Lišta akce
 Pracovní plocha SHALL mít pod hlavičkou aplikace jednu lištu akce
@@ -208,7 +208,7 @@ jeho řádek v navigátoru.
 - **THEN** je vybráno pět souborů, které jsou v mřížce mezi nimi
 
 #### Scenario: Předěl místo hlavičky
-- **WHEN** akce má skupiny `DOD 2015_Jana` a `DOD 2015_Pavla`
+- **WHEN** akce má skupiny `DOD 2015_Lenka` a `DOD 2015_Olga`
 - **THEN** v mřížce jsou soubory obou skupin oddělené předělem a název
   skupiny je jen v navigátoru
 

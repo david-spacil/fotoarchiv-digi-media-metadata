@@ -20,7 +20,7 @@ upozornit, že seznam osob ještě nemusí být úplný.
 
 #### Scenario: Otevření ze seznamu
 - **WHEN** archivář na kartě akce
-  `2026-09-08 Konference Dějiny archeologie` klikne na odkaz
+  `2026-09-08 Konference Příkladné metody` klikne na odkaz
   nepojmenovaných osob
 - **THEN** otevře se plocha akce s nástrojem přes ni a plocha je pod
   nástrojem rozmazaná
@@ -84,9 +84,9 @@ skupinu, datum, místo a autory souboru. Soubor, který nejde spárovat se
 souborem akce, SHALL mít jen údaje z Immiche.
 
 #### Scenario: Spárovaná fotka
-- **WHEN** výřez je z `P9109996.JPG` ve skupině `DOD 2015_Jana`
+- **WHEN** výřez je z `P9109996.JPG` ve skupině `DOD 2015_Lenka`
 - **THEN** nástroj u něj ukáže `P9109996.JPG`, datum pořízení
-  a skupinu `DOD 2015_Jana` s jejím místem a autory
+  a skupinu `DOD 2015_Lenka` s jejím místem a autory
 
 ### Requirement: Pojmenování osoby
 Nástroj SHALL nabídnout pole jména s našeptáváním ze seznamu jmen

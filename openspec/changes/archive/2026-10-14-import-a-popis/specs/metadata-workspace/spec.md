@@ -53,7 +53,7 @@ dosud.
   které importoval `DOD 2015` s rozdělením „podle podsložek“ a autory
   skupin
 - **THEN** krok skupiny a autoři ukáže skupiny `DOD 2015_Bara Pokusna`,
-  `DOD 2015_Jana`, `DOD 2015_Pavla` a `DOD 2015_Verca` s autory
+  `DOD 2015_Lenka`, `DOD 2015_Olga` a `DOD 2015_Mira` s autory
   zadanými při importu
 
 #### Scenario: Soubor mimo návrh

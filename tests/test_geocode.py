@@ -4,15 +4,15 @@ import pytest
 
 from fotoarchiv import geocode
 
-HOLSTEJN = {"name": "Holštejn", "lat": "49.4063", "lon": "16.7777",
-            "display_name": "Holštejn, okres Blansko, Jihomoravský kraj, "
+VZORKOV = {"name": "Vzorkov", "lat": "49.1234", "lon": "16.4321",
+            "display_name": "Vzorkov, okres Ukázkový, Vzorový kraj, "
                             "Česko",
-            "osm_type": "relation", "osm_id": 439179,
+            "osm_type": "relation", "osm_id": 123456,
             "addresstype": "village"}
 
 
 class FakeService:
-    def __init__(self, answer=(HOLSTEJN,)):
+    def __init__(self, answer=(VZORKOV,)):
         self.answer = list(answer)
         self.calls = []
         self.now = 100.0
@@ -37,39 +37,39 @@ def geocoder(tmp_path, service):
 
 
 def test_normalize():
-    assert geocode.normalize("  VYSOČANY ") == "vysočany"
-    assert geocode.normalize("Vysočany") == "vysočany"  # NFD
+    assert geocode.normalize("  ZKUŠEBNÁ ") == "zkušebná"
+    assert geocode.normalize("Zkušebná") == "zkušebná"  # NFD
     assert geocode.normalize("Nové   Město") == "nové město"
 
 
 def test_second_query_from_cache(tmp_path):
     service = FakeService()
     g = geocoder(tmp_path, service)
-    found, cached = g.search("Holštejn")
+    found, cached = g.search("Vzorkov")
     assert not cached
-    assert found == [{"nazev": "Holštejn",
-                      "popis": HOLSTEJN["display_name"],
-                      "gps": [49.4063, 16.7777],
-                      "osm": "relation/439179", "typ": "village"}]
-    assert g.search(" holštejn ") == (found, True)
+    assert found == [{"nazev": "Vzorkov",
+                      "popis": VZORKOV["display_name"],
+                      "gps": [49.1234, 16.4321],
+                      "osm": "relation/123456", "typ": "village"}]
+    assert g.search(" vzorkov ") == (found, True)
     assert len(service.calls) == 1
     assert service.calls[0][1] == \
         "fotoarchiv-digi-media-metadata (test@example.org)"
     # Cache přežije restart serveru.
     again = geocoder(tmp_path, service)
-    assert again.search("HOLŠTEJN") == (found, True)
+    assert again.search("VZORKOV") == (found, True)
     assert len(service.calls) == 1
     stored = json.loads((tmp_path / "cache" / "geokodovani.json")
                         .read_text(encoding="utf-8"))
-    assert list(stored) == ["holštejn"]
+    assert list(stored) == ["vzorkov"]
 
 
 def test_candidate_without_osm_object():
-    item = {k: v for k, v in HOLSTEJN.items()
+    item = {k: v for k, v in VZORKOV.items()
             if k not in ("osm_type", "osm_id")}
     assert "osm" not in geocode.candidate(item)
-    assert "osm" not in geocode.candidate({**HOLSTEJN, "osm_id": None})
-    assert geocode.candidate(HOLSTEJN)["osm"] == "relation/439179"
+    assert "osm" not in geocode.candidate({**VZORKOV, "osm_id": None})
+    assert geocode.candidate(VZORKOV)["osm"] == "relation/123456"
 
 
 def test_interval_between_queries(tmp_path):
@@ -105,9 +105,9 @@ def test_error_not_cached(tmp_path):
     g = geocode.Geocoder(tmp_path / "cache", "x", fetch=failing,
                          clock=service.clock, sleep=service.sleep)
     with pytest.raises(geocode.GeocodeError):
-        g.search("Holštejn")
+        g.search("Vzorkov")
     with pytest.raises(geocode.GeocodeError):
-        g.search("Holštejn")
+        g.search("Vzorkov")
     assert len(calls) == 2
 
 

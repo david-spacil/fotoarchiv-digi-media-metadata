@@ -10,21 +10,21 @@ výběr být jen cílový soubor, se Shiftem rozsah od kotvy. Ctrl+A SHALL
 vybrat všechny soubory.
 
 #### Scenario: Šipka dolů do kratšího řádku
-- **WHEN** v řádku mřížky je pět dlaždic, skupina `DOD 2015_Jana` má
+- **WHEN** v řádku mřížky je pět dlaždic, skupina `DOD 2015_Lenka` má
   sedm souborů, aktuální je její čtvrtý soubor a uživatel stiskne šipku
   dolů
-- **THEN** aktuální a jediný vybraný je sedmý soubor `DOD 2015_Jana`
+- **THEN** aktuální a jediný vybraný je sedmý soubor `DOD 2015_Lenka`
 
 #### Scenario: Šipka dolů přes předěl
 - **WHEN** v řádku mřížky je pět dlaždic, aktuální je sedmý (poslední)
-  soubor skupiny `DOD 2015_Jana` ve druhém sloupci a uživatel stiskne
+  soubor skupiny `DOD 2015_Lenka` ve druhém sloupci a uživatel stiskne
   šipku dolů
-- **THEN** aktuální je druhý soubor skupiny `DOD 2015_Pavla`
+- **THEN** aktuální je druhý soubor skupiny `DOD 2015_Olga`
 
 #### Scenario: Šipka vpravo přes předěl
-- **WHEN** aktuální je poslední soubor skupiny `DOD 2015_Jana`
+- **WHEN** aktuální je poslední soubor skupiny `DOD 2015_Lenka`
   a uživatel stiskne šipku vpravo
-- **THEN** aktuální a jediný vybraný je první soubor `DOD 2015_Pavla`
+- **THEN** aktuální a jediný vybraný je první soubor `DOD 2015_Olga`
 
 #### Scenario: Rozšíření výběru dolů
 - **WHEN** v řádku mřížky je pět dlaždic, aktuální je první soubor akce

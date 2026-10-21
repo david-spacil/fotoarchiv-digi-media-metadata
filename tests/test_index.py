@@ -6,9 +6,9 @@ from fotoarchiv import index
 from fotoarchiv.archive import Workspace
 from .conftest import make_tree, snapshot
 
-ATRIUM = "2026-09-14 Atrium Summer School 2026"
-KONF = "2026-09-08 Konference Dějiny archeologie"
-VLNENA = "2026-06-19 židovská synagoga u Vlněny"
+SKOLA = "2026-09-14 Vzorová letní škola 2026"
+KONF = "2026-09-08 Konference Příkladné metody"
+FARA = "2026-06-19 stará fara u Vzorné"
 
 
 def konference():
@@ -21,7 +21,7 @@ def konference():
                                          "oblast": [0, 0, 1, 1]}]}
     soubory["v.mp4"] = {"skupina": "a"}
     return {
-        "akce": {"nazev": "Konference Dějiny archeologie",
+        "akce": {"nazev": "Konference Příkladné metody",
                  "datum_od": "2026-09-08", "datum_do": "2026-09-10",
                  "mista": ["Markušovce", "Spišská Nová Ves"],
                  "ucastnici": ["Fiktivní, Jan"]},
@@ -37,16 +37,16 @@ def make_ws(tmp_path, zapis=False):
     files = {f"p{i:03}.jpg": "x" for i in range(1, 108)}
     files.update({"v.mp4": "v", "pozn.txt": "x", "Thumbs.db": "x"})
     make_tree(archiv, {
-        f"{ATRIUM}/": {"b.jpg": "x"},
+        f"{SKOLA}/": {"b.jpg": "x"},
         f"{KONF}/": files,
-        f"{VLNENA}/": {"x.jpg": "x", "y.mov": "y"},
+        f"{FARA}/": {"x.jpg": "x", "y.mov": "y"},
         "přetřídit/": {"z.jpg": "x"},
         "_metadata.xlsx": "ručně",
     })
     Image.new("RGB", (800, 600), "red").save(archiv / KONF / "p000.jpg")
     ws = Workspace(archiv, tmp_path / "work", zapis)
     ws.save(KONF, konference(), None)
-    ws.save(ATRIUM, {"akce": {"nazev": "Atrium Summer School 2026",
+    ws.save(SKOLA, {"akce": {"nazev": "Vzorová letní škola 2026",
                               "datum_od": "2026-09-14"},
                      "dokonceno": "2026-09-20", "soubory": {}}, None)
     return ws
@@ -59,9 +59,9 @@ def by_name(records):
 def test_collect(tmp_path):
     ws = make_ws(tmp_path)
     records = index.collect(ws)
-    assert [r["slozka"] for r in records] == [ATRIUM, KONF, VLNENA]
+    assert [r["slozka"] for r in records] == [SKOLA, KONF, FARA]
     r = by_name(records)
-    assert r[ATRIUM]["stav"] == "hotovo"
+    assert r[SKOLA]["stav"] == "hotovo"
     k = r[KONF]
     assert k["stav"] == "rozpracovano"
     assert (k["foto"], k["video"]) == (108, 1)
@@ -71,9 +71,9 @@ def test_collect(tmp_path):
     assert k["ucastnici"] == ["Fiktivní, Jan"]
     assert k["pristroje"] == ["Canon EOS"]
     assert k["nahled"]  # p000.jpg je jediný platný JPEG a první
-    v = r[VLNENA]
-    assert v == dict(v, stav="nezpracovano", nazev="židovská synagoga u "
-                     "Vlněny", datum_od="2026-06-19", foto=1, video=1,
+    v = r[FARA]
+    assert v == dict(v, stav="nezpracovano", nazev="stará fara u "
+                     "Vzorné", datum_od="2026-06-19", foto=1, video=1,
                      mista=[], autori=[], osoby=[], pristroje=[])
     assert v["nahled"] is None  # x.jpg není obrázek
 
@@ -111,15 +111,15 @@ def test_render_md(tmp_path):
     assert "Generováno automaticky" in md and "přepíšou" in md
     row = next(line for line in md.splitlines() if "Konference" in line)
     cells = [c.strip() for c in row.strip("│").split("│")]
-    assert cells == ["2026-09-08", "Konference Dějiny archeologie",
+    assert cells == ["2026-09-08", "Konference Příkladné metody",
                      "Markušovce; Spišská Nová Ves",
                      "Fiktivní J.; Filipová Z.", "108", "1"]
     assert "Poprad" not in md
     assert "╒" in md and "Místa" in md
     # Bez času generování: jen datum akcí, žádný čas.
     assert not re.search(r"\d{1,2}:\d{2}", md)
-    assert md.index(ATRIUM[11:]) < md.index("Konference") < \
-        md.index("Vlněny")
+    assert md.index(SKOLA[11:]) < md.index("Konference") < \
+        md.index("Vzorné")
 
 
 def test_render_html(tmp_path):
@@ -172,13 +172,13 @@ def test_write_prod(tmp_path):
     xlsx = (ws.archiv / "_metadata.xlsx").stat().st_mtime_ns
     assert index.write(ws) == []
     text = (ws.archiv / "_INDEX.html").read_text()
-    assert 'href="./2026-09-08%20Konference%20D%C4%9Bjiny%20archeologie/"' \
-        in text
+    assert ('href="./2026-09-08%20Konference%20P%C5%99%C3%ADkladn%C3%A9'
+            '%20metody/"') in text
     assert (ws.archiv / "_INDEX.md").exists()
     assert (ws.archiv / "_metadata.xlsx").stat().st_mtime_ns == xlsx
     assert (ws.archiv / "_metadata.xlsx").read_text() == "ručně"
     # Index v kořeni není akce.
-    assert [r["slozka"] for r in index.collect(ws)] == [ATRIUM, KONF, VLNENA]
+    assert [r["slozka"] for r in index.collect(ws)] == [SKOLA, KONF, FARA]
 
 
 def test_write_failure_is_warning(tmp_path, monkeypatch):

@@ -11,7 +11,7 @@ from fotoarchiv.archive import SCHEMA
 from .conftest import make_tree, snapshot
 from .test_app import R1, login_app, logged_in  # noqa: F401
 
-EVENT = "2026-04-28 kontrola Stezky"
+EVENT = "2026-04-28 kontrola Naučné stezky"
 
 
 def doc(**files):

@@ -26,13 +26,13 @@ Seznam SHALL nabídnout přepínač podoby karet: dlaždice (výchozí)
 a řádky; volbu si pamatuje prohlížeč.
 
 #### Scenario: Složky mimo vzor
-- **WHEN** archiv obsahuje `2026-04-28 kontrola Stezky…`, `přetřídit`
+- **WHEN** archiv obsahuje `2026-04-28 kontrola Naučné stezky…`, `přetřídit`
   a `_metadata.xlsx`
-- **THEN** seznam obsahuje jen `2026-04-28 kontrola Stezky…`
+- **THEN** seznam obsahuje jen `2026-04-28 kontrola Naučné stezky…`
 
 #### Scenario: Skrytá akce v seznamu
-- **WHEN** archiv obsahuje `2026-04-28 kontrola Stezky.ignored`
-- **THEN** seznam obsahuje akci `2026-04-28 kontrola Stezky`
+- **WHEN** archiv obsahuje `2026-04-28 kontrola Naučné stezky.ignored`
+- **THEN** seznam obsahuje akci `2026-04-28 kontrola Naučné stezky`
 
 #### Scenario: Index v kořeni archivu
 - **WHEN** kořen archivu obsahuje `_INDEX.html` a `_INDEX.md`
@@ -45,12 +45,12 @@ a řádky; volbu si pamatuje prohlížeč.
 
 #### Scenario: Koš v kořeni archivu
 - **WHEN** kořen archivu obsahuje `_kos.ignored` se smazanou akcí
-  `2026-04-28 kontrola Stezky`
+  `2026-04-28 kontrola Naučné stezky`
 - **THEN** seznam akcí ji neuvádí a admin vidí odkaz na Koš
 
 #### Scenario: Karta akce
-- **WHEN** seznam ukazuje akci `2026-04-28 kontrola Stezky` s 50 soubory
-- **THEN** karta uvádí `2026-04-28`, název `kontrola Stezky` jako odkaz
+- **WHEN** seznam ukazuje akci `2026-04-28 kontrola Naučné stezky` s 50 soubory
+- **THEN** karta uvádí `2026-04-28`, název `kontrola Naučné stezky` jako odkaz
   na plochu akce a 50 souborů
 
 #### Scenario: Podoba karet
@@ -204,9 +204,8 @@ hledání a řazení SHALL zůstat zachované po návratu z plochy akce.
 - **THEN** filtr K dokončení ji ukáže
 
 #### Scenario: Hledání bez diakritiky
-- **WHEN** uživatel do hledání napíše `stezky drahanska`
-- **THEN** seznam ukáže akci `2026-04-28 kontrola Stezky Drahanskou
-  vrchovinou`
+- **WHEN** uživatel do hledání napíše `stezky naucna`
+- **THEN** seznam ukáže akci `2026-04-28 kontrola Naučné stezky Vzorov`
 
 #### Scenario: Návrat z plochy
 - **WHEN** uživatel zvolí filtr Nezpracované, otevře akci a vrátí se

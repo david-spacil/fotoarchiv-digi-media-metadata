@@ -2,15 +2,15 @@
   "popis": "Víc míst akce se nedědí; místo se doplňuje u skupiny nebo souboru",
   "metadata": {
     "schema": "fotoarchiv-digi-media-metadata/2",
-    "akce": {"mista": ["Molenburk", "Housko", "Holštejn"]},
+    "akce": {"mista": ["Pokusín", "Zkušebnice", "Vzorkov"]},
     "skupiny": {"s": {"nazev": "S"}},
     "soubory": {
       "a.jpg": {"skupina": "s"},
-      "b.jpg": {"skupina": "s", "misto": "Holštejn"}
+      "b.jpg": {"skupina": "s", "misto": "Vzorkov"}
     }
   },
   "ocekavano": {
     "a.jpg": {},
-    "b.jpg": {"misto": {"hodnota": "Holštejn", "uroven": "soubor"}}
+    "b.jpg": {"misto": {"hodnota": "Vzorkov", "uroven": "soubor"}}
   }
 }

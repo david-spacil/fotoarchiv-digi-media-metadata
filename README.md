@@ -199,7 +199,7 @@ automaticky podle přístroje a vzoru názvu, uživatel je může upravit.
   doplňuje u skupiny nebo fotky (návrhy z míst akce).
 - **Souřadnice míst (`souradnice_mist`)** jsou rozhodnutí pro akci:
   přesný název `misto` → `{gps, popis[, osm]}`, nebo `null` = „bez
-  souřadnic“. `osm` (např. `relation/439179`) je objekt OpenStreetMap,
+  souřadnic“. `osm` (např. `relation/123456`) je objekt OpenStreetMap,
   ze kterého souřadnice pocházejí; ukládá ho jen volba kandidáta
   z Nominatimu, slouží k ověření zdroje (rozlišení stejnojmenných míst)
   a nejde do sidecarů ani indexu.

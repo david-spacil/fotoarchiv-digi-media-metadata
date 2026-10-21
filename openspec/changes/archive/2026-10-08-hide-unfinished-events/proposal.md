@@ -9,7 +9,7 @@ Immichem skryté a zveřejnit se až dokončením (issue #13).
 ## What Changes
 
 - Složka nedokončené akce nese na disku příponu `.ignored`
-  (`2026-04-28 kontrola Stezky.ignored`), kterou Immich vylučuje už
+  (`2026-04-28 kontrola Naučné stezky.ignored`), kterou Immich vylučuje už
   dnešním vzorem `**/*.ignored/**`. Akce se v aplikaci jmenuje bez
   přípony; přípona je jen vlastnost složky na disku.
 - Aplikace najde složku akce s příponou i bez ní; existují-li obě, akci

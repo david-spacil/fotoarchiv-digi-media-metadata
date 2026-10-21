@@ -25,9 +25,9 @@ def test_parse_stripped_location():
 
 def test_parse_valid_location_not_stripped():
     rec = scan.parse_record("original.jpg", {
-        "GPSVersionID": "2 2 0 0", "GPSLatitude": 49.18931,
-        "GPSLongitude": 16.62088})
-    assert rec["gps"] == [49.18931, 16.62088]
+        "GPSVersionID": "2 2 0 0", "GPSLatitude": 49.13579,
+        "GPSLongitude": 16.24680})
+    assert rec["gps"] == [49.13579, 16.24680]
     assert rec["poloha_odebrana"] is False
 
 
@@ -37,9 +37,9 @@ def test_parse_no_gps_block_not_stripped():
     assert rec["poloha_odebrana"] is False
     # Vynulovaný blok, ale s číselnými souřadnicemi: nebere se jako odebraný.
     weird = scan.parse_record("x.jpg", {
-        "GPSVersionID": "0 0 0 0", "GPSLatitude": 49.18931,
-        "GPSLongitude": 16.62088})
-    assert weird["gps"] == [49.18931, 16.62088]
+        "GPSVersionID": "0 0 0 0", "GPSLatitude": 49.13579,
+        "GPSLongitude": 16.24680})
+    assert weird["gps"] == [49.13579, 16.24680]
     assert weird["poloha_odebrana"] is False
 
 
@@ -47,9 +47,9 @@ def test_parse_samsung_gps_and_video_offset():
     rec = scan.parse_record("20260428_150641.jpg", {
         "DateTimeOriginal": "2026:04:28 15:06:41",
         "Make": "samsung", "Model": "SM-A528B",
-        "GPSLatitude": 49.407, "GPSLongitude": 16.777})
+        "GPSLatitude": 49.123, "GPSLongitude": 16.432})
     assert rec["pristroj"] == "samsung SM-A528B"
-    assert rec["gps"] == [49.407, 16.777]
+    assert rec["gps"] == [49.123, 16.432]
     video = scan.parse_record("20260428_144812.mp4", {
         "CreateDate": "2026:04:28 14:49:02+02:00"})
     assert video["datum"] == "2026-04-28T14:49:02"

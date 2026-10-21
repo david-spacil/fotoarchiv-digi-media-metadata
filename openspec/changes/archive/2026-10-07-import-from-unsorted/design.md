@@ -19,8 +19,8 @@ Motivace viz proposal.md, požadavky viz `specs/unsorted-import`.
 - Import ze zdroje použije stávající průvodce, plán, skupiny a zápis
   `_metadata.json` beze změny chování; liší se jen původ souborů
   a přenos.
-- Na SMB přes VPN číst co nejméně dat: hashovat jen soubory, u kterých
-  hrozí duplicita.
+- Na pomalém síťovém úložišti číst co nejméně dat: hashovat jen soubory, u
+  kterých hrozí duplicita.
 
 **Non-Goals:**
 - Import zanořených složek jako samostatných akcí (kontejner
@@ -67,8 +67,8 @@ a mtime) a průběh jde stejnými událostmi `hash`/`hash_prubeh`. Pro
 novou akci se tak čte jen pár souborů se shodnou velikostí.
 
 *Alternativa:* hashovat celý zdroj při založení importu. DOD 2016 má
-~600 souborů; přes VPN minuty čtení, které ve většině případů nic
-nepřinese.
+~600 souborů; na pomalém síťovém úložišti minuty čtení, které ve většině případů
+nic nepřinese.
 
 ### Přesun přejmenováním, bez kopie
 Přenos ze zdroje je `os.rename` po kontrole, že cíl neexistuje (stejně
@@ -126,9 +126,9 @@ nového. Ze stránky Přetřídit klient pošle i navržený cíl
 - [Varianty se stejným jménem (`Procházka 60/JPEG orig`) zablokují
   kořen i podsložku] → Bezpečné (nic se nepřesune); uživatel podsložku
   přejmenuje na `.ignored` a import zopakuje. Popsat v README.
-- [Přehled přes VPN pomalý (exiftool na 6 000 souborů)] → cache podle
-  (jméno, velikost, mtime), postupné zobrazení; v provozu běží server
-  u archivu.
+- [Přehled na pomalém síťovém úložišti pomalý (exiftool na 6 000 souborů)] →
+  cache podle (jméno, velikost, mtime), postupné zobrazení; v provozu běží
+  server u archivu.
 - [Přerušení během přesunu] → každý přesun je atomický rename; přesunuté
   jsou v akci, zbytek ve zdroji; opakovaný import potřebuje nový plán
   (jinak by přesunuté hlásil jako zmizelé). Skupiny se zapíší jen za dokončené provedení —

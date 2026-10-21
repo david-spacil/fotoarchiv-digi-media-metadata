@@ -70,18 +70,18 @@ Položky seznamu SHALL oddělovat jen Enter; čárka je součást hodnoty
 (adresy, jména).
 
 #### Scenario: Více míst
-- **WHEN** uživatel do pole místa napíše `Molenburk`, Enter, `Housko`,
+- **WHEN** uživatel do pole místa napíše `Pokusín`, Enter, `Zkušebnice`,
   Enter
-- **THEN** akce má dvě místa `Molenburk` a `Housko`
+- **THEN** akce má dvě místa `Pokusín` a `Zkušebnice`
 
 #### Scenario: Adresa s čárkou
 - **WHEN** uživatel do pole místa napíše `Adamova 150, Adamov` a Enter
 - **THEN** akce má jedno místo `Adamova 150, Adamov`
 
 #### Scenario: Místo u fotky
-- **WHEN** akce má místa `Molenburk` a `Housko` a uživatel u fotky
+- **WHEN** akce má místa `Pokusín` a `Zkušebnice` a uživatel u fotky
   zadává místo
-- **THEN** formulář nabídne `Molenburk` a `Housko`
+- **THEN** formulář nabídne `Pokusín` a `Zkušebnice`
 
 ### Requirement: Předvyplnění údajů akce
 Krok údaje akce SHALL předvyplnit název z názvu složky (bez data)
@@ -90,8 +90,8 @@ z data v názvu složky, pokud soubory datum nemají.
 
 #### Scenario: Předvyplnění
 - **WHEN** průvodce dojde ke kroku údaje akce u
-  `2026-04-28 kontrola Stezky Drahanskou vrchovinou`
-- **THEN** název je `kontrola Stezky Drahanskou vrchovinou` a datum
+  `2026-04-28 kontrola Naučné stezky Vzorov`
+- **THEN** název je `kontrola Naučné stezky Vzorov` a datum
   od–do odpovídá datům fotek
 
 ### Requirement: Mřížka a výběr
@@ -113,7 +113,7 @@ jeho řádek v navigátoru.
 - **THEN** je vybráno pět souborů, které jsou v mřížce mezi nimi
 
 #### Scenario: Předěl místo hlavičky
-- **WHEN** akce má skupiny `DOD 2015_Jana` a `DOD 2015_Pavla`
+- **WHEN** akce má skupiny `DOD 2015_Lenka` a `DOD 2015_Olga`
 - **THEN** v mřížce jsou soubory obou skupin oddělené předělem a název
   skupiny je jen v navigátoru
 
@@ -365,7 +365,7 @@ postupovat jako dosud.
   které importoval `DOD 2015` s rozdělením „podle podsložek“ a autory
   skupin
 - **THEN** krok skupiny a autoři ukáže skupiny `DOD 2015_Bara Pokusna`,
-  `DOD 2015_Jana`, `DOD 2015_Pavla` a `DOD 2015_Verca` s autory
+  `DOD 2015_Lenka`, `DOD 2015_Olga` a `DOD 2015_Mira` s autory
   zadanými při importu
 
 #### Scenario: Soubor mimo návrh
@@ -674,8 +674,8 @@ v mřížce aspoň zčásti vidět, SHALL mít v navigátoru vyznačený okraj,
 průběžně při posouvání mřížky.
 
 #### Scenario: Oddíly po skupinách
-- **WHEN** akce má skupiny `DOD 2015_Jana` (21 souborů)
-  a `DOD 2015_Pavla` (66 souborů) a je zvoleno Po skupinách
+- **WHEN** akce má skupiny `DOD 2015_Lenka` (21 souborů)
+  a `DOD 2015_Olga` (66 souborů) a je zvoleno Po skupinách
 - **THEN** navigátor pod řádkem Akce ukáže řádky obou skupin s počty
   21 a 66
 
@@ -692,7 +692,7 @@ průběžně při posouvání mřížky.
   v poměru 2 : 1
 
 #### Scenario: Výběr skupiny z navigátoru
-- **WHEN** uživatel klikne na řádek skupiny `DOD 2015_Pavla`
+- **WHEN** uživatel klikne na řádek skupiny `DOD 2015_Olga`
 - **THEN** skupina je vybraná, formulář upravuje skupinu a mřížka je
   posunutá na její první soubory s předělem nad nimi
 
@@ -707,8 +707,8 @@ průběžně při posouvání mřížky.
 - **THEN** výběr je prázdný a formulář upravuje akci
 
 #### Scenario: Viditelné oddíly
-- **WHEN** mřížka ukazuje konec skupiny `DOD 2015_Jana` a celou
-  skupinu `DOD 2015_Pavla`
+- **WHEN** mřížka ukazuje konec skupiny `DOD 2015_Lenka` a celou
+  skupinu `DOD 2015_Olga`
 - **THEN** oba řádky mají v navigátoru vyznačený okraj, ostatní ne
 
 ### Requirement: Chybějící údaje v navigátoru
@@ -740,7 +740,7 @@ Bez zámku akce (jen ke čtení) SHALL údaje zůstat vidět a klik vybírat.
   vybere skupinu
 
 #### Scenario: Soubory bez data ve skupině
-- **WHEN** 10 souborů skupiny `DOD 2015_Jana` nemá datum ani zděděné
+- **WHEN** 10 souborů skupiny `DOD 2015_Lenka` nemá datum ani zděděné
 - **THEN** řádek skupiny ukáže ikonu data s počtem 10 a klik na ni
   vybere těch 10 souborů
 
@@ -784,14 +784,14 @@ GPS. Kliknutí na místo SHALL vybrat dotčené soubory a otevřít volbu
 souřadnic.
 
 #### Scenario: Nerozhodnuté místo
-- **WHEN** 12 souborů bez GPS má místo `Vysočany` a `souradnice_mist`
+- **WHEN** 12 souborů bez GPS má místo `Zkušebná` a `souradnice_mist`
   ho neobsahuje
-- **THEN** řádek Akce ukáže `Vysočany` bez souřadnic a kliknutí vybere
+- **THEN** řádek Akce ukáže `Zkušebná` bez souřadnic a kliknutí vybere
   12 souborů a otevře volbu souřadnic
 
 #### Scenario: Všechny soubory mají GPS
-- **WHEN** všechny soubory s místem `Holštejn` mají GPS z EXIF
-- **THEN** řádek Akce `Holštejn` neukazuje
+- **WHEN** všechny soubory s místem `Vzorkov` mají GPS z EXIF
+- **THEN** řádek Akce `Vzorkov` neukazuje
 
 ### Requirement: Lišta akce
 Pracovní plocha SHALL mít pod hlavičkou aplikace jednu lištu akce
@@ -858,21 +858,21 @@ výběr být jen cílový soubor, se Shiftem rozsah od kotvy. Ctrl+A SHALL
 vybrat všechny soubory.
 
 #### Scenario: Šipka dolů do kratšího řádku
-- **WHEN** v řádku mřížky je pět dlaždic, skupina `DOD 2015_Jana` má
+- **WHEN** v řádku mřížky je pět dlaždic, skupina `DOD 2015_Lenka` má
   sedm souborů, aktuální je její čtvrtý soubor a uživatel stiskne šipku
   dolů
-- **THEN** aktuální a jediný vybraný je sedmý soubor `DOD 2015_Jana`
+- **THEN** aktuální a jediný vybraný je sedmý soubor `DOD 2015_Lenka`
 
 #### Scenario: Šipka dolů přes předěl
 - **WHEN** v řádku mřížky je pět dlaždic, aktuální je sedmý (poslední)
-  soubor skupiny `DOD 2015_Jana` ve druhém sloupci a uživatel stiskne
+  soubor skupiny `DOD 2015_Lenka` ve druhém sloupci a uživatel stiskne
   šipku dolů
-- **THEN** aktuální je druhý soubor skupiny `DOD 2015_Pavla`
+- **THEN** aktuální je druhý soubor skupiny `DOD 2015_Olga`
 
 #### Scenario: Šipka vpravo přes předěl
-- **WHEN** aktuální je poslední soubor skupiny `DOD 2015_Jana`
+- **WHEN** aktuální je poslední soubor skupiny `DOD 2015_Lenka`
   a uživatel stiskne šipku vpravo
-- **THEN** aktuální a jediný vybraný je první soubor `DOD 2015_Pavla`
+- **THEN** aktuální a jediný vybraný je první soubor `DOD 2015_Olga`
 
 #### Scenario: Rozšíření výběru dolů
 - **WHEN** v řádku mřížky je pět dlaždic, aktuální je první soubor akce

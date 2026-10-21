@@ -2,7 +2,7 @@
 
 - Relativní cesta každého nahraného souboru je v `import.json`
   (`soubory[].cesta`): u výběru složky `webkitRelativePath`
-  (`DOD 2015/DOD 2015_Jana/x.jpg`), u přetažení `fullPath`, u výběru
+  (`DOD 2015/DOD 2015_Lenka/x.jpg`), u přetažení `fullPath`, u výběru
   jednotlivých souborů jen jméno. Do archivu jde soubor pod `nazev`
   (zploštěně).
 - `Imports.overview` už pouští exiftool nad nahranými soubory (přístroj,

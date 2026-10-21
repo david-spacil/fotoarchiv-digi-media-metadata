@@ -7,7 +7,7 @@ from fotoarchiv import xmp
 from fotoarchiv.archive import Workspace
 from .conftest import make_tree, snapshot
 
-EVENT = "2026-04-28 kontrola Stezky"
+EVENT = "2026-04-28 kontrola Naučné stezky"
 NS = {"rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
       "dc": "http://purl.org/dc/elements/1.1/",
       "xmp": "http://ns.adobe.com/xap/1.0/",
@@ -19,9 +19,9 @@ def doc_with(**soubory):
     return {
         "schema": "fotoarchiv-digi-media-metadata/2",
         "dokonceno": None,
-        "akce": {"nazev": "kontrola", "mista": ["Holštejn"],
+        "akce": {"nazev": "kontrola", "mista": ["Vzorkov"],
                  "ucastnici": ["Účastník, Jan"]},
-        "souradnice_mist": {"Holštejn": {"gps": [49.4063, 16.7777]}},
+        "souradnice_mist": {"Vzorkov": {"gps": [49.1234, 16.4321]}},
         "skupiny": {"g9": {"nazev": "G9",
                            "autori": ["Příkladný, Daniel", "Modelová, Zuzana"],
                            "pristroj": "Panasonic DC-G9"}},
@@ -54,10 +54,10 @@ def test_inherited_authors_place_gps_and_event_tag():
     r = parse(text)
     assert r["tagy"] == [f"akce/{EVENT}", "autor/Příkladný, Daniel",
                          "autor/Modelová, Zuzana"]
-    assert r["gps"] == ("49,24.378000N", "16,46.662000E")
+    assert r["gps"] == ("49,07.404000N", "16,25.926000E")
     assert r["datum"] == "2026-04-28T09:44:36+02:00"
     assert r["popis"] is None
-    for leaked in ("Holštejn", "Panasonic", "Účastník", "G9", "Novák",
+    for leaked in ("Vzorkov", "Panasonic", "Účastník", "G9", "Novák",
                    "Vzorný", "mwg-rs"):
         assert leaked not in text
 
@@ -110,7 +110,7 @@ def test_format_date(value, expected):
 
 
 @pytest.mark.parametrize("value, pos, neg, expected", [
-    (49.4063, "N", "S", "49,24.378000N"),
+    (49.1234, "N", "S", "49,07.404000N"),
     (-33.8688, "N", "S", "33,52.128000S"),
     (-0.1276, "E", "W", "0,07.656000W"),
     (16.0, "E", "W", "16,00.000000E"),

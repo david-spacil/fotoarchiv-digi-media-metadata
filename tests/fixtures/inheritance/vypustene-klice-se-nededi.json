@@ -3,7 +3,7 @@
   "metadata": {
     "schema": "fotoarchiv-digi-media-metadata/2",
     "akce": {
-      "nazev": "kontrola Stezky",
+      "nazev": "kontrola Naučné stezky",
       "osoby": [
         "Vzorný, Tomáš"
       ]
@@ -34,7 +34,7 @@
   "ocekavano": {
     "P1503712.JPG": {
       "nazev": {
-        "hodnota": "kontrola Stezky",
+        "hodnota": "kontrola Naučné stezky",
         "uroven": "akce"
       },
       "autori": {

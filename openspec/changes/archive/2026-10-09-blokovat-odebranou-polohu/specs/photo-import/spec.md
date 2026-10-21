@@ -24,7 +24,7 @@ GPS a fotka s číselnými souřadnicemi MUST se importovat jako dosud.
 
 #### Scenario: Fotka s polohou
 - **WHEN** uživatel nahraje fotku s `GPSVersionID` `2 2 0 0`
-  a souřadnicemi 49.18931 N, 16.62088 E
+  a souřadnicemi 49.13579 N, 16.24680 E
 - **THEN** import ji přenese
 
 #### Scenario: Smíšený import

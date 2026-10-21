@@ -42,40 +42,40 @@ test("soubory bez místa jen při víc místech akce", () => {
   const doc = (mista) => ({
     akce: { mista },
     skupiny: {},
-    soubory: { "a.jpg": {}, "b.jpg": { misto: "Housko" } },
+    soubory: { "a.jpg": {}, "b.jpg": { misto: "Zkušebnice" } },
   });
-  assert.deepEqual(missing(doc(["Holštejn"])).souboryBezMista, []);
-  assert.deepEqual(missing(doc(["Molenburk", "Housko"])).souboryBezMista,
+  assert.deepEqual(missing(doc(["Vzorkov"])).souboryBezMista, []);
+  assert.deepEqual(missing(doc(["Pokusín", "Zkušebnice"])).souboryBezMista,
     ["a.jpg"]);
 });
 
 test("místa bez souřadnic jen u souborů bez GPS", () => {
   const doc = {
-    akce: { mista: ["Vysočany"] },
-    souradnice_mist: { Holštejn: null },
+    akce: { mista: ["Zkušebná"] },
+    souradnice_mist: { Vzorkov: null },
     skupiny: {},
     soubory: {
       "a.jpg": {},
       "b.jpg": { gps: [49.4, 16.8] },
-      "c.jpg": { misto: "Holštejn" },
-      "d.jpg": { misto: "Housko", gps: [49.4, 16.8] },
+      "c.jpg": { misto: "Vzorkov" },
+      "d.jpg": { misto: "Zkušebnice", gps: [49.4, 16.8] },
       "e.jpg": {},
     },
   };
   assert.deepEqual(missing(doc).mistaBezSouradnic,
-    { "Vysočany": ["a.jpg", "e.jpg"] });
-  doc.souradnice_mist.Vysočany = { gps: [49.43, 16.804] };
+    { "Zkušebná": ["a.jpg", "e.jpg"] });
+  doc.souradnice_mist.Zkušebná = { gps: [49.15, 16.45] };
   assert.deepEqual(missing(doc).mistaBezSouradnic, {});
 });
 
 test("soubory k vyřazení se nepočítají", () => {
   const doc = {
-    akce: { mista: ["Housko", "Holštejn"] },
+    akce: { mista: ["Zkušebnice", "Vzorkov"] },
     skupiny: { a: {}, b: {} },
     soubory: {
       "1.jpg": { skupina: "a", vyradit: true },
       "2.jpg": { skupina: "b", vyradit: true },
-      "3.jpg": { skupina: "b", datum: "2026-04-28", misto: "Housko" },
+      "3.jpg": { skupina: "b", datum: "2026-04-28", misto: "Zkušebnice" },
       "4.jpg": { vyradit: true },
     },
   };

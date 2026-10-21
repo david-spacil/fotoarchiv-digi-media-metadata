@@ -10,10 +10,10 @@ SHALL zrušit výběr a aktuální soubor ponechat. Okrajem SHALL být
 vyznačený oddíl aktuálního souboru.
 
 #### Scenario: Skok na skupinu v lupě
-- **WHEN** v lupě je aktuální soubor skupiny `DOD 2015_Jana`
-  a uživatel klikne na řádek `DOD 2015_Pavla`
+- **WHEN** v lupě je aktuální soubor skupiny `DOD 2015_Lenka`
+  a uživatel klikne na řádek `DOD 2015_Olga`
 - **THEN** aktuální a jediný vybraný je první soubor skupiny
-  `DOD 2015_Pavla` a formulář upravuje tento soubor
+  `DOD 2015_Olga` a formulář upravuje tento soubor
 
 #### Scenario: Skok na den v lupě
 - **WHEN** v zobrazení podle data uživatel v lupě klikne na řádek

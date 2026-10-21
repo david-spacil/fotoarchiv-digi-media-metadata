@@ -108,16 +108,16 @@ kurzor v poli formuláře.
 - **THEN** kurzor se posune v textu a aktuální fotka se nezmění
 
 #### Scenario: Skok na další oddíl
-- **WHEN** v lupě je aktuální třetí soubor skupiny `DOD 2015_Jana`
+- **WHEN** v lupě je aktuální třetí soubor skupiny `DOD 2015_Lenka`
   a uživatel stiskne šipku dolů
 - **THEN** aktuální a jediný vybraný je první soubor skupiny
-  `DOD 2015_Pavla` a pás ho ukazuje
+  `DOD 2015_Olga` a pás ho ukazuje
 
 #### Scenario: Šipka nahoru uprostřed oddílu
-- **WHEN** v lupě je aktuální třetí soubor skupiny `DOD 2015_Pavla`
+- **WHEN** v lupě je aktuální třetí soubor skupiny `DOD 2015_Olga`
   a uživatel dvakrát stiskne šipku nahoru
-- **THEN** po prvním stisku je aktuální první soubor `DOD 2015_Pavla`,
-  po druhém první soubor `DOD 2015_Jana`
+- **THEN** po prvním stisku je aktuální první soubor `DOD 2015_Olga`,
+  po druhém první soubor `DOD 2015_Lenka`
 
 #### Scenario: Konec akce
 - **WHEN** v lupě je aktuální první soubor akce a uživatel stiskne
@@ -153,10 +153,10 @@ SHALL zrušit výběr a aktuální soubor ponechat. Okrajem SHALL být
 vyznačený oddíl aktuálního souboru.
 
 #### Scenario: Skok na skupinu v lupě
-- **WHEN** v lupě je aktuální soubor skupiny `DOD 2015_Jana`
-  a uživatel klikne na řádek `DOD 2015_Pavla`
+- **WHEN** v lupě je aktuální soubor skupiny `DOD 2015_Lenka`
+  a uživatel klikne na řádek `DOD 2015_Olga`
 - **THEN** aktuální a jediný vybraný je první soubor skupiny
-  `DOD 2015_Pavla` a formulář upravuje tento soubor
+  `DOD 2015_Olga` a formulář upravuje tento soubor
 
 #### Scenario: Skok na den v lupě
 - **WHEN** v zobrazení podle data uživatel v lupě klikne na řádek

@@ -53,15 +53,15 @@ test("K dokončení: úplná rozpracovaná a hotová se změnami", () => {
 });
 
 test("hledání bez diakritiky a velikosti písmen, s filtrem", () => {
-  const name = "2026-04-28 kontrola Stezky Drahanskou vrchovinou";
-  assert.ok(matchesSearch(name, "stezky drahanska"));
-  assert.ok(matchesSearch("2026-09-08 Konference Dějiny", "DEJINY"));
+  const name = "2026-04-28 kontrola Naučné stezky Vzorov";
+  assert.ok(matchesSearch(name, "stezky naucna"));
+  assert.ok(matchesSearch("2026-09-08 Konference Příkladné", "PRIKLADNE"));
   assert.ok(matchesSearch(name, "  "));
   assert.ok(!matchesSearch(name, "stezky brno"));
-  assert.ok(matchesSearch("2026-05-25 PPA 2026 Telč", "ppa"));
-  const events = [ev(name), ev("2026-05-25 PPA 2026 Telč",
+  assert.ok(matchesSearch("2026-05-25 VZK 2026 Ukázkov", "vzk"));
+  const events = [ev(name), ev("2026-05-25 VZK 2026 Ukázkov",
     { stav: "nezpracovano", hotovost: null })];
-  assert.deepEqual(filterCounts(events, view({ hledat: "telc" }), ME),
+  assert.deepEqual(filterCounts(events, view({ hledat: "ukazkov" }), ME),
     { vse: 1, moje: 0, dokoncit: 0, nezpracovane: 1 });
 });
 
@@ -98,10 +98,10 @@ test("výchozí řazení podle data sestupně", () => {
 
 test("stav seznamu v hash adrese", () => {
   assert.deepEqual(parseListHash(""), view());
-  assert.deepEqual(parseListHash("#/?filtr=nezpracovane&hledat=telč"),
-    view({ filtr: "nezpracovane", hledat: "telč" }));
+  assert.deepEqual(parseListHash("#/?filtr=nezpracovane&hledat=ukázkov"),
+    view({ filtr: "nezpracovane", hledat: "ukázkov" }));
   assert.deepEqual(parseListHash("#/?filtr=nesmysl&razeni=x"), view());
   assert.equal(listHash(view()), "#/");
-  const v = view({ filtr: "moje", hledat: "stezky d", razeni: "uprava" });
+  const v = view({ filtr: "moje", hledat: "stezky v", razeni: "uprava" });
   assert.deepEqual(parseListHash(listHash(v)), v);
 });

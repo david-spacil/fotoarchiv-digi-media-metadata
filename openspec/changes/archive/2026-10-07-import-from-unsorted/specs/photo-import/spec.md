@@ -18,9 +18,9 @@ než uživatel import potvrdí. Průvodce SHALL ukazovat průběh nahrávání.
 
 #### Scenario: Zdroj místo nahrání
 - **WHEN** uživatel v kroku Soubory zvolí ze složky `přetřídit` složku
-  `HLOZEK`
+  `VZORNY`
 - **THEN** průvodce nic nenahrává a přejde na přehled souborů
-  `HLOZEK`
+  `VZORNY`
 
 ### Requirement: Výsledek importu
 Po provedení SHALL průvodce ukázat přenesené, blokované, duplicitní

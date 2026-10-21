@@ -30,7 +30,7 @@ názvy. Klik na náhled SHALL ukázat zvětšený náhled. Zobrazení ukázek
 MUST NOT v archivu nic změnit.
 
 #### Scenario: Podsložka s fotkami
-- **WHEN** podsložka `PPA 2026` obsahuje 13 fotek
+- **WHEN** podsložka `VZK 2026` obsahuje 13 fotek
 - **THEN** průvodce u ní ukáže 8 náhledů s názvy souborů od první
   fotky po některou z posledních dvou, ne prvních 8 fotek
 

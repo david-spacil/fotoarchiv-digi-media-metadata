@@ -4,7 +4,7 @@ Android při předání fotky webovému prohlížeči (Chrome i Firefox, výběr
 z galerie i přes Soubory → `DCIM/Camera`) vynuluje blok GPS v EXIF:
 `GPSVersionID 0 0 0 0`, prázdné souřadnice, zbytek souboru bajt po
 bajtu stejný (ověřeno na Pixel 8a, Android 17, 2026-10-09: originál
-49.18931 N, 16.62088 E; kopie po importu 40 nulových bajtů v bloku
+49.13579 N, 16.24680 E; kopie po importu 40 nulových bajtů v bloku
 GPS). Webová stránka si oprávnění k poloze médií říct nemůže. Poloha
 je pro archiv jedna z nejdůležitějších informací, takže fotka, která ji
 cestou ztratila, se do archivu dostat nesmí — kolega ji musí předat

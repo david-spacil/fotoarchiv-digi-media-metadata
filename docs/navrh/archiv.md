@@ -10,7 +10,7 @@
   (viz [Import ze složky přetřídit](../navod/import-z-pretridit.md)),
   a koš smazaných akcí `_kos.ignored` (níže).
 - **Nedokončená akce je skrytá před Immichem** (issue #13): její složka
-  má příponu `.ignored` (`2026-04-28 kontrola Stezky.ignored`), takže ji
+  má příponu `.ignored` (`2026-04-28 kontrola Naučné stezky.ignored`), takže ji
   Immich vynechá stejným vzorem jako ignorované podsložky. Akce se
   v aplikaci, v URL, u zámku i v `.work` jmenuje bez přípony; přípona je
   jen vlastnost složky. Import zakládá novou akci rovnou skrytou,

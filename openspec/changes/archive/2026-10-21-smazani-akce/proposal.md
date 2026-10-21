@@ -2,8 +2,8 @@
 
 Akci dnes nejde z aplikace odstranit. Vzniká přitom omylem (import pod
 špatným názvem nebo datem, prázdná akce), jako duplicita jiné akce nebo
-s obsahem, který do archivu nepatří; jediná cesta je ruční zásah na NAS
-a v Immichi. Mazání celé akce je zároveň jediná nevratná hromadná
+s obsahem, který do archivu nepatří; jediná cesta je ruční zásah na úložišti
+archivu a v Immichi. Mazání celé akce je zároveň jediná nevratná hromadná
 operace v archivu, proto potřebuje pojistku. Issue #28.
 
 ## What Changes

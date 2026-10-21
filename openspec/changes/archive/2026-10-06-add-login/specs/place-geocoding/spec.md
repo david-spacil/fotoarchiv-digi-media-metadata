@@ -12,8 +12,8 @@ nejvýš jeden dotaz za sekundu a MUST NOT se ptát během psaní, jen na
 potvrzený název.
 
 #### Scenario: Nejednoznačný název
-- **WHEN** se hledá `Vysočany`
-- **THEN** výsledek obsahuje kandidáty z okresů Blansko, Znojmo
+- **WHEN** se hledá `Zkušebná`
+- **THEN** výsledek obsahuje kandidáty z okresů Ukázkový, Pokusný
   i Prahy 9
 
 #### Scenario: Služba nedostupná

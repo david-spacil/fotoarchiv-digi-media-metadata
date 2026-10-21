@@ -3,9 +3,10 @@
 ## Why
 
 Volba kandidáta z Nominatimu ukládá k místu akce vedle `gps` a `popis`
-i odkaz na objekt OSM (`osm`, např. `relation/435541`), ale nic ho
+i odkaz na objekt OSM (`osm`, např. `relation/123456`), ale nic ho
 nečte. Zdroj uložených souřadnic tak nejde ověřit a při volbě mezi
-stejnojmennými místy (Vysočany u Blanska, u Znojma, v Praze) vidí
+stejnojmennými místy (Zkušebná v okresech Ukázkový,
+Pokusný a Vzorový) vidí
 uživatel jen text popisu (#46).
 
 ## What Changes

@@ -11,7 +11,7 @@ Souřadnice místa jim ho vrátí, podobně jako centroidy katastrů v
 - Názvy míst použité u fotek se geokódují přes veřejný Nominatim (OSM):
   globálně, bez klíče. Odpovědi se cachují na serveru, každý dotaz se
   posílá nejvýš jednou.
-- U nejednoznačného názvu (7× „Vysočany“) vybírá kandidáta člověk;
+- U nejednoznačného názvu (7× „Zkušebná“) vybírá kandidáta člověk;
   předvybraný je nejbližší fotkám akce s GPS. Volba se ukládá do
   `_metadata.json` jednou na název a akci; jde zvolit i „bez souřadnic“
   nebo zadat souřadnice ručně.

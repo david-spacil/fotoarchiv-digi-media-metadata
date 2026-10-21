@@ -1,6 +1,6 @@
 ## Why
 
-Sdílený server je dostupný z celé firemní sítě a zapisuje do archivu
+Sdílený server je dostupný z celé interní sítě a zapisuje do archivu
 (`write-to-archive`). Bez přihlášení může archiv měnit kdokoli v síti
 a jméno u zámku si každý zadá sám. Stejně tak kdokoli může přepsat
 připojení k Immichi a kontakt pro Nominatim se zadává jen přepínačem
@@ -41,5 +41,5 @@ při spuštění serveru.
 - Nové soubory v pracovním adresáři: `uzivatele.json`, `hesla.json`,
   `nominatim.json`, tajný klíč relací.
 - Bez nové závislosti: hashe z `werkzeug.security` (součást Flasku).
-- Nasazení: zatím HTTP ve firemní síti (přijaté riziko), HTTPS přes
+- Nasazení: zatím HTTP ve interní síti (přijaté riziko), HTTPS přes
   reverzní proxy výhledově.

@@ -67,9 +67,9 @@ synchronizace z Immiche. Osoby na fotce jsou jména z `obliceje`.
   v `_metadata.json` není
 
 #### Scenario: Název skupiny
-- **WHEN** akce má `nazev` = `kontrola Stezky` a skupina `nazev`
+- **WHEN** akce má `nazev` = `kontrola Naučné stezky` a skupina `nazev`
   = `Panasonic DC-G9`
-- **THEN** výsledný `nazev` souborů skupiny je `kontrola Stezky`
+- **THEN** výsledný `nazev` souborů skupiny je `kontrola Naučné stezky`
 
 ## ADDED Requirements
 

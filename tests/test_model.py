@@ -27,9 +27,9 @@ def test_new_document_prefill():
     groups = {"skupiny": {"x": {"nazev": "x"}},
               "prirazeni": {"a.jpg": "x", "b.jpg": "x", "c.jpg": "x"}}
     doc = model.new_document(
-        "2026-04-28 kontrola Stezky Drahanskou vrchovinou", files, groups)
+        "2026-04-28 kontrola Naučné stezky Vzorov", files, groups)
     assert doc["schema"] == "fotoarchiv-digi-media-metadata/2"
-    assert doc["akce"] == {"nazev": "kontrola Stezky Drahanskou vrchovinou",
+    assert doc["akce"] == {"nazev": "kontrola Naučné stezky Vzorov",
                            "datum_od": "2026-04-28",
                            "datum_do": "2026-04-29"}
     assert doc["soubory"]["b.jpg"] == {"datum": "2026-04-29T09:00:00",

@@ -113,7 +113,7 @@ def test_vyrez_jedne_fotky_dva_obliceje():
 
 def test_metadata_sparovane_a_nesparovane_fotky():
     """Scénář Metadata: spárovaná `P9109996.JPG` ve skupině
-    `DOD 2015_Jana` se zděděným místem a autory; nespárovaná fotka má
+    `DOD 2015_Lenka` se zděděným místem a autory; nespárovaná fotka má
     jen údaje z Immiche (archiv null)."""
     fake = FakeImmich()
     p = osoba("p-1")
@@ -125,7 +125,7 @@ def test_metadata_sparovane_a_nesparovane_fotky():
     fake.vytvoreno["a2"] = "2015-06-01T09:00:00.000Z"
     doc = {"schema": 1,
            "akce": {"nazev": "Výzkum", "mista": ["Brno"]},
-           "skupiny": {"g1": {"nazev": "DOD 2015_Jana",
+           "skupiny": {"g1": {"nazev": "DOD 2015_Lenka",
                               "autori": ["Novák, Petr"]}},
            "soubory": {"P9109996.JPG": {"skupina": "g1",
                                          "datum": "2015-05-01"}}}
@@ -135,7 +135,7 @@ def test_metadata_sparovane_a_nesparovane_fotky():
         "soubor": "P9109996.JPG",
         "datum": "2026-04-28T10:00:00.000Z"}
     assert sparovana["archiv"] == {
-        "soubor": "P9109996.JPG", "skupina": "DOD 2015_Jana",
+        "soubor": "P9109996.JPG", "skupina": "DOD 2015_Lenka",
         "datum": "2015-05-01", "misto": "Brno",
         "autori": ["Novák, Petr"]}
     # Nespárovaná: datum z fileCreatedAt, archiv None

@@ -22,13 +22,13 @@ Prázdná pole se do sidecaru nezapisují. Název místa, přístroj,
   Daniel` a `autor/Modelová, Zuzana`
 
 #### Scenario: GPS z místa
-- **WHEN** soubor nemá GPS a jeho místo `Holštejn` má souřadnice
-- **THEN** sidecar obsahuje souřadnice Holštejna a žádný tag místa
+- **WHEN** soubor nemá GPS a jeho místo `Vzorkov` má souřadnice
+- **THEN** sidecar obsahuje souřadnice Vzorkova a žádný tag místa
 
 #### Scenario: Tag akce
-- **WHEN** akce je ve složce `2026-04-28 kontrola Stezky`
+- **WHEN** akce je ve složce `2026-04-28 kontrola Naučné stezky`
 - **THEN** sidecar každého jejího souboru obsahuje tag
-  `akce/2026-04-28 kontrola Stezky`
+  `akce/2026-04-28 kontrola Naučné stezky`
 
 ### Requirement: Časová zóna data
 Datum s časem bez zóny SHALL být zapsáno se zónou Europe/Prague platnou

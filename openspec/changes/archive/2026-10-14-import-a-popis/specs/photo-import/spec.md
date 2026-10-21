@@ -27,8 +27,8 @@ nenabízí.
 
 #### Scenario: Předvyplnění údajů nové akce
 - **WHEN** nahrané fotky mají EXIF data 28. a 29. 4. 2026 a uživatel
-  zadá název složky `kontrola Stezky`
-- **THEN** údaje akce mají název `kontrola Stezky`, datum od
+  zadá název složky `kontrola Naučné stezky`
+- **THEN** údaje akce mají název `kontrola Naučné stezky`, datum od
   `2026-04-28` a datum do `2026-04-29`
 
 #### Scenario: Stávající akce
@@ -125,9 +125,9 @@ SHALL průvodce po návratu k rozpracovanému importu předvyplnit.
 
 #### Scenario: Podsložky od autorů
 - **WHEN** uživatel nahraje složku `DOD 2015` s podsložkami
-  `DOD 2015_Jana` a `DOD 2015_Pavla`
+  `DOD 2015_Lenka` a `DOD 2015_Olga`
 - **THEN** předvolba je „podle podsložek“ a krok skupiny a autoři
-  ukáže skupiny `DOD 2015_Jana` a `DOD 2015_Pavla`, každou se soubory
+  ukáže skupiny `DOD 2015_Lenka` a `DOD 2015_Olga`, každou se soubory
   své podsložky, i když jsou v jedné podsložce fotky ze dvou přístrojů
 
 #### Scenario: Výběr bez podsložek
@@ -165,8 +165,8 @@ slučují podle zvoleného rozdělení bez ptaní (např. automaticky dva
 telefony stejného modelu do jedné skupiny).
 
 #### Scenario: Podsložka se jménem existující skupiny
-- **WHEN** akce má skupinu `DOD 2015_Jana` a uživatel do ní importuje
-  podsložky `DOD 2015_Jana` a `DOD 2015_Verca`
+- **WHEN** akce má skupinu `DOD 2015_Lenka` a uživatel do ní importuje
+  podsložky `DOD 2015_Lenka` a `DOD 2015_Mira`
 - **THEN** krok skupiny a autoři navrhne dvě nové skupiny, u `DOD
   2015_Jana` uvede shodu s existující skupinou a připojí ji, jen když
   to uživatel zvolí
@@ -179,7 +179,7 @@ telefony stejného modelu do jedné skupiny).
 
 #### Scenario: Zvolené připojení
 - **WHEN** uživatel v kroku skupiny a autoři u navržené skupiny `DOD
-  2015_Jana` zvolí „připojit ke skupině `DOD 2015_Jana`“ a import
+  2015_Jana` zvolí „připojit ke skupině `DOD 2015_Lenka`“ a import
   provede
 - **THEN** přenesené soubory patří do existující skupiny, nová skupina
   nevznikne a autoři existující skupiny se nezmění
@@ -244,7 +244,7 @@ a autoři jen zobrazit a do archivu nic nezapsat.
 
 #### Scenario: Import do nové akce
 - **WHEN** uživatel v produkčním režimu potvrdí import 40 JPG a 40 RW2
-  do nové akce `2026-04-28 kontrola Stezky`
+  do nové akce `2026-04-28 kontrola Naučné stezky`
 - **THEN** složka vznikne, 40 JPG je v jejím kořeni, 40 RW2
   v `RAW.ignored/` a akce je v seznamu jako *rozpracováno*
 
