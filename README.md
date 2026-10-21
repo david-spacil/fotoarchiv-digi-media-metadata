@@ -38,6 +38,10 @@ a přehledný index archivu. Originály fotek a videí se nikdy nemění.
   vyhledané v OpenStreetMap (Nominatim).
 - **Kontrola archivu:** hledání poškozených souborů (vynulované bloky
   z karty) a nesrovnalostí v akcích, v aplikaci i příkazem.
+- **Stažení originálů:** soubor, výběr z plochy nebo celá akce
+  z přehledu akcí; víc souborů jako ZIP i s `_metadata.json` a XMP
+  sidecary generovanými z aktuálního JSONu (viz
+  [Pracovní plocha](docs/navod/pracovni-plocha.md#stažení-originálů)).
 - **Index archivu:** `_INDEX.html` a `_INDEX.md` v kořeni archivu pro
   lidi, kteří archiv procházejí v Průzkumníku.
 - **Víc lidí najednou:** přihlášení s rolemi (admin, archivář, běžný
