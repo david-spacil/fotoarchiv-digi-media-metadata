@@ -110,7 +110,8 @@ nepřidává: sloučení už samo je potvrzení nabídky.
 Nový modul `fotoarchiv/static/naseptavani.js`:
 
 - čistá funkce `umisteni({ pole, okno, vyska })` → `{ left, width,
-  top | bottom, maxHeight }`: `pole` = obdélník pole
+  top, maxHeight, smer }` (`top` vždy od horní hrany okna, `smer`
+  = `"dolu"` | `"nahoru"`): `pole` = obdélník pole
   (`getBoundingClientRect`), `okno` = viditelná část okna
   (`visualViewport`: výška a posun, tedy bez klávesnice telefonu),
   `vyska` = přirozená výška seznamu. Dolů, když se vejde; jinak
