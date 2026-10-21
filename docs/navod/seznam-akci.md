@@ -35,3 +35,9 @@ konci). Filtr, hledání a řazení jsou v adrese seznamu
 (`#/?filtr=…&hledat=…&razeni=…`), takže přežijí návrat z plochy
 a jdou poslat odkazem. Nové fotky a videa se do archivu dostanou
 **importem** (viz [Import](import.md)) do nové nebo stávající akce.
+
+**Ikona stažení** (mráček se šipkou) na kartě stáhne celou akci jako
+ZIP `<název akce>.zip` a plochu neotevře: média z kořene akce kromě
+označených k vyřazení, bez podsložek (`RAW.ignored` aj.), k nim
+`_metadata.json` a XMP sidecary médií se záznamem. Obsah ZIPu
+a oprávnění viz [Stažení originálů](pracovni-plocha.md#stažení-originálů).

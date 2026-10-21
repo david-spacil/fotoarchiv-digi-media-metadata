@@ -52,6 +52,24 @@ textové pole); mřížka nebo lupa pak zabere celou šířku, stav si
 pamatuje prohlížeč. Na širokém monitoru má panel nejvýš 420 px
 a šířku využije mřížka.
 
+## Stažení originálů
+
+Při vybraných souborech má formulář nahoře tlačítko **Stáhnout (N)**.
+Jeden soubor se stáhne jako originál pod svým názvem, víc souborů jako
+ZIP `<název akce> (N souborů).zip`; stáhne se přesně výběr, i soubory
+označené k vyřazení. Tlačítko funguje i jen ke čtení, bez zámku.
+
+ZIP výběru i celé akce (z [Seznamu akcí](seznam-akci.md)) má ploché
+uspořádání jako složka akce: média beze změny, vedle nich
+`<soubor>.xmp` a `_metadata.json`. Sidecary se pro ZIP generují
+v paměti z přibaleného `_metadata.json` (obsah jako při exportu, bez
+oblastí obličejů), takže sedí i u rozpracované akce nebo po změně po
+exportu; sidecary na disku se nečtou ani nemění. Akce bez
+`_metadata.json` dá ZIP jen s médii. ZIP se posílá průběžně bez
+komprese, velikost akce není omezená (prohlížeč proto neukazuje
+procenta). Stažení stačí přihlášení, funguje i u nedokončené akce
+a nic nezapisuje do archivu ani do `.work`.
+
 ## Po skupinách / Podle data
 
    Přepínač **Po skupinách / Podle data** (pamatuje si ho prohlížeč,
