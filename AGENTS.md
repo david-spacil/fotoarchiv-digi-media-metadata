@@ -32,7 +32,7 @@ pravidlo má přednost před větví, kterou agentovi přidělí prostředí
 ```sh
 python -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv \
-  --archiv /mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
+  --archiv /cesta/k/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
 # → http://127.0.0.1:5000 (cheroot, 32 vláken), volitelně --work .work
 #   --port 5000, --vlakna N, --zapis-do-archivu (produkční režim, zapisuje
 #   do archivu), --bez-prihlaseni (jen vývojový režim, každý admin),

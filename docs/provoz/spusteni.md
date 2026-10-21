@@ -10,7 +10,7 @@ ffmpeg`).
 python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m fotoarchiv \
-  --archiv /mnt/x/fotoarchiv/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
+  --archiv /cesta/k/FOTOARCHIV/fotoarchiv_fotodokumentace_digitalni_ARUB
 ```
 
 Aplikace běží na <http://127.0.0.1:5000> na produkčním WSGI serveru cheroot

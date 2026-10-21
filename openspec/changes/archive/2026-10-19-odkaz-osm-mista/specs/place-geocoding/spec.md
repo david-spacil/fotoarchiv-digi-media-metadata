@@ -16,24 +16,24 @@ SHALL být předvybraný ten nejbližší souborům akce, které mají GPS.
 Předvýběr MUST uživatel potvrdit.
 
 #### Scenario: Předvýběr podle GPS akce
-- **WHEN** akce obsahuje fotky Samsung s GPS u Holštejna a u souboru
-  bez GPS je místo `Vysočany`
-- **THEN** předvybrané jsou Vysočany, okres Blansko
+- **WHEN** akce obsahuje fotky Samsung s GPS u Vzorkova a u souboru
+  bez GPS je místo `Zkušebná`
+- **THEN** předvybrané jsou Zkušebná, okres Ukázkový
 
 #### Scenario: Jedno rozhodnutí na akci
-- **WHEN** uživatel potvrdí souřadnice pro `Vysočany` u jedné fotky
-- **THEN** ostatní fotky akce s místem `Vysočany` mají stejné
+- **WHEN** uživatel potvrdí souřadnice pro `Zkušebná` u jedné fotky
+- **THEN** ostatní fotky akce s místem `Zkušebná` mají stejné
   souřadnice bez dalšího dotazu
 
 #### Scenario: Ruční souřadnice
-- **WHEN** služba místo nenajde a uživatel zadá `49.4063, 16.7777`
+- **WHEN** služba místo nenajde a uživatel zadá `49.1234, 16.4321`
 - **THEN** místo má tyto souřadnice
 
 #### Scenario: Kandidát s objektem OSM
-- **WHEN** uživatel potvrdí kandidáta Holštejn, kterého Nominatim
-  vrátil jako `relation` s id `439179`
-- **THEN** `souradnice_mist["Holštejn"]` obsahuje `"osm":
-  "relation/439179"` vedle `gps` a `popis`
+- **WHEN** uživatel potvrdí kandidáta Vzorkov, kterého Nominatim
+  vrátil jako `relation` s id `123456`
+- **THEN** `souradnice_mist["Vzorkov"]` obsahuje `"osm":
+  "relation/123456"` vedle `gps` a `popis`
 
 #### Scenario: Kandidát bez objektu OSM
 - **WHEN** Nominatim vrátí kandidáta bez typu nebo id objektu
@@ -56,13 +56,13 @@ celé číslo; jinak se neukáže a zbytek panelu funguje beze změny.
 Ručně zadaná místa a místa bez souřadnic odkaz nemají.
 
 #### Scenario: Uložené místo z Nominatimu
-- **WHEN** vybrané fotky mají místo `Holštejn` s rozhodnutím
-  `{"gps": […], "popis": "…", "osm": "relation/439179"}`
+- **WHEN** vybrané fotky mají místo `Vzorkov` s rozhodnutím
+  `{"gps": […], "popis": "…", "osm": "relation/123456"}`
 - **THEN** panel souřadnic místa ukazuje odkaz na
-  `https://www.openstreetmap.org/relation/439179`
+  `https://www.openstreetmap.org/relation/123456`
 
 #### Scenario: Ručně zadané místo
-- **WHEN** místo má rozhodnutí `{"gps": [49.4063, 16.7777], "popis":
+- **WHEN** místo má rozhodnutí `{"gps": [49.1234, 16.4321], "popis":
   "zadáno ručně"}`
 - **THEN** panel ukáže souřadnice a popis bez odkazu na OSM
 
@@ -71,8 +71,8 @@ Ručně zadaná místa a místa bez souřadnic odkaz nemají.
 - **THEN** panel ukáže „Bez souřadnic.“ bez odkazu na OSM
 
 #### Scenario: Porovnání stejnojmenných kandidátů
-- **WHEN** volba souřadnic pro `Vysočany` ukazuje kandidáty z okresů
-  Blansko a Znojmo
+- **WHEN** volba souřadnic pro `Zkušebná` ukazuje kandidáty z okresů
+  Ukázkový a Pokusný
 - **THEN** každý kandidát má vlastní odkaz na svůj objekt OSM
   a kliknutí na odkaz kandidáta nevybere ani nepotvrdí
 

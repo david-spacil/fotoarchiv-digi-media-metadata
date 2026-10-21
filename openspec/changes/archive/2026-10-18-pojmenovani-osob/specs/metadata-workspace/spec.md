@@ -47,7 +47,7 @@ Bez zámku akce (jen ke čtení) SHALL údaje zůstat vidět a klik vybírat.
   vybere skupinu
 
 #### Scenario: Soubory bez data ve skupině
-- **WHEN** 10 souborů skupiny `DOD 2015_Jana` nemá datum ani zděděné
+- **WHEN** 10 souborů skupiny `DOD 2015_Lenka` nemá datum ani zděděné
 - **THEN** řádek skupiny ukáže ikonu data s počtem 10 a klik na ni
   vybere těch 10 souborů
 

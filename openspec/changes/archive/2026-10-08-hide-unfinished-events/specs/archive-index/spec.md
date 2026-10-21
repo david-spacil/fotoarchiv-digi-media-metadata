@@ -24,7 +24,7 @@ generování; upozornění SHALL být jen v komentáři zdrojového kódu.
 - **THEN** stránka ukazuje všechny karty akcí
 
 #### Scenario: Odkaz na skrytou akci
-- **WHEN** akce `2026-04-28 kontrola Stezky` má složku s příponou
+- **WHEN** akce `2026-04-28 kontrola Naučné stezky` má složku s příponou
   `.ignored`
 - **THEN** karta ukazuje název bez přípony a odkazuje na
-  `./2026-04-28 kontrola Stezky.ignored/`
+  `./2026-04-28 kontrola Naučné stezky.ignored/`

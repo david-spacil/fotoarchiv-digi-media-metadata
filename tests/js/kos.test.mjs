@@ -5,14 +5,14 @@ import assert from "node:assert/strict";
 
 import { lzeSmazat, nazevSedi, zbyvaText } from "../../fotoarchiv/static/kos.js";
 
-const NAZEV = "2026-04-28 kontrola Stezky";
+const NAZEV = "2026-04-28 kontrola Naučné stezky";
 
 test("opsaný název musí sedět přesně", () => {
   assert.ok(nazevSedi(NAZEV, NAZEV));
   assert.ok(nazevSedi(`  ${NAZEV} `, NAZEV));
-  assert.ok(nazevSedi("2026-03-14 výzkum Hradisko".normalize("NFD"),
-    "2026-03-14 výzkum Hradisko"));
-  assert.ok(!nazevSedi("2026-04-28 Kontrola Stezky", NAZEV));
+  assert.ok(nazevSedi("2026-03-14 výzkum Ukázkovo".normalize("NFD"),
+    "2026-03-14 výzkum Ukázkovo"));
+  assert.ok(!nazevSedi("2026-04-28 Kontrola Naučné stezky", NAZEV));
   assert.ok(!nazevSedi("2026-04-28 kontrola", NAZEV));
   assert.ok(!nazevSedi("", NAZEV));
   assert.ok(!nazevSedi(undefined, NAZEV));

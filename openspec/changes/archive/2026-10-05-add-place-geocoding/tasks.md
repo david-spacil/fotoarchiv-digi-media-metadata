@@ -13,14 +13,14 @@
   s podvrženým HTTP (druhý dotaz z cache, interval mezi dotazy)
 - [x] 2.2 `GET /api/geokodovani` a volba `--kontakt` (bez ní 503);
   ověřit testy v `tests/test_app.py`
-- [x] 2.3 Jeden skutečný dotaz na Nominatim přes server (`Holštejn`)
+- [x] 2.3 Jeden skutečný dotaz na Nominatim přes server (`Vzorkov`)
   a opakování z cache; ověřit, že druhý dotaz neodešel (log)
 
 ## 3. Klient
 
 - [x] 3.1 Volba souřadnic u místa: kandidáti s popisem, předvýběr podle
   GPS akce, ruční souřadnice, „bez souřadnic“, atribuce OSM; uložení do
-  `souradnice_mist`; ověřit v prohlížeči na akci s Vysočany
+  `souradnice_mist`; ověřit v prohlížeči na akci s Zkušebná
 - [x] 3.2 Formulář ukazuje GPS zděděné z místa odlišeně; ověřit
   v prohlížeči
 - [x] 3.3 Položka lišty „N míst bez souřadnic“ s výběrem souborů;

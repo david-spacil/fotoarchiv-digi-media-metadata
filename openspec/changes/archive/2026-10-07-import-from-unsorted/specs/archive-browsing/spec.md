@@ -10,9 +10,9 @@ v produkčním režimu zapisuje aplikace (viz `archive-index`), a složka
 `unsorted-import`). Seznam SHALL obsahovat odkaz na stránku Přetřídit.
 
 #### Scenario: Složky mimo vzor
-- **WHEN** archiv obsahuje `2026-04-28 kontrola Stezky…`, `přetřídit`
+- **WHEN** archiv obsahuje `2026-04-28 kontrola Naučné stezky…`, `přetřídit`
   a `_metadata.xlsx`
-- **THEN** seznam obsahuje jen `2026-04-28 kontrola Stezky…`
+- **THEN** seznam obsahuje jen `2026-04-28 kontrola Naučné stezky…`
 
 #### Scenario: Index v kořeni archivu
 - **WHEN** kořen archivu obsahuje `_INDEX.html` a `_INDEX.md`

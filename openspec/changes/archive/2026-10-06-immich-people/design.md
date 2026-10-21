@@ -1,14 +1,15 @@
 ## Context
 
 Ověřeno proti Immichi 3.3.0-rc2 (6. 10. 2026) na knihovně
-`Konference Dějiny archeologie`:
+`Konference Příkladné metody`:
 - `POST /api/search/metadata` s `withPeople: true` vrací u assetu
   `originalPath` a `people: [{id, name, …}]`; nepojmenovaný obličej má
   `name: ""`.
 - `GET /api/faces?id=<asset>` vrací obličeje s `boundingBoxX1..Y2`,
   `imageWidth`, `imageHeight`, `sourceType` a `person {id, name}`.
 - Jména zadávají lidé v Immichi, tvar nevynucuje (`Ukázková, Věra`
-  i `Rudolf Smyšlený`). Immich vidí archiv pod jiným kořenem (`/mnt/media/…`).
+  i `Rudolf Smyšlený`). Immich vidí archiv pod jiným kořenem
+  (`/immich/archiv/…`).
 
 Z GitHubu (immich-app/immich):
 - PR #6455 (sloučen 4. 9. 2024): import oblastí obličejů MWG z metadat
@@ -24,7 +25,7 @@ Z GitHubu (immich-app/immich):
 
 Zámek akcí je jen v paměti serveru (`lock.py`), proto synchronizace
 běží uvnitř serveru (rozhodnuto: varianta A1). Ruční osoby jsou jen
-u jednoho souboru akce `2026-09-08 Konference Dějiny archeologie`;
+u jednoho souboru akce `2026-09-08 Konference Příkladné metody`;
 rozhodnuto je zahodit. Záloha obličejů: varianta B (vždy v JSONu,
 do sidecaru jen pro obnovu).
 

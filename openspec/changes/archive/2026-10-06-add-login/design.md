@@ -1,6 +1,6 @@
 ## Context
 
-Server po `write-to-archive`: jeden proces na Debianu ve firemní síti,
+Server po `write-to-archive`: jeden proces na Debianu ve interní síti,
 zámek v paměti, jméno uživatele z prohlížeče. Nastavení Immiche smí
 měnit kdokoli, kontakt pro Nominatim je přepínač `--kontakt`.
 
@@ -15,7 +15,7 @@ měnit kdokoli, kontakt pro Nominatim je přepínač `--kontakt`.
 **Non-Goals:**
 - Role a oprávnění po akcích (všichni přihlášení smějí s akcemi totéž).
 - Správa uživatelů v aplikaci (přidání, role) — jen soubor na serveru.
-- Přístup mimo firemní síť, obnova hesla e-mailem.
+- Přístup mimo interní síť, obnova hesla e-mailem.
 
 ## Decisions
 
@@ -72,7 +72,7 @@ roste (v paměti, jeden proces). Odpověď neprozradí, zda login existuje.
 
 ## Risks / Trade-offs
 
-- [Zatím bez HTTPS: hesla a cookie relace jdou firemní sítí v otevřené
+- [Zatím bez HTTPS: hesla a cookie relace jdou interní sítí v otevřené
   podobě] → přijaté riziko do domluvy reverzní proxy s IT; přihlášení
   chrání proti omylu a neoprávněné změně kolegou, ne proti odposlechu
   v síti. Aplikace na HTTP při přihlášení upozorní; cookie je

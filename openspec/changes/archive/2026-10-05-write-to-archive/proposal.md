@@ -2,7 +2,7 @@
 
 Prototyp ukládá `_metadata.json` mimo archiv a úklid jen ukazuje, takže
 na ostrých akcích se nedá pracovat. Aplikace poběží jako jeden sdílený
-server ve firemní síti; přesuny a přejmenování musí proběhnout dřív, než
+server ve interní síti; přesuny a přejmenování musí proběhnout dřív, než
 se archiv napojí do Immiche (změna cesty = nový asset).
 
 ## What Changes

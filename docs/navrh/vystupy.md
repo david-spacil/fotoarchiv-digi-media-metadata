@@ -21,7 +21,7 @@
   (`+01:00` / `+02:00`; při podzimní dvojí hodině letní čas), samotné
   datum (WhatsApp) dostane poledne se zónou — Immich datum bez času
   nepřijme a vezme čas z EXIFu; poledne neposune den ani v UTC. GPS ve
-  formátu XMP `DDD,MM.mmmmmmK` (např. `49,24.378000N`). Prázdná pole se
+  formátu XMP `DDD,MM.mmmmmmK` (např. `49,07.404000N`). Prázdná pole se
   nezapisují; místo, přístroj, účastníci, osoby ani skupina do
   sidecaru nejdou (osoby má Immich z vlastního rozpoznávání obličejů;
   obličeje jen při obnově, viz níže). Sidecar skládá aplikace sama (ne exiftool), takže obsah
@@ -59,7 +59,7 @@
   s výjimkami `**/*.ignored/**` (ignorované podsložky i nedokončené
   akce, viz [Archiv](archiv.md)) a nezpracovanými složkami první úrovně
   (`přetřídit`, `přednášky SKLEP TIC`, `fotky mimo akce`). Testovací
-  knihovna vidí archiv pod `/mnt/media/fotoarchiv/…`; aplikace z ní čte
+  knihovna vidí archiv pod `/immich/archiv/…`; aplikace z ní čte
   jen pojmenované obličeje (viz [Immich](immich.md)).
 - **Index** celého archivu pro lidi v Průzkumníku, místo ručně
   vedeného `_metadata.xlsx`. Generuje se, needituje; zdrojem jsou jen

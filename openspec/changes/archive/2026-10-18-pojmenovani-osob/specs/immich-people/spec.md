@@ -69,9 +69,9 @@ dostat. Ve vývojovém režimu SHALL dokončení sken vynechat a album
 založit jen tehdy, když Immich fotky akce už zná.
 
 #### Scenario: Dokončení akce
-- **WHEN** archivář dokončí akci `2026-09-08 Konference Dějiny
-  archeologie` a Immich její složku po spuštěném skenu načte
-- **THEN** Immich má album `2026-09-08 Konference Dějiny archeologie`
+- **WHEN** archivář dokončí akci `2026-09-08 Konference Příkladné metody` a
+  Immich její složku po spuštěném skenu načte
+- **THEN** Immich má album `2026-09-08 Konference Příkladné metody`
   se všemi jejími fotkami, aniž by se čekalo na pravidelnou
   synchronizaci
 

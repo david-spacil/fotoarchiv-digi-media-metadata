@@ -2,9 +2,9 @@
   "popis": "Bez vlastního GPS se bere GPS z souradnice_mist výsledného místa; EXIF GPS ani GPS skupiny se nepřepisuje, null = bez souřadnic",
   "metadata": {
     "schema": "fotoarchiv-digi-media-metadata/2",
-    "akce": {"mista": ["Holštejn"]},
+    "akce": {"mista": ["Vzorkov"]},
     "souradnice_mist": {
-      "Holštejn": {"gps": [49.4063, 16.7777], "popis": "Holštejn, okres Blansko"},
+      "Vzorkov": {"gps": [49.1234, 16.4321], "popis": "Vzorkov, okres Vzorový"},
       "u rybníka": null
     },
     "skupiny": {"s": {"nazev": "S", "gps": [49.0, 16.0]}},
@@ -13,23 +13,23 @@
       "b.jpg": {"gps": [49.41, 16.78]},
       "c.jpg": {"misto": "u rybníka"},
       "d.jpg": {"skupina": "s"},
-      "e.jpg": {"misto": "Vysočany"}
+      "e.jpg": {"misto": "Zkušebná"}
     }
   },
   "ocekavano": {
     "a.jpg": {
-      "misto": {"hodnota": "Holštejn", "uroven": "akce"},
-      "gps": {"hodnota": [49.4063, 16.7777], "uroven": "misto"}
+      "misto": {"hodnota": "Vzorkov", "uroven": "akce"},
+      "gps": {"hodnota": [49.1234, 16.4321], "uroven": "misto"}
     },
     "b.jpg": {
-      "misto": {"hodnota": "Holštejn", "uroven": "akce"},
+      "misto": {"hodnota": "Vzorkov", "uroven": "akce"},
       "gps": {"hodnota": [49.41, 16.78], "uroven": "soubor"}
     },
     "c.jpg": {"misto": {"hodnota": "u rybníka", "uroven": "soubor"}},
     "d.jpg": {
-      "misto": {"hodnota": "Holštejn", "uroven": "akce"},
+      "misto": {"hodnota": "Vzorkov", "uroven": "akce"},
       "gps": {"hodnota": [49.0, 16.0], "uroven": "skupina"}
     },
-    "e.jpg": {"misto": {"hodnota": "Vysočany", "uroven": "soubor"}}
+    "e.jpg": {"misto": {"hodnota": "Zkušebná", "uroven": "soubor"}}
   }
 }

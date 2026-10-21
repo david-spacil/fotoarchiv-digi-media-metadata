@@ -183,7 +183,7 @@ def test_new_name_validation(tmp_path):
         importer.check_new_name(tmp_path, "2026-04-28 kontrola")
     assert e.value.code == "existuje"
     assert e.value.detail["akce"] == "2026-04-28 Kontrola"
-    importer.check_new_name(tmp_path, "2026-04-28 kontrola Stezky")
+    importer.check_new_name(tmp_path, "2026-04-28 kontrola Naučné stezky")
 
 
 def entry(cesta, data, ulozeno=None):
@@ -293,7 +293,7 @@ def test_execute_new_event(imports, tmp_path):
     files = {f"P{i:07}.JPG": f"j{i}" for i in range(40)}
     files.update({f"RAW/P{i:07}.RW2": f"r{i}" for i in range(40)})
     id = make_import(imports, files)
-    path = importer.create_event(archiv, "2026-04-28 kontrola Stezky")
+    path = importer.create_event(archiv, "2026-04-28 kontrola Naučné stezky")
     result = last(imports.execute(id, ME, path))
     assert result["typ"] == "vysledek" and result["smazano"] == []
     assert {o["stav"] for o in result["operace"]} == {"hotovo"}
@@ -469,7 +469,7 @@ def test_copy_cleans_tmp_on_changed_content(tree):
 
 @pytest.mark.parametrize("folder", ["", ".ignored"])
 def test_create_event_race(tmp_path, monkeypatch, folder):
-    name = "2026-04-28 kontrola Stezky"
+    name = "2026-04-28 kontrola Naučné stezky"
     real = importer.check_new_name
 
     def check(archiv, nazev):
@@ -484,25 +484,27 @@ def test_create_event_race(tmp_path, monkeypatch, folder):
 
 def test_create_event_hidden(tmp_path):
     """Nová akce vzniká skrytá před Immichem (issue #13)."""
-    name = "2026-04-28 kontrola Stezky"
+    name = "2026-04-28 kontrola Naučné stezky"
     path = importer.create_event(tmp_path, name)
     assert path == tmp_path / f"{name}.ignored" and path.is_dir()
     assert os.listdir(tmp_path) == [f"{name}.ignored"]
 
 
 @pytest.mark.parametrize("existing", [
-    "2026-04-28 kontrola Stezky", "2026-04-28 kontrola Stezky.ignored",
-    "2026-04-28 KONTROLA Stezky.ignored"])
+    "2026-04-28 kontrola Naučné stezky",
+    "2026-04-28 kontrola Naučné stezky.ignored",
+    "2026-04-28 KONTROLA Naučné stezky.ignored"])
 def test_check_new_name_hidden_exists(tmp_path, existing):
     os.mkdir(tmp_path / existing)
     with pytest.raises(Refused) as e:
-        importer.check_new_name(tmp_path, "2026-04-28 kontrola Stezky")
+        importer.check_new_name(tmp_path, "2026-04-28 kontrola Naučné stezky")
     assert e.value.code == "existuje"
     assert e.value.detail["akce"] == existing.removesuffix(".ignored")
 
 
 @pytest.mark.parametrize("name", [
-    "2026-04-28 kontrola Stezky.ignored", "2026-04-28 Stezky.IGNORED"])
+    "2026-04-28 kontrola Naučné stezky.ignored",
+    "2026-04-28 Naučné stezky.IGNORED"])
 def test_check_new_name_suffix_refused(tmp_path, name):
     with pytest.raises(Refused) as e:
         importer.check_new_name(tmp_path, name)
@@ -547,10 +549,10 @@ def test_owned_and_target(imports):
 
 # --- skupiny ---------------------------------------------------------------
 
-DOD = ["DOD 2015/DOD 2015_Jana/P1.JPG", "DOD 2015/DOD 2015_Jana/IMG_1.jpg",
-       "DOD 2015/DOD 2015_Jana/RAW/P1.RW2",
-       "DOD 2015/DOD 2015_Pavla/hloubka/a.mp4",
-       "DOD 2015/DOD 2015_Pavla/b.jpg", "DOD 2015/c.jpg"]
+DOD = ["DOD 2015/DOD 2015_Lenka/P1.JPG", "DOD 2015/DOD 2015_Lenka/IMG_1.jpg",
+       "DOD 2015/DOD 2015_Lenka/RAW/P1.RW2",
+       "DOD 2015/DOD 2015_Olga/hloubka/a.mp4",
+       "DOD 2015/DOD 2015_Olga/b.jpg", "DOD 2015/c.jpg"]
 DOD_DEVICES = {"P1.JPG": "Panasonic DC-G9", "IMG_1.jpg": "Apple iPhone 6",
                "b.jpg": "Samsung SM-A515F"}
 
@@ -575,14 +577,14 @@ def test_groups_by_subfolder():
     g = groups_of(entries, rezim="podslozky")
     # Dva přístroje v jedné podsložce = jedna skupina; RAW bez skupiny.
     assert members(g) == {"DOD 2015": ["c.jpg"],
-                          "DOD 2015_Jana": ["IMG_1.jpg", "P1.JPG"],
-                          "DOD 2015_Pavla": ["a.mp4", "b.jpg"]}
-    assert g["nove"] == ["dod-2015", "dod-2015-jana", "dod-2015-pavla"]
+                          "DOD 2015_Lenka": ["IMG_1.jpg", "P1.JPG"],
+                          "DOD 2015_Olga": ["a.mp4", "b.jpg"]}
+    assert g["nove"] == ["dod-2015", "dod-2015-lenka", "dod-2015-olga"]
     assert g["shody"] == {gid: [] for gid in g["nove"]}
     # Jen vybraná média (např. ok v plánu); kořen ze všech nahraných.
     g = importer.group_plan(entries, {DOD[1]}, {}, None,
                             {"rezim": "podslozky"})
-    assert members(g) == {"DOD 2015_Jana": ["IMG_1.jpg"]}
+    assert members(g) == {"DOD 2015_Lenka": ["IMG_1.jpg"]}
 
 
 def test_groups_without_subfolders_and_empty_root():
@@ -620,25 +622,25 @@ def test_groups_auto_and_existing():
 
 
 def test_groups_matches_not_joined():
-    entries = [entry("DOD/DOD 2015_Jana/x.jpg", "x"),
-               entry("DOD/DOD 2015_Verča/b.jpg", "b")]
-    existing = {"dod-2015-jana": {"nazev": "dod 2015_JANA"},
+    entries = [entry("DOD/DOD 2015_Lenka/x.jpg", "x"),
+               entry("DOD/DOD 2015_Míra/b.jpg", "b")]
+    existing = {"dod-2015-lenka": {"nazev": "dod 2015_LENKA"},
                 "mobil": {"nazev": "Mobil", "pristroj": "Samsung SM-A515F"},
-                "verca": {"nazev": "DOD 2015_Verca"}}
+                "mira": {"nazev": "DOD 2015_Mira"}}
     g = groups_of(entries, existing, rezim="podslozky")
     # Název odlišný od existujících (pořadové číslo), gid bez kolize.
-    assert g["nove"] == ["dod-2015-jana-2", "dod-2015-verca-2"]
-    assert g["skupiny"]["dod-2015-jana-2"]["nazev"] == "DOD 2015_Jana 2"
-    assert g["skupiny"]["dod-2015-verca-2"]["nazev"] == "DOD 2015_Verča 2"
-    assert g["shody"] == {"dod-2015-jana-2": ["dod-2015-jana"],
-                          "dod-2015-verca-2": ["mobil", "verca"]}
+    assert g["nove"] == ["dod-2015-lenka-2", "dod-2015-mira-2"]
+    assert g["skupiny"]["dod-2015-lenka-2"]["nazev"] == "DOD 2015_Lenka 2"
+    assert g["skupiny"]["dod-2015-mira-2"]["nazev"] == "DOD 2015_Míra 2"
+    assert g["shody"] == {"dod-2015-lenka-2": ["dod-2015-lenka"],
+                          "dod-2015-mira-2": ["mobil", "mira"]}
     g = groups_of(entries, existing, rezim="podslozky",
-                  pripojit={"dod-2015-jana-2": "dod-2015-jana",
-                            "dod-2015-verca-2": "neni"})
-    assert g["prirazeni"] == {"x.jpg": "dod-2015-jana",
-                              "b.jpg": "dod-2015-verca-2"}
-    assert g["nove"] == ["dod-2015-verca-2"]
-    assert set(g["skupiny"]) == {"dod-2015-jana", "dod-2015-verca-2"}
+                  pripojit={"dod-2015-lenka-2": "dod-2015-lenka",
+                            "dod-2015-mira-2": "neni"})
+    assert g["prirazeni"] == {"x.jpg": "dod-2015-lenka",
+                              "b.jpg": "dod-2015-mira-2"}
+    assert g["nove"] == ["dod-2015-mira-2"]
+    assert set(g["skupiny"]) == {"dod-2015-lenka", "dod-2015-mira-2"}
 
 
 def test_groups_auto_same_device_new_group():
@@ -707,14 +709,14 @@ def test_describe():
     popis = {"skupiny": {"g9": {"nazev": "G9"},  # existující, jen čte
                          "jana": {"nazev": "Jana", "autori": ["Novák, J"],
                                   "obliceje": []},
-                         "verca": {"nazev": "Verča"},
+                         "mira": {"nazev": "Míra"},
                          "prazdna": {"nazev": "Prázdná"}},
              "soubory": {"a.jpg": {"skupina": "g9"},
                          "b.jpg": {"skupina": "jana"},
-                         "c.jpg": {"skupina": "verca"},
+                         "c.jpg": {"skupina": "mira"},
                          "d.jpg": {"skupina": "prazdna"},
                          "e.jpg": {}},
-             "pripojit": {"verca": "v"}}
+             "pripojit": {"mira": "v"}}
     # `jana` mezitím obsadila jiná skupina; d.jpg se nepřenesl.
     existing = {"g9": {"nazev": "G9"}, "v": {"nazev": "V"},
                 "jana": {"nazev": "Jiná"}}
@@ -858,7 +860,7 @@ def test_api_existing_event_needs_lock(tmp_path, monkeypatch):
 
 def test_api_new_event(tmp_path, monkeypatch):
     c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
-    name = "2026-04-28 kontrola Stezky"
+    name = "2026-04-28 kontrola Naučné stezky"
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"a.jpg": "a", "RAW/a.rw2": "r", "x.pptx": "p"})
     r = stream(c.post(f"/api/import/{id}/provest",
@@ -871,11 +873,12 @@ def test_api_new_event(tmp_path, monkeypatch):
     assert name in [e["nazev"] for e in c.get("/api/akce").json]
     assert r["index"] == []
     row = next(line for line in (archiv / "_INDEX.md").read_text()
-               .splitlines() if "kontrola Stezky" in line)
+               .splitlines() if "kontrola Naučné stezky" in line)
     assert [c.strip() for c in row.strip("│").split("│")][-2:] == ["1", "0"]
     html = (archiv / "_INDEX.html").read_text()
     assert 'data-stav="rozpracovano"' in html
-    assert 'href="./2026-04-28%20kontrola%20Stezky.ignored/"' in html
+    assert ('href="./2026-04-28%20kontrola%20Nau%C4%8Dn%C3%A9%20stezky'
+            '.ignored/"') in html
     lock = c.post(f"/api/akce/{name}/zamek", json=R2)
     assert lock.status_code == 409  # drží ho relace importu
     assert c.post(f"/api/import/{id}/provest", json=dict(
@@ -887,7 +890,7 @@ def test_api_new_event_interrupted_releases_lock(tmp_path, monkeypatch):
     monkeypatch.setattr(importer, "STEP", 4)
     monkeypatch.setattr(importer, "CHUNK", 4)
     c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
-    name = "2026-04-28 kontrola Stezky"
+    name = "2026-04-28 kontrola Naučné stezky"
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"a.jpg": "0123456789", "b.jpg": "b"})
     r = c.post(f"/api/import/{id}/provest", json=dict(R1, nova=name),
@@ -1135,11 +1138,11 @@ def test_api_groups_conflict_keeps_files(tmp_path, monkeypatch):
 
 def test_api_new_event_description(tmp_path, monkeypatch):
     c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
-    name = "2026-04-28 kontrola Stezky"
+    name = "2026-04-28 kontrola Naučné stezky"
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"S/a.jpg": "a", "S/dup/a2.jpg": "a", "S/c.jpg": "c",
                        "S/RAW/a.rw2": "r"})
-    akce = {"nazev": "kontrola Stezky", "datum_od": "2026-04-28",
+    akce = {"nazev": "kontrola Naučné stezky", "datum_od": "2026-04-28",
             "datum_do": "2026-04-29", "popis": "Kontrola", "mista": [],
             "ucastnici": [ME], "autori": ["Modelová, Zuzana"]}
     save_description(c, id, {
@@ -1164,7 +1167,7 @@ def test_api_new_event_description(tmp_path, monkeypatch):
     [e] = [e for e in c.get("/api/akce").json if e["nazev"] == name]
     assert e["stav"] == "rozpracovano"
     row = next(line for line in (archiv / "_INDEX.md").read_text()
-               .splitlines() if "kontrola Stezky" in line)
+               .splitlines() if "kontrola Naučné stezky" in line)
     assert "Příkladný" in row and "Modelová" not in row
     assert 'data-stav="rozpracovano"' in (archiv / "_INDEX.html").read_text()
 
@@ -1173,13 +1176,13 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
     c.post(f"/api/akce/{EVENT}/zamek", json=R1)
     id = c.post("/api/import", json=R1).json["id"]
-    api_upload(c, id, {"DOD 2015/DOD 2015_Jana/a.jpg": "a",
-                       "DOD 2015/DOD 2015_Pavla/b.jpg": "b"})
+    api_upload(c, id, {"DOD 2015/DOD 2015_Lenka/a.jpg": "a",
+                       "DOD 2015/DOD 2015_Olga/b.jpg": "b"})
     volba = {"rezim": "podslozky"}
     d = plan_and_defaults(c, id, volba, cil=EVENT)
     assert d["existujici"] == {} and "akce_autori" not in d
     save_description(c, id, d, akce={"autori": [ME]},
-                     autori={"dod-2015-jana": ["Nováková, Jana"]})
+                     autori={"dod-2015-lenka": ["Nováková, Jana"]})
     r = stream(c.post(f"/api/import/{id}/provest",
                       json=dict(R1, cil=EVENT)))[-1]
     assert r["skupiny"]["zapsano"] and r["skupiny"]["navrh"]
@@ -1187,22 +1190,22 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     g = c.get(f"/api/akce/{EVENT}/skupiny").json
     assert g["zdroj"] == "navrh"
     assert sorted(x["nazev"] for x in g["skupiny"].values()) == [
-        "DOD 2015_Jana", "DOD 2015_Pavla"]
+        "DOD 2015_Lenka", "DOD 2015_Olga"]
 
     # Druhý import: skupiny návrhu jsou existující, nic se nepřipojí.
     id = c.post("/api/import", json=R1).json["id"]
-    api_upload(c, id, {"DOD/DOD 2015_Jana/c.jpg": "c"})
+    api_upload(c, id, {"DOD/DOD 2015_Lenka/c.jpg": "c"})
     d = plan_and_defaults(c, id, volba, cil=EVENT)
-    assert d["nove"] == ["dod-2015-jana-2"]
-    assert d["shody"] == {"dod-2015-jana-2": ["dod-2015-jana"]}
+    assert d["nove"] == ["dod-2015-lenka-2"]
+    assert d["shody"] == {"dod-2015-lenka-2": ["dod-2015-lenka"]}
     assert "akce_autori" not in d
     save_description(c, id, d, akce={"autori": [ME]},
-                     autori={"dod-2015-jana-2": ["Pokusná, Bára"]})
+                     autori={"dod-2015-lenka-2": ["Pokusná, Bára"]})
     stream(c.post(f"/api/import/{id}/provest", json=dict(R1, cil=EVENT)))
     g = c.get(f"/api/akce/{EVENT}/skupiny").json["skupiny"]
     assert {x["nazev"]: x.get("autori") for x in g.values()} == {
-        "DOD 2015_Jana": ["Nováková, Jana"], "DOD 2015_Pavla": None,
-        "DOD 2015_Jana 2": ["Pokusná, Bára"]}
+        "DOD 2015_Lenka": ["Nováková, Jana"], "DOD 2015_Olga": None,
+        "DOD 2015_Lenka 2": ["Pokusná, Bára"]}
 
     # Průvodce: návrh z importu s autory, soubor mimo návrh automaticky.
     d = c.get(f"/api/akce/{EVENT}").json
@@ -1211,9 +1214,9 @@ def test_api_groups_proposal(tmp_path, monkeypatch):
     assert "autori" not in doc["akce"]
     named = {n: doc["skupiny"][r["skupina"]] for n, r in
              doc["soubory"].items() if r.get("skupina")}
-    assert named["a.jpg"] == {"nazev": "DOD 2015_Jana",
+    assert named["a.jpg"] == {"nazev": "DOD 2015_Lenka",
                               "autori": ["Nováková, Jana"]}
-    assert named["b.jpg"]["nazev"] == "DOD 2015_Pavla"
+    assert named["b.jpg"]["nazev"] == "DOD 2015_Olga"
     assert named["c.jpg"]["autori"] == ["Pokusná, Bára"]
     assert named["IMG-20260428-WA0001.jpg"]["nazev"] == "WhatsApp"
     r = c.put(f"/api/akce/{EVENT}/metadata",
@@ -1275,17 +1278,18 @@ def test_source_overview_skips_ignored(source):
 
 def test_source_groups_and_paths(source, monkeypatch):
     monkeypatch.setattr(scan, "run_exiftool", fake_exiftool)
-    imp, archiv = source({"Vánoční večírek 2019_Pavlov/": {
-        "Pavlov/": {"a.jpg": "a", "b.jpg": "bb"},
-        "Pavlov2/": {"c.jpg": "ccc"}, "x.ignored/": {"d.jpg": "d"}}})
-    name = "Vánoční večírek 2019_Pavlov"
+    imp, archiv = source({"Vánoční večírek 2019_Vzorkovice/": {
+        "Vzorkovice/": {"a.jpg": "a", "b.jpg": "bb"},
+        "Vzorkovice2/": {"c.jpg": "ccc"}, "x.ignored/": {"d.jpg": "d"}}})
+    name = "Vánoční večírek 2019_Vzorkovice"
     id = imp.create(ME, zdroj=name)
     last(imp.plan(id, ME, None))
     g = imp.defaults(id, ME, {}, {"rezim": "podslozky"})
-    assert members(g) == {"Pavlov": ["a.jpg", "b.jpg"], "Pavlov2": ["c.jpg"]}
+    assert members(g) == {"Vzorkovice": ["a.jpg", "b.jpg"],
+                          "Vzorkovice2": ["c.jpg"]}
     root = archiv / "přetřídit" / name
-    assert imp.file_path(id, ME, f"{name}/Pavlov/a.jpg") == \
-        root / "Pavlov" / "a.jpg"
+    assert imp.file_path(id, ME, f"{name}/Vzorkovice/a.jpg") == \
+        root / "Vzorkovice" / "a.jpg"
     for bad in ("Jiná/a.jpg", f"{name}/../x", f"{name}/x.ignored/d.jpg",
                 name, f"{name}//a.jpg"):
         assert imp.file_path(id, ME, bad) is None, bad
@@ -1303,16 +1307,16 @@ def counting_sha(monkeypatch):
 
 
 def test_source_hash_only_same_size(source, monkeypatch):
-    imp, archiv = source({"HLOZEK/": {"a.jpg": "1", "b.jpg": "22",
+    imp, archiv = source({"VZORNY/": {"a.jpg": "1", "b.jpg": "22",
                                       "c.txt": "333"}})
     make_tree(archiv, {f"{EVENT}/": {"x.jpg": "4444", "y.txt": "1"}})
     calls = counting_sha(monkeypatch)
-    id = imp.create(ME, zdroj="HLOZEK")
+    id = imp.create(ME, zdroj="VZORNY")
     events = list(imp.plan(id, ME, archiv / EVENT))
     # a.jpg má velikost jako y.txt v akci: hashuje se a.jpg a y.txt; sha256
     # zdroje už spočítala kontrola (jedno čtení), plán čte jen y.txt.
     assert calls == ["y.txt"]
-    assert "HLOZEK/a.jpg" in json.loads(
+    assert "VZORNY/a.jpg" in json.loads(
         imp._source_sha_cache(imp.get(id, ME)).read_text())
     assert [e["typ"] for e in events][-1] == "plan"
     calls.clear()
@@ -1321,18 +1325,18 @@ def test_source_hash_only_same_size(source, monkeypatch):
 
 
 def test_source_duplicate_stays(source):
-    imp, archiv = source({"HLOZEK/": {"a.jpg": "dup", "b.jpg": "jiny",
+    imp, archiv = source({"VZORNY/": {"a.jpg": "dup", "b.jpg": "jiny",
                                       "c.jpg": "aaa", "d/": {"e.jpg": "aaa"}}})
     make_tree(archiv, {f"{EVENT}/": {"x.jpg": "dup"}})
-    id = imp.create(ME, zdroj="HLOZEK")
+    id = imp.create(ME, zdroj="VZORNY")
     last(imp.plan(id, ME, archiv / EVENT))
     result = last(imp.execute(id, ME, archiv / EVENT))
     assert plan_ops(result) == [
-        ("HLOZEK/a.jpg", "a.jpg", "duplicita"),
-        ("HLOZEK/b.jpg", "b.jpg", "hotovo"),
-        ("HLOZEK/c.jpg", "c.jpg", "hotovo"),
-        ("HLOZEK/d/e.jpg", "e.jpg", "duplicita")]
-    src = archiv / "přetřídit" / "HLOZEK"
+        ("VZORNY/a.jpg", "a.jpg", "duplicita"),
+        ("VZORNY/b.jpg", "b.jpg", "hotovo"),
+        ("VZORNY/c.jpg", "c.jpg", "hotovo"),
+        ("VZORNY/d/e.jpg", "e.jpg", "duplicita")]
+    src = archiv / "přetřídit" / "VZORNY"
     assert sorted(p.name for p in src.rglob("*")) == ["a.jpg", "d", "e.jpg"]
     assert result["zdroj_zbyva"] == {"foto": 2}
     assert not result["zdroj_smazan"] and not result["zahozeno"]
@@ -1342,13 +1346,13 @@ def test_source_duplicate_stays(source):
 def test_source_execute_moves(source):
     # Různé velikosti: bez možné duplicity se pro plán nic nehashuje.
     files = {f"P{i}.JPG": "j" * (i + 2) for i in range(5)}
-    imp, archiv = source({"BONGO ZK/": files | {"Thumbs.db": "t",
+    imp, archiv = source({"MODEL ZK/": files | {"Thumbs.db": "t",
                                                 "RAW/": {"P0.RW2": "r"}}})
-    src = archiv / "přetřídit" / "BONGO ZK"
+    src = archiv / "přetřídit" / "MODEL ZK"
     os.utime(src / "P3.JPG", ns=(MTIME_MS * 10**6, MTIME_MS * 10**6))
-    id = imp.create(ME, zdroj="BONGO ZK")
+    id = imp.create(ME, zdroj="MODEL ZK")
     last(imp.plan(id, ME, None))
-    path = importer.create_event(archiv, "2017-05-10 BONGO ZK")
+    path = importer.create_event(archiv, "2017-05-10 MODEL ZK")
     events = no_check(imp.execute(id, ME, path))
     assert [e["typ"] for e in events] == ["start"] + ["soubor"] * 6 + \
         ["vysledek"]
@@ -1672,41 +1676,41 @@ def test_size_mismatch_after_copy(imports, tree, monkeypatch):
 
 
 def test_source_damaged_stays(source):
-    imp, archiv = source({"HLOZEK/": {"a.jpg": "zdrava"}})
-    src = archiv / "přetřídit" / "HLOZEK"
+    imp, archiv = source({"VZORNY/": {"a.jpg": "zdrava"}})
+    src = archiv / "přetřídit" / "VZORNY"
     (src / "20151107_140851.jpg").write_bytes(UNREADABLE)
-    id = imp.create(ME, zdroj="HLOZEK")
+    id = imp.create(ME, zdroj="VZORNY")
     last(imp.plan(id, ME, None))
-    path = importer.create_event(archiv, "2015-11-07 Hlozek")
+    path = importer.create_event(archiv, "2015-11-07 Vzorny")
     result = last(imp.execute(id, ME, path))
     assert plan_ops(result) == [
-        ("HLOZEK/20151107_140851.jpg", "20151107_140851.jpg", "poskozeny"),
-        ("HLOZEK/a.jpg", "a.jpg", "hotovo")]
+        ("VZORNY/20151107_140851.jpg", "20151107_140851.jpg", "poskozeny"),
+        ("VZORNY/a.jpg", "a.jpg", "hotovo")]
     assert os.listdir(src) == ["20151107_140851.jpg"]
     assert result["zdroj_zbyva"] == {"foto": 1}
     assert not result["zdroj_smazan"] and not result["zahozeno"]
 
 
 def test_source_delete_damaged(source):
-    imp, archiv = source({"HLOZEK/": {"a.jpg": "zdrava"}})
-    src = archiv / "přetřídit" / "HLOZEK"
+    imp, archiv = source({"VZORNY/": {"a.jpg": "zdrava"}})
+    src = archiv / "přetřídit" / "VZORNY"
     (src / "bad.jpg").write_bytes(UNREADABLE)
-    id = imp.create(ME, zdroj="HLOZEK")
+    id = imp.create(ME, zdroj="VZORNY")
     last(imp.plan(id, ME, None))
-    imp.delete_damaged(id, ME, "HLOZEK/bad.jpg")
+    imp.delete_damaged(id, ME, "VZORNY/bad.jpg")
     assert os.listdir(src) == ["a.jpg"]
     # Smazaný není „zmizelý po plánu“: provedení ho nehlásí jako chybu.
-    path = importer.create_event(archiv, "2015-11-07 Hlozek")
+    path = importer.create_event(archiv, "2015-11-07 Vzorny")
     result = last(imp.execute(id, ME, path))
-    assert plan_ops(result) == [("HLOZEK/a.jpg", "a.jpg", "hotovo")]
+    assert plan_ops(result) == [("VZORNY/a.jpg", "a.jpg", "hotovo")]
     assert result["zdroj_smazan"]
 
 
 def test_source_size_mismatch_after_move(source, monkeypatch):
-    imp, archiv = source({"HLOZEK/": {"a.jpg": "zdrava"}})
-    id = imp.create(ME, zdroj="HLOZEK")
+    imp, archiv = source({"VZORNY/": {"a.jpg": "zdrava"}})
+    id = imp.create(ME, zdroj="VZORNY")
     last(imp.plan(id, ME, None))
-    path = importer.create_event(archiv, "2015-11-07 Hlozek")
+    path = importer.create_event(archiv, "2015-11-07 Vzorny")
     monkeypatch.setattr(importer, "_target_size", lambda p: 0)
     (o,) = last(imp.execute(id, ME, path))["operace"]
     assert (o["stav"], o["chyba"]) == ("chyba", "velikost v cíli nesouhlasí")
@@ -1715,8 +1719,8 @@ def test_source_size_mismatch_after_move(source, monkeypatch):
 
 def test_source_check_feeds_plan_hashes(source, monkeypatch):
     # Plán po kontrole zdroj znovu nečte (sha256 z téhož průchodu).
-    imp, archiv = source({"HLOZEK/": {"a.jpg": "1", "b.jpg": "2"}})
-    id = imp.create(ME, zdroj="HLOZEK")
+    imp, archiv = source({"VZORNY/": {"a.jpg": "1", "b.jpg": "2"}})
+    id = imp.create(ME, zdroj="VZORNY")
     checked(imp, id)
     calls = counting_sha(monkeypatch)
     monkeypatch.setattr(importer.integrity, "iter_check",
@@ -1724,8 +1728,8 @@ def test_source_check_feeds_plan_hashes(source, monkeypatch):
     plan = last(imp.plan(id, ME, None))
     # Stejná velikost: plán sha256 potřebuje (duplicity), bere je z cache.
     assert calls == []
-    assert plan_ops(plan) == [("HLOZEK/a.jpg", "a.jpg", "ok"),
-                              ("HLOZEK/b.jpg", "b.jpg", "ok")]
+    assert plan_ops(plan) == [("VZORNY/a.jpg", "a.jpg", "ok"),
+                              ("VZORNY/b.jpg", "b.jpg", "ok")]
 
 
 def api_upload_bytes(c, id, files, jmeno=ME):
@@ -1780,11 +1784,11 @@ def test_api_check_allow_delete(tmp_path, monkeypatch):
 
 def source_client(tmp_path, monkeypatch, zapis):
     c, archiv = api_client(tmp_path, monkeypatch, zapis=zapis)
-    src = archiv / "přetřídit" / "HLOZEK"
+    src = archiv / "přetřídit" / "VZORNY"
     src.mkdir(parents=True)
     (src / "a.jpg").write_text("zdrava")
     (src / "bad.jpg").write_bytes(UNREADABLE)
-    id = c.post("/api/import", json=dict(R1, zdroj="HLOZEK")).json["id"]
+    id = c.post("/api/import", json=dict(R1, zdroj="VZORNY")).json["id"]
     stream(c.post(f"/api/import/{id}/kontrola", json={"jmeno": ME}))
     return c, src, id
 
@@ -1792,7 +1796,7 @@ def source_client(tmp_path, monkeypatch, zapis):
 def test_api_source_delete_dev_mode_refused(tmp_path, monkeypatch):
     c, src, id = source_client(tmp_path, monkeypatch, zapis=False)
     r = c.delete(f"/api/import/{id}/soubor",
-                 json=dict(R1, cesta="HLOZEK/bad.jpg"))
+                 json=dict(R1, cesta="VZORNY/bad.jpg"))
     assert r.status_code == 403 and r.json["chyba"] == "vyvojovy_rezim"
     assert sorted(os.listdir(src)) == ["a.jpg", "bad.jpg"]
 
@@ -1800,17 +1804,17 @@ def test_api_source_delete_dev_mode_refused(tmp_path, monkeypatch):
 def test_api_source_delete(tmp_path, monkeypatch):
     c, src, id = source_client(tmp_path, monkeypatch, zapis=True)
     locks = c.application.config["LOCKS"]
-    locks.acquire("přetřídit/HLOZEK", "jina#přetřídit", "Modelová, Jana")
+    locks.acquire("přetřídit/VZORNY", "jina#přetřídit", "Modelová, Jana")
     r = c.delete(f"/api/import/{id}/soubor",
-                 json=dict(R1, cesta="HLOZEK/bad.jpg"))
+                 json=dict(R1, cesta="VZORNY/bad.jpg"))
     assert r.status_code == 409 and r.json["chyba"] == "zdroj_obsazen"
     assert sorted(os.listdir(src)) == ["a.jpg", "bad.jpg"]
-    locks.release("přetřídit/HLOZEK", "jina#přetřídit")
+    locks.release("přetřídit/VZORNY", "jina#přetřídit")
     r = c.delete(f"/api/import/{id}/soubor",
-                 json=dict(R1, cesta="HLOZEK/bad.jpg"))
+                 json=dict(R1, cesta="VZORNY/bad.jpg"))
     assert r.status_code == 200
     assert os.listdir(src) == ["a.jpg"]
-    assert locks.holder("přetřídit/HLOZEK") is None
+    assert locks.holder("přetřídit/VZORNY") is None
 
 
 
@@ -1958,12 +1962,12 @@ def test_api_excluded_dev_mode(tmp_path, monkeypatch):
 
 def test_api_excluded_execute(tmp_path, monkeypatch):
     c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
-    name = "2026-04-28 kontrola Stezky"
+    name = "2026-04-28 kontrola Naučné stezky"
     id = c.post("/api/import", json=R1).json["id"]
     api_upload(c, id, {"S/a.jpg": "a", "S/b.jpg": "bb", "S/RAW/b.rw2": "r"})
     save_description(c, id, {"skupiny": {"g": {"nazev": "G"}},
                              "prirazeni": {"a.jpg": "g", "b.jpg": "g"}},
-                     akce={"nazev": "kontrola Stezky",
+                     akce={"nazev": "kontrola Naučné stezky",
                            "datum_od": "2026-04-28"})
     c.post(f"/api/import/{id}/vyloucene",
            json={"jmeno": ME, "vyloucene": ["S/b.jpg", "S/RAW/b.rw2"]})

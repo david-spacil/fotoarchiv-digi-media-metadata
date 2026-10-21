@@ -6,7 +6,7 @@ s kontrolou verze (sha256 obsahu). `cleanup.plan` vrací seznam operací
 `move` / `rename` / `delete` s příznakem `blocked`; klient ho jen
 zobrazí. Server běží jako vlákenný Flask, bezstavový.
 
-Cílové nasazení: jeden server (Debian) ve firemní síti, archiv připojený
+Cílové nasazení: jeden server (Debian) ve interní síti, archiv připojený
 přes SMB nebo NFS se zápisem. Přihlašování zatím není (změna
 `add-login`).
 
@@ -102,7 +102,7 @@ archivu při každém spuštění.
 - [Restart serveru uprostřed úklidu] → archiv zůstane v mezistavu, ale
   nic se nepřepíše; nový náhled plánu ukáže zbytek, provede se znovu.
 - [Jméno v prohlížeči jde podvrhnout] → přijatelné do `add-login`;
-  server je jen ve firemní síti.
+  server je jen ve interní síti.
 - [Server spuštěný omylem ve víc procesech (gunicorn workers)] → zámek
   by neplatil; v README a v nasazení výslovně 1 proces, vlákna ano.
 

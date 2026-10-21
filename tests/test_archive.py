@@ -7,7 +7,7 @@ from fotoarchiv.archive import (SCHEMA, SCHEMA_V1, Collision, Conflict,
                                 Workspace, version_of)
 from .conftest import make_tree, snapshot
 
-EVENT = "2026-04-28 kontrola Stezky"
+EVENT = "2026-04-28 kontrola Naučné stezky"
 
 
 @pytest.fixture
@@ -292,10 +292,10 @@ def test_cli_hide_dry_run(ws_prod, capsys):
 def test_cli_hide(ws_prod, capsys):
     # nezpracovaná EVENT, rozpracovaná, dokončená, už skrytá, kolize
     ws_prod.save("2025-01-02 starší", {"dokonceno": None}, None)
-    for name in ("2024-03-14 výzkum Hradisko", "2023-01-01 skrytá",
+    for name in ("2024-03-14 výzkum Ukázkovo", "2023-01-01 skrytá",
                  "2022-01-01 dvojí", "2022-01-01 dvojí.ignored"):
         (ws_prod.archiv / name).mkdir()
-    ws_prod.save("2024-03-14 výzkum Hradisko",
+    ws_prod.save("2024-03-14 výzkum Ukázkovo",
                  {"dokonceno": "2024-04-01"}, None)
     (ws_prod.archiv / "2023-01-01 skrytá").rename(
         ws_prod.archiv / "2023-01-01 skrytá.ignored")
@@ -306,7 +306,7 @@ def test_cli_hide(ws_prod, capsys):
     assert sorted(p.name for p in ws_prod.archiv.iterdir()
                   if p.name[0].isdigit()) == [
         "2022-01-01 dvojí", "2022-01-01 dvojí.ignored",
-        "2023-01-01 skrytá.ignored", "2024-03-14 výzkum Hradisko",
+        "2023-01-01 skrytá.ignored", "2024-03-14 výzkum Ukázkovo",
         "2025-01-02 starší.ignored", HIDDEN]
     # Metadata jdou se složkou.
     assert ws_prod.load("2025-01-02 starší")[0] == {"dokonceno": None}

@@ -13,7 +13,7 @@ postupovat jako dosud.
 - **WHEN** uživatel otevře novou akci, do které importoval `DOD 2015`
   s volbou „podle podsložek“
 - **THEN** krok skupin ukáže skupiny `DOD 2015_Bara Pokusna`,
-  `DOD 2015_Jana`, `DOD 2015_Pavla` a `DOD 2015_Verca` a krok autorů
+  `DOD 2015_Lenka`, `DOD 2015_Olga` a `DOD 2015_Mira` a krok autorů
   skupin se ptá na autory každé z nich
 
 #### Scenario: Soubor mimo návrh

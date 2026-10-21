@@ -12,7 +12,7 @@ předvybraného cíle) a z pracovní plochy akce (s touto akcí jako
 předvybraným cílem).
 
 #### Scenario: Import z pracovní plochy
-- **WHEN** uživatel na ploše akce `2026-04-28 kontrola Stezky…` spustí
+- **WHEN** uživatel na ploše akce `2026-04-28 kontrola Naučné stezky…` spustí
   import
 - **THEN** průvodce má jako cíl předvybranou tuto akci
 
@@ -109,7 +109,7 @@ režimu SHALL průvodce plán jen zobrazit a do archivu nic nezapsat.
 
 #### Scenario: Import do nové akce
 - **WHEN** uživatel v produkčním režimu potvrdí import 40 JPG a 40 RW2
-  do nové akce `2026-04-28 kontrola Stezky`
+  do nové akce `2026-04-28 kontrola Naučné stezky`
 - **THEN** složka vznikne, 40 JPG je v jejím kořeni, 40 RW2
   v `RAW.ignored/` a akce je v seznamu jako *nezpracováno*
 

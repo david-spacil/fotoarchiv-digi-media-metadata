@@ -57,7 +57,7 @@ Seznam akcí SHALL u akce s aspoň jedním nálezem kontroly ukázat štítek
 v každém stavu kromě kolize přípony `.ignored`.
 
 #### Scenario: Akce se zipem
-- **WHEN** kořen akce `2026-04-28 kontrola Stezky` obsahuje
+- **WHEN** kořen akce `2026-04-28 kontrola Naučné stezky` obsahuje
   `prezentace.zip`
 - **THEN** seznam u akce ukáže „k vyřešení“ a popisek uvede
   „1 nepodporovaný soubor“

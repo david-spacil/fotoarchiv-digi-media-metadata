@@ -39,7 +39,7 @@ zdroje v kroku Soubory SHALL nenabídnout.
 
 #### Scenario: Import celé složky
 - **WHEN** uživatel na stránce Přetřídit klikne na `Vánoční večírek
-  2019_Pavlov` s podsložkami `Pavlov` a `Pavlov2`
+  2019_Vzorkovice` s podsložkami `Vzorkovice` a `Vzorkovice2`
 - **THEN** průvodce ukáže přehled jejích 174 fotek, cíl nová akce
   s navrženým datem a názvem a předvolbu skupin podle podsložek
 

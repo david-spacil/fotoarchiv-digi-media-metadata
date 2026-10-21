@@ -74,9 +74,9 @@ synchronizace z Immiche. Osoby na fotce jsou jména z `obliceje`.
   v `_metadata.json` není
 
 #### Scenario: Název skupiny
-- **WHEN** akce má `nazev` = `kontrola Stezky` a skupina `nazev`
+- **WHEN** akce má `nazev` = `kontrola Naučné stezky` a skupina `nazev`
   = `Panasonic DC-G9`
-- **THEN** výsledný `nazev` souborů skupiny je `kontrola Stezky`
+- **THEN** výsledný `nazev` souborů skupiny je `kontrola Naučné stezky`
 
 ### Requirement: Místo
 Skupina a soubor SHALL mít nejvýš jedno `misto`. Pokud ho nemají a akce
@@ -84,12 +84,12 @@ má v `mista` právě jedno místo, výsledné `misto` SHALL být toto místo
 akce. Pokud má akce víc míst, místo se MUST NOT z akce dědit.
 
 #### Scenario: Jedno místo akce
-- **WHEN** akce má `mista` = [`Holštejn`] a soubor ani skupina místo
+- **WHEN** akce má `mista` = [`Vzorkov`] a soubor ani skupina místo
   nemají
-- **THEN** výsledné místo souboru je `Holštejn`
+- **THEN** výsledné místo souboru je `Vzorkov`
 
 #### Scenario: Víc míst akce
-- **WHEN** akce má `mista` = [`Molenburk`, `Housko`] a soubor ani
+- **WHEN** akce má `mista` = [`Pokusín`, `Zkušebnice`] a soubor ani
   skupina místo nemají
 - **THEN** soubor nemá žádné místo
 
@@ -136,9 +136,9 @@ místa MUST NOT přepsat GPS z EXIF ani ručně zadané GPS na kterékoli
 úrovni a MUST NOT se ukládat k souboru.
 
 #### Scenario: Fotka bez GPS
-- **WHEN** soubor nemá `gps`, jeho místo je `Holštejn`
-  a `souradnice_mist` má pro `Holštejn` [49.4063, 16.7777]
-- **THEN** výsledné `gps` souboru je [49.4063, 16.7777] z úrovně
+- **WHEN** soubor nemá `gps`, jeho místo je `Vzorkov`
+  a `souradnice_mist` má pro `Vzorkov` [49.1234, 16.4321]
+- **THEN** výsledné `gps` souboru je [49.1234, 16.4321] z úrovně
   `misto`
 
 #### Scenario: Fotka s GPS z EXIF

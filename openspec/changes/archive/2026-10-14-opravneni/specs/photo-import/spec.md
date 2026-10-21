@@ -63,19 +63,19 @@ a Immich je uvidí hned.
   stávající
 
 #### Scenario: Existující skrytá akce
-- **WHEN** archiv obsahuje `2026-04-28 kontrola Stezky.ignored`
-  a uživatel zadá novou akci `2026-04-28 kontrola Stezky`
+- **WHEN** archiv obsahuje `2026-04-28 kontrola Naučné stezky.ignored`
+  a uživatel zadá novou akci `2026-04-28 kontrola Naučné stezky`
 - **THEN** průvodce název odmítne a nabídne zvolit tu akci jako
   stávající
 
 #### Scenario: Nová akce skrytá
 - **WHEN** uživatel v produkčním režimu importuje do nové akce
-  `2026-04-28 kontrola Stezky`
-- **THEN** soubory leží ve složce `2026-04-28 kontrola Stezky.ignored`
+  `2026-04-28 kontrola Naučné stezky`
+- **THEN** soubory leží ve složce `2026-04-28 kontrola Naučné stezky.ignored`
 
 #### Scenario: Cizí akce jako cíl
 - **WHEN** uživatel bez role vybírá stávající akci a akce
-  `2026-04-28 kontrola Stezky` jeho jméno v `upravili` nemá
+  `2026-04-28 kontrola Naučné stezky` jeho jméno v `upravili` nemá
 - **THEN** průvodce ji mezi cíli nenabídne
 
 ### Requirement: Zápis skupin při provedení

@@ -3,7 +3,7 @@
 Návrh v README je odsouhlasený na úrovni datového modelu a toku práce,
 ale rozhodnutí o obrazovkách se má dělat nad funkčním prototypem
 s reálnými daty, ne nad popisem. Prototyp nad akcí
-`2026-04-28 kontrola Stezky Drahanskou vrchovinou` (G9, Samsung, RAW,
+`2026-04-28 kontrola Naučné stezky Vzorov` (G9, Samsung, RAW,
 video, podsložky) ověří tok „průvodce, pak pracovní plocha“ dřív, než se
 staví export a zámky.
 
@@ -64,5 +64,5 @@ Mimo rozsah (další změny): zápis XMP sidecarů a export, zámek
 - Nové závislosti: Flask, Pillow (`requirements.txt`, venv `.venv/`
   mimo git); systémový `exiftool`; `ffmpeg` pro náhledy videí, pokud
   je dostupný (jinak video bez náhledu).
-- Archiv na SMB (`/mnt/x`) se jen čte. Cache náhledů a pracovní kopie
+- Archiv na SMB (`/cesta/k/archivu`) se jen čte. Cache náhledů a pracovní kopie
   `_metadata.json` leží lokálně mimo archiv.

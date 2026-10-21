@@ -26,9 +26,9 @@ průvodce po návratu k rozpracovanému importu předvyplnit.
 
 #### Scenario: Podsložky od autorů
 - **WHEN** uživatel nahraje složku `DOD 2015` s podsložkami
-  `DOD 2015_Jana` a `DOD 2015_Pavla`
+  `DOD 2015_Lenka` a `DOD 2015_Olga`
 - **THEN** předvolba je „podle podsložek“ a plán uvede skupiny
-  `DOD 2015_Jana` a `DOD 2015_Pavla`, každou se soubory své podsložky,
+  `DOD 2015_Lenka` a `DOD 2015_Olga`, každou se soubory své podsložky,
   i když jsou v jedné podsložce fotky ze dvou přístrojů
 
 #### Scenario: Výběr bez podsložek
@@ -57,9 +57,9 @@ importu se soubory slučují podle zvoleného režimu bez ptaní (např.
 automaticky dva telefony stejného modelu do jedné skupiny).
 
 #### Scenario: Podsložka se jménem existující skupiny
-- **WHEN** akce má skupinu `DOD 2015_Jana` a uživatel do ní importuje
-  podsložky `DOD 2015_Jana` a `DOD 2015_Verca`
-- **THEN** plán navrhne dvě nové skupiny, u `DOD 2015_Jana` uvede
+- **WHEN** akce má skupinu `DOD 2015_Lenka` a uživatel do ní importuje
+  podsložky `DOD 2015_Lenka` a `DOD 2015_Mira`
+- **THEN** plán navrhne dvě nové skupiny, u `DOD 2015_Lenka` uvede
   shodu s existující skupinou a připojí ji, jen když to uživatel zvolí
 
 #### Scenario: Stejný přístroj, jiný autor
@@ -69,8 +69,8 @@ automaticky dva telefony stejného modelu do jedné skupiny).
   v plánu nezvolil připojení
 
 #### Scenario: Zvolené připojení
-- **WHEN** uživatel v plánu u navržené skupiny `DOD 2015_Jana` zvolí
-  „připojit ke skupině `DOD 2015_Jana`“ a import provede
+- **WHEN** uživatel v plánu u navržené skupiny `DOD 2015_Lenka` zvolí
+  „připojit ke skupině `DOD 2015_Lenka`“ a import provede
 - **THEN** přenesené soubory patří do existující skupiny a nová
   skupina nevznikne
 

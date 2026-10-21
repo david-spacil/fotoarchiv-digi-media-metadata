@@ -10,7 +10,7 @@ export function fold(text) {
 }
 
 // Každé slovo dotazu musí být v názvu akce. Delším slovům se ořežou
-// koncové samohlásky, aby „drahanska“ našlo „Drahanskou“.
+// koncové samohlásky, aby „naucna“ našlo „Naučné“.
 export function matchesSearch(nazev, query) {
   const name = fold(nazev);
   return fold(query).split(/\s+/).filter(Boolean)

@@ -17,18 +17,18 @@ tím zmizet ze seznamu akcí a otevírat se jako neexistující.
 
 #### Scenario: Smazání akce
 - **WHEN** admin v produkčním režimu smaže akci
-  `2026-04-28 kontrola Stezky`
-- **THEN** složka `2026-04-28 kontrola Stezky` v kořeni archivu
+  `2026-04-28 kontrola Naučné stezky`
+- **THEN** složka `2026-04-28 kontrola Naučné stezky` v kořeni archivu
   neexistuje, její obsah je beze změny v `_kos.ignored/<ID>/` a seznam
   akcí akci neuvádí
 
 #### Scenario: Smazání skryté akce
 - **WHEN** admin smaže nedokončenou akci se složkou
-  `2026-04-28 kontrola Stezky.ignored`
+  `2026-04-28 kontrola Naučné stezky.ignored`
 - **THEN** složka se přesune do koše stejně jako bez přípony
 
 #### Scenario: Stejný název smazán dvakrát
-- **WHEN** admin smaže akci `2026-04-28 kontrola Stezky`, pak vznikne
+- **WHEN** admin smaže akci `2026-04-28 kontrola Naučné stezky`, pak vznikne
   nová akce stejného názvu a admin smaže i ji
 - **THEN** koš obsahuje obě akce pod různými ID a žádný soubor se
   nepřepsal
@@ -59,10 +59,10 @@ z relace, ne z požadavku.
 
 #### Scenario: Obsah záznamu
 - **WHEN** admin `Novák, Jan` smaže akci se složkou
-  `2026-04-28 kontrola Stezky.ignored` s důvodem `duplicita`
+  `2026-04-28 kontrola Naučné stezky.ignored` s důvodem `duplicita`
 - **THEN** `_smazano.json` v koši uvádí název
-  `2026-04-28 kontrola Stezky`, složku
-  `2026-04-28 kontrola Stezky.ignored`, `Novák, Jan`, čas a `duplicita`
+  `2026-04-28 kontrola Naučné stezky`, složku
+  `2026-04-28 kontrola Naučné stezky.ignored`, `Novák, Jan`, čas a `duplicita`
 
 #### Scenario: Stav akce přejde do záznamu
 - **WHEN** admin smaže dokončenou akci s albem v Immichi a pak import
@@ -112,7 +112,7 @@ MUST NOT být blokován akcí v koši.
 - **THEN** seznam návrhů jmen ho neobsahuje
 
 #### Scenario: Nová akce stejného názvu
-- **WHEN** akce `2026-04-28 kontrola Stezky` je v koši a import vytvoří
+- **WHEN** akce `2026-04-28 kontrola Naučné stezky` je v koši a import vytvoří
   akci stejného názvu
 - **THEN** import proběhne jako u nové akce
 
@@ -125,7 +125,7 @@ Složka v koši bez platného záznamu SHALL být uvedena jako neznámá.
 
 #### Scenario: Výpis koše
 - **WHEN** admin `Novák, Jan` před 2 dny smazal akci
-  `2026-04-28 kontrola Stezky`
+  `2026-04-28 kontrola Naučné stezky`
 - **THEN** stránka Koš ji uvádí s jeho jménem, důvodem a trvalým
   smazáním za 5 dní
 
@@ -142,9 +142,9 @@ akce stejného názvu (s příponou i bez ní), MUST obnovení odmítnout
 a nic nepřesunout. Obnovení SHALL být zapsáno do logu serveru.
 
 #### Scenario: Obnovení
-- **WHEN** admin obnoví akci `2026-04-28 kontrola Stezky` smazanou
-  ze složky `2026-04-28 kontrola Stezky.ignored`
-- **THEN** archiv obsahuje `2026-04-28 kontrola Stezky.ignored`
+- **WHEN** admin obnoví akci `2026-04-28 kontrola Naučné stezky` smazanou
+  ze složky `2026-04-28 kontrola Naučné stezky.ignored`
+- **THEN** archiv obsahuje `2026-04-28 kontrola Naučné stezky.ignored`
   s původním obsahem a `_metadata.json` a seznam akcí ji uvádí
 
 #### Scenario: Obnovení dokončené akce
@@ -153,7 +153,7 @@ a nic nepřesunout. Obnovení SHALL být zapsáno do logu serveru.
   exportu jako před smazáním
 
 #### Scenario: Název je obsazený
-- **WHEN** admin obnovuje akci `2026-04-28 kontrola Stezky` a v archivu
+- **WHEN** admin obnovuje akci `2026-04-28 kontrola Naučné stezky` a v archivu
   mezitím vznikla akce stejného názvu
 - **THEN** obnovení se odmítne a obě složky zůstanou beze změny
 
@@ -234,6 +234,6 @@ NOT vysypání měnit.
   smazání alba zopakuje
 
 #### Scenario: Nová akce stejného názvu
-- **WHEN** vysypání trvale smaže akci `2026-04-28 kontrola Stezky`
+- **WHEN** vysypání trvale smaže akci `2026-04-28 kontrola Naučné stezky`
   a v archivu mezitím vznikla nová akce stejného názvu
 - **THEN** cache, stav alba a export nové akce zůstanou beze změny

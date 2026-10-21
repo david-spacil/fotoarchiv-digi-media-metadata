@@ -40,7 +40,7 @@ v seznamu.
 ### Složka v koši pod unikátním ID, původní název v záznamu
 `_kos.ignored/<ID>/`, ID = čas smazání `YYYYMMDDTHHMMSS` + krátký
 náhodný sufix (např. `20261019T143012-7f3a`). Dvě smazání téhož názvu
-tak nikdy nekolidují a výpis na NAS je seřazený podle času. Přesun
+tak nikdy nekolidují a výpis na úložišti archivu je seřazený podle času. Přesun
 přesto použije pravidlo „nikdy nepřepsat“ (cíl nesmí existovat).
 
 ### Záznam `_smazano.json` uvnitř složky v koši
@@ -136,7 +136,7 @@ a nic nezapíše — stejně jako úklid ve vývojovém režimu.
   skutečnému Immichi před nasazením (úkol v tasks). Pokud se nevrátí,
   zdokumentovat, že obnova dokončené akce znamená nové rozpoznání.
 - [Vysypání je nevratné] → Lhůta 7 dní, opisování názvu, důvod v logu,
-  vysypání jen se záznamem; zálohy NAS jsou mimo aplikaci.
+  vysypání jen se záznamem; zálohy úložiště archivu jsou mimo aplikaci.
 - [Server neběží déle než 7 dní] → Vysypání proběhne při startu;
   zpoždění nevadí.
 - [Selhání v půlce `rmtree` (soubor drží jiný počítač)] → Složka

@@ -28,7 +28,7 @@ nebo dokončená se změnami po exportu, kterou uživatel ukládal nebo
 drží jeho zámek), K dokončení (rozpracovaná bez chybějících údajů
 a dokončená se změnami po exportu), Nezpracované. **Hledání**
 v názvu ignoruje diakritiku, velikost písmen a koncové samohlásky
-slov („stezky drahanska“ najde „Stezky Drahanskou“). **Řazení**
+slov („stezky naucna“ najde „Naučné stezky Vzorov“). **Řazení**
 podle data akce (výchozí, sestupně), hotovosti (nejméně hotové
 nahoře, nezpracované na konci) nebo poslední úpravy (bez záznamu na
 konci). Filtr, hledání a řazení jsou v adrese seznamu

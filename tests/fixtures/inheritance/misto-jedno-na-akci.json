@@ -2,17 +2,17 @@
   "popis": "Jediné místo akce se dědí jako misto; skupina i soubor ho přepíší",
   "metadata": {
     "schema": "fotoarchiv-digi-media-metadata/2",
-    "akce": {"mista": ["Holštejn"]},
-    "skupiny": {"s": {"nazev": "S", "misto": "Molenburk"}},
+    "akce": {"mista": ["Vzorkov"]},
+    "skupiny": {"s": {"nazev": "S", "misto": "Pokusín"}},
     "soubory": {
       "a.jpg": {},
       "b.jpg": {"skupina": "s"},
-      "c.jpg": {"skupina": "s", "misto": "Housko"}
+      "c.jpg": {"skupina": "s", "misto": "Zkušebnice"}
     }
   },
   "ocekavano": {
-    "a.jpg": {"misto": {"hodnota": "Holštejn", "uroven": "akce"}},
-    "b.jpg": {"misto": {"hodnota": "Molenburk", "uroven": "skupina"}},
-    "c.jpg": {"misto": {"hodnota": "Housko", "uroven": "soubor"}}
+    "a.jpg": {"misto": {"hodnota": "Vzorkov", "uroven": "akce"}},
+    "b.jpg": {"misto": {"hodnota": "Pokusín", "uroven": "skupina"}},
+    "c.jpg": {"misto": {"hodnota": "Zkušebnice", "uroven": "soubor"}}
   }
 }

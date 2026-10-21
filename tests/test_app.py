@@ -285,7 +285,7 @@ def test_info_version_unknown(tmp_path, monkeypatch):
 def test_geocoding_disabled_without_contact(client):
     c, _ = client
     assert c.get("/api/info").json["geokodovani"] is False
-    r = c.get("/api/geokodovani?q=Holštejn")
+    r = c.get("/api/geokodovani?q=Vzorkov")
     assert r.status_code == 503
     assert r.json["chyba"] == "geokodovani_vypnuto"
 
@@ -298,8 +298,8 @@ def test_geocoding_endpoint(tmp_path, monkeypatch):
         calls.append((query, user_agent))
         if query == "nedostupne":
             raise geocode.GeocodeError("timeout")
-        return [{"name": "Holštejn", "lat": "49.4063", "lon": "16.7777",
-                 "display_name": "Holštejn, okres Blansko",
+        return [{"name": "Vzorkov", "lat": "49.1234", "lon": "16.4321",
+                 "display_name": "Vzorkov, okres Ukázkový",
                  "osm_type": "relation", "osm_id": 1}]
 
     monkeypatch.setattr("fotoarchiv.geocode.fetch_nominatim", fetch)
@@ -312,11 +312,11 @@ def test_geocoding_endpoint(tmp_path, monkeypatch):
     c = app.test_client()
     assert c.get("/api/info").json["geokodovani"] is True
     assert c.get("/api/geokodovani?q=").status_code == 400
-    r = c.get("/api/geokodovani?q=Holštejn")
+    r = c.get("/api/geokodovani?q=Vzorkov")
     assert r.status_code == 200 and r.json["z_cache"] is False
-    assert r.json["kandidati"][0]["gps"] == [49.4063, 16.7777]
-    assert c.get("/api/geokodovani?q=holštejn").json["z_cache"] is True
-    assert calls == [("holštejn",
+    assert r.json["kandidati"][0]["gps"] == [49.1234, 16.4321]
+    assert c.get("/api/geokodovani?q=vzorkov").json["z_cache"] is True
+    assert calls == [("vzorkov",
                       "fotoarchiv-digi-media-metadata (test@example.org)")]
     r = c.get("/api/geokodovani?q=nedostupne")
     assert r.status_code == 502 and r.json["chyba"] == "sluzba_nedostupna"
@@ -1151,32 +1151,32 @@ def test_api_source_dev_mode(client):
 def test_api_source_lock(prod):
     c, archiv = prod
     unsorted_tree(archiv)
-    jana = c.post("/api/import", json=dict(R2, zdroj="DOD 2019")).json["id"]
-    david = c.post("/api/import", json=dict(R1, zdroj="DOD 2019")).json["id"]
-    r = c.post(f"/api/import/{david}/provest",
-               json=dict(R1, nova="2019-05-01 DOD David"))
+    lenka = c.post("/api/import", json=dict(R2, zdroj="DOD 2019")).json["id"]
+    karel = c.post("/api/import", json=dict(R1, zdroj="DOD 2019")).json["id"]
+    r = c.post(f"/api/import/{karel}/provest",
+               json=dict(R1, nova="2019-05-01 DOD Karel"))
     assert r.status_code == 409 and r.json["chyba"] == "bez_planu"
     assert c.application.config["LOCKS"].holder("přetřídit/DOD 2019") is None
-    for id, who, name in ((jana, R2, "Jana"), (david, R1, "David")):
+    for id, who, name in ((lenka, R2, "Lenka"), (karel, R1, "Karel")):
         ndjson(c.post(f"/api/import/{id}/plan", json={
             "jmeno": who["jmeno"], "nova": f"2019-05-01 DOD {name}"}))
-    r = c.post(f"/api/import/{jana}/provest",
-               json=dict(R2, nova="2019-05-01 DOD Jana"), buffered=False)
+    r = c.post(f"/api/import/{lenka}/provest",
+               json=dict(R2, nova="2019-05-01 DOD Lenka"), buffered=False)
     chunks = iter(r.response)
     assert b'"kontrola"' in next(chunks)  # provedení běží, zámek drží
-    refused = c.post(f"/api/import/{david}/provest",
-                     json=dict(R1, nova="2019-05-01 DOD David"))
+    refused = c.post(f"/api/import/{karel}/provest",
+                     json=dict(R1, nova="2019-05-01 DOD Karel"))
     assert refused.status_code == 409
     assert refused.json["chyba"] == "zdroj_obsazen"
     assert refused.json["drzitel"]["jmeno"] == R2["jmeno"]
-    assert not (archiv / "2019-05-01 DOD David").exists()
+    assert not (archiv / "2019-05-01 DOD Karel").exists()
     r.close()  # přerušení uvolní zámek zdroje
-    r = c.post(f"/api/import/{david}/provest",
-               json=dict(R1, nova="2019-05-01 DOD David"))
+    r = c.post(f"/api/import/{karel}/provest",
+               json=dict(R1, nova="2019-05-01 DOD Karel"))
     result = ndjson(r)[-1]
     r.close()
     assert result["typ"] == "vysledek" and result["zahozeno"]
-    moved = sorted(os.listdir(archiv / "2019-05-01 DOD David.ignored"))
+    moved = sorted(os.listdir(archiv / "2019-05-01 DOD Karel.ignored"))
     assert "RAW.ignored" in moved
     assert c.application.config["LOCKS"].holder("přetřídit/DOD 2019") is None
 
@@ -1440,7 +1440,7 @@ def naming_app(tmp_path, monkeypatch):
     """Aplikace s přihlášením, FakeImmichem a dokončenou akcí s albem.
 
     Album `alb-1` má assety `a1` (`P9109996.JPG`, skupina
-    `DOD 2015_Jana`), `a2` a `a3`; nepojmenované osoby `p-1`, `p-2`
+    `DOD 2015_Lenka`), `a2` a `a3`; nepojmenované osoby `p-1`, `p-2`
     a pojmenovaná `p-zname` (`Vzorný, Tomáš`).
     """
     from fotoarchiv import auth
@@ -1467,7 +1467,7 @@ def naming_app(tmp_path, monkeypatch):
     app.config["WORKSPACE"].save(
         EVENT, {"schema": SCHEMA, "dokonceno": "2026-04-28",
                 "akce": {"nazev": "kontrola", "mista": ["Brno"]},
-                "skupiny": {"g1": {"nazev": "DOD 2015_Jana",
+                "skupiny": {"g1": {"nazev": "DOD 2015_Lenka",
                                    "autori": ["Příkladný, Daniel"]}},
                 "soubory": {"P9109996.JPG": {"skupina": "g1"}}}, None)
     immich.Settings(work).save(IMMICH_URL, IMMICH_KLIC)
@@ -1522,7 +1522,7 @@ def test_naming_seznam_osob(naming_app):
     assert vyrez["immich"] == {"soubor": "P9109996.JPG",
                                "datum": "2026-04-28T10:00:00.000Z"}
     assert vyrez["archiv"] == {
-        "soubor": "P9109996.JPG", "skupina": "DOD 2015_Jana",
+        "soubor": "P9109996.JPG", "skupina": "DOD 2015_Lenka",
         "datum": None, "misto": "Brno", "autori": ["Příkladný, Daniel"]}
     # Počty osob akce se uloží i bez dotazu navíc (z téže odpovědi).
     polozka = app.config["IMMICH"].osoby.polozka(EVENT)

@@ -8,9 +8,9 @@ místa MUST NOT přepsat GPS z EXIF ani ručně zadané GPS na kterékoli
 úrovni a MUST NOT se ukládat k souboru.
 
 #### Scenario: Fotka bez GPS
-- **WHEN** soubor nemá `gps`, jeho místo je `Holštejn`
-  a `souradnice_mist` má pro `Holštejn` [49.4063, 16.7777]
-- **THEN** výsledné `gps` souboru je [49.4063, 16.7777] z úrovně
+- **WHEN** soubor nemá `gps`, jeho místo je `Vzorkov`
+  a `souradnice_mist` má pro `Vzorkov` [49.1234, 16.4321]
+- **THEN** výsledné `gps` souboru je [49.1234, 16.4321] z úrovně
   `misto`
 
 #### Scenario: Fotka s GPS z EXIF

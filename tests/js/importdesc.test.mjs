@@ -13,17 +13,17 @@ const media = (...names) => names.map((nazev) => ({ nazev }));
 const defaults = {
   cil: "2026-04-28 kontrola", nova: false,
   soubory: media("a.jpg", "b.jpg", "c.jpg"),
-  skupiny: { jana: { nazev: "Jana" }, pavla: { nazev: "Pavla" } },
-  prirazeni: { "a.jpg": "jana", "b.jpg": "pavla" },
+  skupiny: { jana: { nazev: "Jana" }, olga: { nazev: "Olga" } },
+  prirazeni: { "a.jpg": "jana", "b.jpg": "olga" },
   existujici: { g9: { nazev: "G9", autori: ["Příkladný, Daniel"] } },
 };
 
 test("nový popis z výchozího rozdělení", () => {
   const p = freshDescription(defaults, null);
   assert.equal(p.cil, "2026-04-28 kontrola");
-  assert.deepEqual(Object.keys(p.skupiny), ["g9", "jana", "pavla"]);
+  assert.deepEqual(Object.keys(p.skupiny), ["g9", "jana", "olga"]);
   assert.deepEqual(p.soubory, { "a.jpg": { skupina: "jana" },
-    "b.jpg": { skupina: "pavla" }, "c.jpg": {} });
+    "b.jpg": { skupina: "olga" }, "c.jpg": {} });
   assert.deepEqual(p.akce, {});
   assert.equal(p.upraveno, false);
 });
@@ -35,7 +35,7 @@ test("autory akce ze staršího serveru popis nepřevezme", () => {
 });
 
 test("údaje nové akce zůstanou, stávající cíl je odloží", () => {
-  const akce = { nazev: "kontrola Stezky", datum_od: "2026-04-28" };
+  const akce = { nazev: "kontrola Naučné stezky", datum_od: "2026-04-28" };
   const nova = freshDescription({ ...defaults, nova: true, cil: "x" },
     { typ: "nova", akce });
   assert.equal(nova.cil, "nova");
@@ -53,26 +53,26 @@ test("sladění s novým plánem zachová ruční úpravy", () => {
   const p = freshDescription(defaults, null);
   p.skupiny.nova = { nazev: "Nová", autori: ["Pokusná, Bára"] };
   p.soubory["a.jpg"].skupina = "nova";
-  p.pripojit = { pavla: "g9", jana: "zmizela" };
+  p.pripojit = { olga: "g9", jana: "zmizela" };
   const plan = { ...defaults,
     soubory: media("a.jpg", "b.jpg", "d.jpg"),
-    prirazeni: { "a.jpg": "jana", "b.jpg": "pavla", "d.jpg": "dalsi" },
+    prirazeni: { "a.jpg": "jana", "b.jpg": "olga", "d.jpg": "dalsi" },
     skupiny: { ...defaults.skupiny, dalsi: { nazev: "Další" } } };
   reconcile(p, plan);
   // c.jpg se už nepřenese, d.jpg přibyl; ruční skupina a.jpg zůstala.
   assert.deepEqual(p.soubory, { "a.jpg": { skupina: "nova" },
-    "b.jpg": { skupina: "pavla" }, "d.jpg": { skupina: "dalsi" } });
+    "b.jpg": { skupina: "olga" }, "d.jpg": { skupina: "dalsi" } });
   assert.deepEqual(p.skupiny.dalsi, { nazev: "Další" });
-  assert.deepEqual(p.pripojit, { pavla: "g9" });
+  assert.deepEqual(p.pripojit, { olga: "g9" });
 });
 
 test("připojená skupina dědí autory existující", () => {
   const p = freshDescription(defaults, null);
-  p.pripojit = { pavla: "g9" };
+  p.pripojit = { olga: "g9" };
   const doc = effectiveDoc(p);
   assert.equal(doc.soubory["b.jpg"].skupina, "g9");
-  assert.equal(doc.skupiny.pavla, undefined);
-  // jana nemá autory; pavla je připojená k g9 s autory.
+  assert.equal(doc.skupiny.olga, undefined);
+  // jana nemá autory; olga je připojená k g9 s autory.
   assert.deepEqual(groupsWithoutAuthors(p), ["jana"]);
   // Autoři akce (rozpracovaný import z doby před schématem /2) nepomohou.
   p.akce.autori = ["Příkladný, Daniel"];
@@ -83,8 +83,8 @@ test("vyloučená média: chybí v zápisu, skupina jen z nich bez upozornění"
   const p = freshDescription(defaults, null);
   const ex = new Set(["a.jpg"]);
   assert.equal(effectiveDoc(p, ex).soubory["a.jpg"], undefined);
-  // jana má jen vyloučenou a.jpg, pavla nevyloučenou b.jpg.
-  assert.deepEqual(groupsWithoutAuthors(p, ex), ["pavla"]);
+  // jana má jen vyloučenou a.jpg, olga nevyloučenou b.jpg.
+  assert.deepEqual(groupsWithoutAuthors(p, ex), ["olga"]);
   assert.deepEqual(groupsWithoutAuthors(p, new Set(["a.jpg", "b.jpg"])), []);
-  assert.deepEqual(groupsWithoutAuthors(p), ["jana", "pavla"]);
+  assert.deepEqual(groupsWithoutAuthors(p), ["jana", "olga"]);
 });

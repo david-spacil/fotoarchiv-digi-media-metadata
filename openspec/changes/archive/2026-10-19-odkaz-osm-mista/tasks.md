@@ -5,7 +5,7 @@
 - [x] 1.1 V `fotoarchiv/geocode.py` `candidate` přidat klíč `osm` jen
   při neprázdném `osm_type` i `osm_id` (viz design). Do
   `tests/test_geocode.py` přidat test kandidáta bez `osm_type`/`osm_id`
-  (bez klíče `osm`) a ověřit, že stávající test s `relation/439179`
+  (bez klíče `osm`) a ověřit, že stávající test s `relation/123456`
   dál projde: `.venv/bin/python -m pytest -q tests/test_geocode.py`.
 
 ## 2. Klient: odkaz na objekt OSM
@@ -36,7 +36,7 @@
   (počty testů ve výpisu).
 - [x] 3.2 Ve vývojovém režimu se smyšleným archivem ve scratch adresáři
   (žádná reálná data) a `.work/cache/geokodovani.json` s ručně
-  vloženými kandidáty pro `Vysočany` (dva kandidáti s `osm`, jeden
+  vloženými kandidáty pro `Zkušebná` (dva kandidáti s `osm`, jeden
   s `None/None`; bez dotazu na Nominatim) projít scénáře specifikace
   v headless prohlížeči: odkaz u uloženého místa, žádný odkaz u ručního
   a „bez souřadnic“, odkazy u kandidátů, klik na odkaz kandidáta

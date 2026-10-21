@@ -6,14 +6,14 @@ import assert from "node:assert/strict";
 import { osmUrl } from "../../fotoarchiv/static/osm.js";
 
 test("platné typy objektů", () => {
-  assert.equal(osmUrl("relation/439179"),
-    "https://www.openstreetmap.org/relation/439179");
+  assert.equal(osmUrl("relation/123456"),
+    "https://www.openstreetmap.org/relation/123456");
   assert.equal(osmUrl("way/12"), "https://www.openstreetmap.org/way/12");
   assert.equal(osmUrl("node/7"), "https://www.openstreetmap.org/node/7");
 });
 
 test("chybějící hodnota bez odkazu", () => {
-  for (const v of [undefined, null, "", 439179]) {
+  for (const v of [undefined, null, "", 123456]) {
     assert.equal(osmUrl(v), null);
   }
 });

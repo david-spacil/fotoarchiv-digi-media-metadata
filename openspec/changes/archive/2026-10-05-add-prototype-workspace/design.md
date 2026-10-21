@@ -1,6 +1,6 @@
 ## Context
 
-Repo zatím nemá kód. Archiv leží na SMB (`/mnt/x`, symlink
+Repo zatím nemá kód. Archiv leží na SMB (`/cesta/k/archivu`, symlink
 `~/archiv/x/…`), jedna akce má až ~7 GB (převážně RAW a video, které
 se nenačítají). Na Fedoře je k dispozici Python 3.14, `exiftool`
 a `ffmpeg`; Flask a Pillow chybí. Kolegové na Windows jsou žádoucí, ale

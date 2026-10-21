@@ -9,8 +9,8 @@ from fotoarchiv.archive import SCHEMA, Collision, Workspace
 from .conftest import make_tree, snapshot
 from .test_immich import KEY, URL, FakeImmich
 
-EVENT = "2026-04-28 kontrola Stezky"
-OTHER = "2026-03-14 výzkum Hradisko"
+EVENT = "2026-04-28 kontrola Naučné stezky"
+OTHER = "2026-03-14 výzkum Ukázkovo"
 NOW = datetime(2026, 10, 19, 14, 30, 12)
 
 
@@ -224,7 +224,7 @@ def test_trashed_event_invisible(setup):
     assert ws.event_names() == [OTHER]
     assert [e["nazev"] for e in ws.list_events()] == [OTHER]
     assert "Unikátní, Jméno" not in known.names()
-    assert [r["nazev"] for r in index.collect(ws)] == ["výzkum Hradisko"]
+    assert [r["nazev"] for r in index.collect(ws)] == ["výzkum Ukázkovo"]
 
 
 def test_new_event_with_trashed_name(setup):

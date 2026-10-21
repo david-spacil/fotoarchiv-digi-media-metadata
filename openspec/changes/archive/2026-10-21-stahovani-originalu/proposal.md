@@ -1,7 +1,7 @@
 ## Why
 
 Originály fotek a videí jde dnes z aplikace jen prohlížet v lupě;
-stáhnout soubor, výběr nebo celou akci znamená ruční zásah na NAS.
+stáhnout soubor, výběr nebo celou akci znamená ruční zásah na úložišti archivu.
 Uživatel potřebuje originály předat dál (zpráva, publikace) i s popisem
 z archivu. Issue #53.
 

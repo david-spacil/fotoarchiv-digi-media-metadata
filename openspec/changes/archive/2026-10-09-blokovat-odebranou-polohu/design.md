@@ -11,7 +11,7 @@ a uvede je zvlášť s důvodem; provedení jde přes stejný `iter_plan`.
 Ověřený výstup `exiftool -json -n` (Pixel 8a, Android 17):
 odebraná `{"GPSVersionID": "0 0 0 0", "GPSLatitude": "",
 "GPSLongitude": ""}`, originál `{"GPSVersionID": "2 2 0 0",
-"GPSLatitude": 49.189…, "GPSLongitude": 16.620…}`.
+"GPSLatitude": 49.135…, "GPSLongitude": 16.246…}`.
 
 ## Goals / Non-Goals
 

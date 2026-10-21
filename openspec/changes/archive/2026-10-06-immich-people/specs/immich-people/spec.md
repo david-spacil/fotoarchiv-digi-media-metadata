@@ -103,10 +103,10 @@ v Immichi MUST NOT být potřeba nastavovat.
 
 #### Scenario: Jiný kořen v Immichi
 - **WHEN** Immich vidí soubor jako
-  `/mnt/media/…/2026-09-08 Konference Dějiny archeologie/P9109996.JPG`
-  a aplikace archiv na `/mnt/x/…`
+  `/immich/archiv/…/2026-09-08 Konference Příkladné metody/P9109996.JPG`
+  a aplikace archiv na `/cesta/k/archivu/…`
 - **THEN** obličeje se zapíšou k `P9109996.JPG` akce
-  `2026-09-08 Konference Dějiny archeologie`
+  `2026-09-08 Konference Příkladné metody`
 
 ### Requirement: Tvar jmen z Immiche
 Jméno osoby z Immiche, které se podle porovnání jmen (bez diakritiky,

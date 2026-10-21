@@ -80,8 +80,8 @@ na SMB/CIFS nespolehlivé.
 **Čekání na server.** Každá akce průvodce, která čeká na server (plán,
 nahrávání, provedení, zahození), zablokuje své tlačítko a ukáže, co
 se děje; dvojklik tak nespustí druhý požadavek. Výpočet plánu do
-stávající akce může na SMB trvat minuty (hash souborů shodné velikosti,
-měřeno ~4,5 MB/s přes VPN, 943 MB ≈ 3,5 min), proto
+stávající akce může na SMB trvat minuty (hash souborů shodné velikosti
+na pomalém síťovém úložišti), proto
 `POST /api/import/<id>/plan` odpovídá stejně jako provedení streamem
 NDJSON: `{"typ":"hash", souboru, bajtu}` na začátku porovnání,
 `{"typ":"hash_prubeh", hotovo_souboru, hotovo_bajtu}` po každém souboru

@@ -14,8 +14,8 @@ Server MUST posílat nejvýš jeden dotaz za sekundu a MUST NOT se ptát
 během psaní, jen na potvrzený název.
 
 #### Scenario: Nejednoznačný název
-- **WHEN** se hledá `Vysočany`
-- **THEN** výsledek obsahuje kandidáty z okresů Blansko, Znojmo
+- **WHEN** se hledá `Zkušebná`
+- **THEN** výsledek obsahuje kandidáty z okresů Ukázkový, Pokusný
   i Prahy 9
 
 #### Scenario: Služba nedostupná
@@ -30,7 +30,7 @@ velikost písmen, normalizaci Unicode a nadbytečné mezery) MUST být
 zodpovězen z cache bez dotazu na službu.
 
 #### Scenario: Opakovaný dotaz
-- **WHEN** se `Vysočany` hledají podruhé, v jiné akci
+- **WHEN** se `Zkušebná` hledají podruhé, v jiné akci
 - **THEN** kandidáti přijdou z cache a na Nominatim neodejde žádný
   dotaz
 
@@ -46,17 +46,17 @@ SHALL být předvybraný ten nejbližší souborům akce, které mají GPS.
 Předvýběr MUST uživatel potvrdit.
 
 #### Scenario: Předvýběr podle GPS akce
-- **WHEN** akce obsahuje fotky Samsung s GPS u Holštejna a u souboru
-  bez GPS je místo `Vysočany`
-- **THEN** předvybrané jsou Vysočany, okres Blansko
+- **WHEN** akce obsahuje fotky Samsung s GPS u Vzorkova a u souboru
+  bez GPS je místo `Zkušebná`
+- **THEN** předvybrané jsou Zkušebná, okres Ukázkový
 
 #### Scenario: Jedno rozhodnutí na akci
-- **WHEN** uživatel potvrdí souřadnice pro `Vysočany` u jedné fotky
-- **THEN** ostatní fotky akce s místem `Vysočany` mají stejné
+- **WHEN** uživatel potvrdí souřadnice pro `Zkušebná` u jedné fotky
+- **THEN** ostatní fotky akce s místem `Zkušebná` mají stejné
   souřadnice bez dalšího dotazu
 
 #### Scenario: Ruční souřadnice
-- **WHEN** služba místo nenajde a uživatel zadá `49.4063, 16.7777`
+- **WHEN** služba místo nenajde a uživatel zadá `49.1234, 16.4321`
 - **THEN** místo má tyto souřadnice
 
 ### Requirement: Atribuce

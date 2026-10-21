@@ -114,7 +114,7 @@ archiv jen číst. SHALL vypsat podezřelé a nečitelné soubory s důvodem,
 souhrn po akcích a uložit report do pracovního adresáře.
 
 #### Scenario: Kontrola jedné akce
-- **WHEN** správce spustí `zkontrolovat "2026-04-28 kontrola Stezky"`
+- **WHEN** správce spustí `zkontrolovat "2026-04-28 kontrola Naučné stezky"`
 - **THEN** příkaz vypíše poškozené soubory té akce s důvodem a počty
   v pořádku, podezřelých a nečitelných
 

@@ -2,9 +2,9 @@
 
 Ve složce `přetřídit` v kořeni archivu čeká po zploštění a deduplikaci
 (issue #5) 36 nezatříděných akcí. Dnešní import umí jen nahrát soubory
-z prohlížeče do `.work/import/`: složky by se musely stáhnout přes VPN
-a nahrát zpět, v archivu by vznikly kopie a z `přetřídit` by nebylo
-poznat, co je hotové.
+z prohlížeče do `.work/import/`: složky by se musely stáhnout
+z pomalého síťového úložiště a nahrát zpět, v archivu by vznikly kopie a z
+`přetřídit` by nebylo poznat, co je hotové.
 
 ## What Changes
 

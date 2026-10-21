@@ -53,9 +53,8 @@ Bez oprávnění server zámek odmítne (403) a klient akci otevře jen ke
 čtení s vysvětlením; seznam ji označí „jen ke čtení“ a průvodce
 importem ji nenabídne jako cíl. Bez přihlášení smí každý všechno.
 
-Zatím běží přes HTTP ve firemní síti (přijaté riziko): heslo a cookie
-jdou sítí čitelně, přihlašovací stránka na to upozorní. Cookie je
-`HttpOnly` a `SameSite=Lax`; `Secure` zapne `--https`, až bude
-reverzní proxy s HTTPS.
+Bez `--https` jde heslo i cookie nešifrovaně; v nasazení používejte
+HTTPS (reverzní proxy). Přihlašovací stránka na HTTP upozorní. Cookie
+je `HttpOnly` a `SameSite=Lax`; `Secure` zapne `--https`.
 
 Na Windows místo `.venv/bin/` použít `.venv\Scripts\`.

@@ -52,13 +52,13 @@ Místo skupiny a souboru SHALL být jedna hodnota s návrhy z míst akce.
 označování osob; MUST NOT se dědit na skupiny ani soubory.
 
 #### Scenario: Více míst
-- **WHEN** uživatel do pole místo napíše `Molenburk, Housko`
-- **THEN** akce má dvě místa `Molenburk` a `Housko`
+- **WHEN** uživatel do pole místo napíše `Pokusín, Zkušebnice`
+- **THEN** akce má dvě místa `Pokusín` a `Zkušebnice`
 
 #### Scenario: Místo u fotky
-- **WHEN** akce má místa `Molenburk` a `Housko` a uživatel u fotky
+- **WHEN** akce má místa `Pokusín` a `Zkušebnice` a uživatel u fotky
   zadává místo
-- **THEN** formulář nabídne `Molenburk` a `Housko`
+- **THEN** formulář nabídne `Pokusín` a `Zkušebnice`
 
 ### Requirement: Předvyplnění údajů akce
 Krok údaje akce SHALL předvyplnit název z názvu složky (bez data)
@@ -67,8 +67,8 @@ z data v názvu složky, pokud soubory datum nemají.
 
 #### Scenario: Předvyplnění
 - **WHEN** průvodce dojde ke kroku údaje akce u
-  `2026-04-28 kontrola Stezky Drahanskou vrchovinou`
-- **THEN** název je `kontrola Stezky Drahanskou vrchovinou` a datum
+  `2026-04-28 kontrola Naučné stezky Vzorov`
+- **THEN** název je `kontrola Naučné stezky Vzorov` a datum
   od–do odpovídá datům fotek
 
 ### Requirement: Mřížka a výběr

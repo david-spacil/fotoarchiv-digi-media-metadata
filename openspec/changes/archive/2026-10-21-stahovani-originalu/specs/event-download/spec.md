@@ -2,7 +2,7 @@
 
 Stažení originálů akce z aplikace: jednoho souboru, výběru souborů
 a celé akce jako ZIP spolu s metadaty z archivu (`_metadata.json`
-a XMP sidecary), bez zásahu na NAS.
+a XMP sidecary), bez zásahu na úložišti archivu.
 
 ## ADDED Requirements
 
@@ -14,7 +14,7 @@ odmítnut.
 
 #### Scenario: Stažení fotky
 - **WHEN** uživatel stáhne `IMG_0001.jpg` z akce `2026-04-28 kontrola
-  Stezky`
+  Naučné stezky`
 - **THEN** prohlížeč uloží soubor `IMG_0001.jpg` shodný bajt po bajtu
   s originálem v archivu
 
@@ -79,12 +79,12 @@ akce s příponou `.zip`, u výběru název akce s počtem souborů; diakritika
 v názvech MUST zůstat zachována. Velikost akce MUST NOT stažení omezit.
 
 #### Scenario: Název ZIPu akce
-- **WHEN** uživatel stáhne akci `2026-04-28 kontrola Stezky`
-- **THEN** prohlížeč uloží `2026-04-28 kontrola Stezky.zip`
+- **WHEN** uživatel stáhne akci `2026-04-28 kontrola Naučné stezky`
+- **THEN** prohlížeč uloží `2026-04-28 kontrola Naučné stezky.zip`
 
 #### Scenario: Název ZIPu výběru
 - **WHEN** uživatel stáhne výběr 12 souborů téže akce
-- **THEN** prohlížeč uloží `2026-04-28 kontrola Stezky (12 souborů).zip`
+- **THEN** prohlížeč uloží `2026-04-28 kontrola Naučné stezky (12 souborů).zip`
 
 ### Requirement: Stažení jen čte
 Stažení SHALL být dostupné každému přihlášenému uživateli bez zámku
@@ -98,9 +98,9 @@ zmizí, SHALL být přeskočen.
 - **THEN** stažení proběhne a zámek zůstane beze změny
 
 #### Scenario: Nedokončená akce
-- **WHEN** akce je ve složce `2026-04-28 kontrola Stezky.ignored`
+- **WHEN** akce je ve složce `2026-04-28 kontrola Naučné stezky.ignored`
 - **THEN** ZIP akce jde stáhnout a jmenuje se
-  `2026-04-28 kontrola Stezky.zip`
+  `2026-04-28 kontrola Naučné stezky.zip`
 
 #### Scenario: Bez přihlášení
 - **WHEN** nepřihlášený požadavek žádá ZIP akce
@@ -127,6 +127,6 @@ akci (ZIP)“. Ikona SHALL stáhnout ZIP celé akce bez otevření plochy.
 
 #### Scenario: Stažení z karty
 - **WHEN** uživatel klikne na ikonu stažení na kartě akce
-  `2026-04-28 kontrola Stezky`
-- **THEN** prohlížeč uloží `2026-04-28 kontrola Stezky.zip` a přehled
+  `2026-04-28 kontrola Naučné stezky`
+- **THEN** prohlížeč uloží `2026-04-28 kontrola Naučné stezky.zip` a přehled
   zůstane otevřený

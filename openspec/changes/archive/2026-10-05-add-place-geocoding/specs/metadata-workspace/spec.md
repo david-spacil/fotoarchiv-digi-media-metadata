@@ -6,11 +6,11 @@ není rozhodnuto a které jsou výsledným místem aspoň jednoho souboru bez
 GPS. Kliknutí SHALL vybrat dotčené soubory a otevřít volbu souřadnic.
 
 #### Scenario: Nerozhodnuté místo
-- **WHEN** 12 souborů bez GPS má místo `Vysočany` a `souradnice_mist`
+- **WHEN** 12 souborů bez GPS má místo `Zkušebná` a `souradnice_mist`
   ho neobsahuje
 - **THEN** lišta ukáže „1 místo bez souřadnic“ a kliknutí vybere
   12 souborů
 
 #### Scenario: Všechny soubory mají GPS
-- **WHEN** všechny soubory s místem `Holštejn` mají GPS z EXIF
-- **THEN** lišta `Holštejn` neukazuje
+- **WHEN** všechny soubory s místem `Vzorkov` mají GPS z EXIF
+- **THEN** lišta `Vzorkov` neukazuje

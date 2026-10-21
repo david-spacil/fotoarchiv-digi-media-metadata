@@ -3047,7 +3047,7 @@ function placeChooser(misto, rerender) {
   const name = `place-${Math.random().toString(36).slice(2)}`;
   const list = h("div", { class: "candidates" });
   const manual = h("input", {
-    placeholder: "šířka, délka (49.4063, 16.7777)",
+    placeholder: "šířka, délka (49.1234, 16.4321)",
     oninput: () => {
       manual.classList.toggle("invalid",
         !!manual.value.trim() && !parseGps(manual.value));
@@ -5092,7 +5092,7 @@ function renderTarget() {
         h("input", { type: "date", value: t.datum,
           oninput: (e) => { t.datum = e.target.value; updatePreview(); } }),
         h("input", { type: "text", value: t.nazev, size: 50,
-          placeholder: "název akce, např. kontrola Stezky",
+          placeholder: "název akce, např. kontrola Naučné stezky",
           oninput: (e) => {
             // Název akce jde se složkou, dokud ho uživatel nezmění.
             const prev = t.nazev.trim();
@@ -5774,7 +5774,7 @@ async function showSettings() {
     msg.className = error ? "status error" : "status";
   };
   const adresa = h("input", { value: s.adresa || "",
-    placeholder: "http://10.10.1.51:2283" });
+    placeholder: "http://immich.example:2283" });
   const klic = h("input", { type: "password", autocomplete: "off",
     placeholder: s.nastaveno ? `klíč nastaven (${s.klic}) – vyplňte jen ` +
       "pro změnu" : "API klíč (osoby, assety, obličeje)" });

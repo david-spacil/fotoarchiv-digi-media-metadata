@@ -7,7 +7,7 @@
   „Podsložky v počtech“, chybějící `přetřídit` → prázdný seznam)
 - [x] 1.2 Datum z názvu složky (`d.m.yyyy`, `yyyy_mm_dd`, `yyyy_m_d`,
   `dd_mm_yyyy`, samotný rok jen jako rok); ověřit parametrizovaným
-  testem na názvech z `přetřídit` (`komise_Mikulčice_31.8.2012`,
+  testem na názvech z `přetřídit` (`komise_Vzorovice_31.8.2012`,
   `2018_10_22_Tisková…`, `2019_4_8_Zlaty…`,
   `Opavske_expozitury_Prislo_12_09_2019`, `DOD 2017`)
 - [x] 1.3 EXIF přes `scan.scan` po složkách zdroje s `cache_name`

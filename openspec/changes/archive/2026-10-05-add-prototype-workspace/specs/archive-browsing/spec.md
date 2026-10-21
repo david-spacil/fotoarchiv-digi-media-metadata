@@ -12,9 +12,9 @@ Ostatní složky a soubory první úrovně MUST být ignorovány a nesmí se
 měnit.
 
 #### Scenario: Složky mimo vzor
-- **WHEN** archiv obsahuje `2026-04-28 kontrola Stezky…`, `přetřídit`
+- **WHEN** archiv obsahuje `2026-04-28 kontrola Naučné stezky…`, `přetřídit`
   a `_metadata.xlsx`
-- **THEN** seznam obsahuje jen `2026-04-28 kontrola Stezky…`
+- **THEN** seznam obsahuje jen `2026-04-28 kontrola Naučné stezky…`
 
 ### Requirement: Stav akce
 U každé akce SHALL seznam uvádět počet souborů v kořeni (bez

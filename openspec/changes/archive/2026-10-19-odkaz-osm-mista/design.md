@@ -56,7 +56,7 @@ tření u čistě informativního odkazu.
 ### Umístění a text odkazu
 
 - `placeBlock`: za `popis` na stejném řádku `p.meta` krátký odkaz
-  „OSM“ s `title` „Objekt na OpenStreetMap (relation/439179)“.
+  „OSM“ s `title` „Objekt na OpenStreetMap (relation/123456)“.
   Tlačítko Změnit zůstává tam, kde je.
 - `placeChooser`: na konci textu kandidáta (za souřadnicemi) stejný
   odkaz „OSM“. Odkaz je uvnitř `<label>`. Klik na interaktivní

@@ -11,22 +11,22 @@ v aplikaci na příponě nezávisí.
 
 ### Requirement: Přípona nedokončené akce
 V produkčním režimu SHALL složka každé nedokončené akce na disku nést
-příponu `.ignored` (`2026-04-28 kontrola Stezky.ignored`), aby ji Immich
+příponu `.ignored` (`2026-04-28 kontrola Naučné stezky.ignored`), aby ji Immich
 vyloučil vzorem `**/*.ignored/**`. Název akce v aplikaci (seznam, URL,
 zámek, pracovní adresář) MUST být bez přípony; přípona je jen vlastnost
 složky na disku. Název akce MUST NOT končit na `.ignored`.
 
 #### Scenario: Složka s příponou
-- **WHEN** archiv obsahuje složku `2026-04-28 kontrola Stezky.ignored`
+- **WHEN** archiv obsahuje složku `2026-04-28 kontrola Naučné stezky.ignored`
 - **THEN** aplikace ji ukazuje a otevírá jako akci
-  `2026-04-28 kontrola Stezky`
+  `2026-04-28 kontrola Naučné stezky`
 
 #### Scenario: Název akce s příponou
-- **WHEN** požadavek míří na akci `2026-04-28 kontrola Stezky.ignored`
+- **WHEN** požadavek míří na akci `2026-04-28 kontrola Naučné stezky.ignored`
 - **THEN** aplikace takovou akci nezná
 
 #### Scenario: Pracovní adresář beze změny
-- **WHEN** akce `2026-04-28 kontrola Stezky` při dokončení ztratí
+- **WHEN** akce `2026-04-28 kontrola Naučné stezky` při dokončení ztratí
   příponu
 - **THEN** její cache, záznam o exportu a ve vývojovém režimu
   `_metadata.json` v pracovním adresáři zůstanou pod týmž názvem
@@ -38,8 +38,8 @@ přesouvat. Seznam akcí SHALL akci ukázat jednou s upozorněním na
 kolizi.
 
 #### Scenario: Obě složky
-- **WHEN** archiv obsahuje `2026-04-28 kontrola Stezky`
-  i `2026-04-28 kontrola Stezky.ignored`
+- **WHEN** archiv obsahuje `2026-04-28 kontrola Naučné stezky`
+  i `2026-04-28 kontrola Naučné stezky.ignored`
 - **THEN** seznam ukáže akci jednou s upozorněním na kolizi, otevření
   akce odmítne a obě složky zůstanou beze změny
 
@@ -52,8 +52,8 @@ Ve vývojovém režimu se archiv nepřejmenovává.
 
 #### Scenario: Dokončení skryté akce
 - **WHEN** uživatel v produkčním režimu dokončí akci se složkou
-  `2026-04-28 kontrola Stezky.ignored`
-- **THEN** složka se jmenuje `2026-04-28 kontrola Stezky`, obsahuje
+  `2026-04-28 kontrola Naučné stezky.ignored`
+- **THEN** složka se jmenuje `2026-04-28 kontrola Naučné stezky`, obsahuje
   sidecary a akce je *hotovo*
 
 #### Scenario: Přejmenování selže
@@ -74,13 +74,13 @@ s příponou; bez něj MUST archiv nechat beze změny. Akce v kolizi MUST
 přeskočit a vypsat. Příkaz se spouští, když server neběží.
 
 #### Scenario: Výpis bez zápisu
-- **WHEN** archiv má nedokončenou akci `2026-04-28 kontrola Stezky`
+- **WHEN** archiv má nedokončenou akci `2026-04-28 kontrola Naučné stezky`
   a příkaz běží bez `--zapis-do-archivu`
 - **THEN** příkaz akci vypíše a složka zůstane beze změny
 
 #### Scenario: Označení
-- **WHEN** archiv má nezpracovanou akci `2026-04-28 kontrola Stezky`,
-  dokončenou akci `2026-03-14 výzkum Hradisko` a příkaz běží
+- **WHEN** archiv má nezpracovanou akci `2026-04-28 kontrola Naučné stezky`,
+  dokončenou akci `2026-03-14 výzkum Ukázkovo` a příkaz běží
   s `--zapis-do-archivu`
-- **THEN** vznikne `2026-04-28 kontrola Stezky.ignored`
-  a `2026-03-14 výzkum Hradisko` zůstane beze změny
+- **THEN** vznikne `2026-04-28 kontrola Naučné stezky.ignored`
+  a `2026-03-14 výzkum Ukázkovo` zůstane beze změny

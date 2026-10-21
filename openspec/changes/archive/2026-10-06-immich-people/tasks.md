@@ -65,7 +65,7 @@
 ## 6. Ověření a dokumentace
 
 - [x] 6.1 Jeden běh synchronizace proti skutečnému Immichi (RO klíč)
-      na akci `2026-09-08 Konference Dějiny archeologie` ve vývojovém
+      na akci `2026-09-08 Konference Příkladné metody` ve vývojovém
       režimu; porovnat s odpovědí API z 6. 10. 2026
 - [x] 6.2 README (datový model `obliceje`, Výstupy — tabulka bez `osoby`,
       obnova obličejů, Aplikace, Immich), AGENTS.md (invariant:

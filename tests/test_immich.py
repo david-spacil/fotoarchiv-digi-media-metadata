@@ -10,11 +10,11 @@ from fotoarchiv.app import create_app
 from fotoarchiv.archive import SCHEMA
 from .conftest import make_tree
 
-EVENT = "2026-09-08 Konference Dějiny archeologie"
+EVENT = "2026-09-08 Konference Příkladné metody"
 OTHER = "2026-09-20 bez metadat"
 URL = "http://immich.test:2283"
 KEY = "tajny-klic-W4No"
-ROOT = "/mnt/media/fotoarchiv/fotoarchiv_fotodokumentace_digitalni_ARUB"
+ROOT = "/immich/archiv/fotoarchiv_fotodokumentace_digitalni_ARUB"
 
 
 def face(name, box=(252, 296, 293, 352), size=(1000, 750)):

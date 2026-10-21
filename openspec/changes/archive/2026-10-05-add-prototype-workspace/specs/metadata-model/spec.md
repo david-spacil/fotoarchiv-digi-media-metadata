@@ -44,9 +44,9 @@ přepsat na úrovni skupiny, jen u souboru.
 - **THEN** soubor nemá žádné osoby
 
 #### Scenario: Název skupiny
-- **WHEN** akce má `nazev` = `kontrola Stezky` a skupina `nazev`
+- **WHEN** akce má `nazev` = `kontrola Naučné stezky` a skupina `nazev`
   = `Panasonic DC-G9`
-- **THEN** výsledný `nazev` souborů skupiny je `kontrola Stezky`
+- **THEN** výsledný `nazev` souborů skupiny je `kontrola Naučné stezky`
 
 ### Requirement: Místo
 Skupina a soubor SHALL mít nejvýš jedno `misto`. Pokud ho nemají a akce
@@ -54,12 +54,12 @@ má v `mista` právě jedno místo, výsledné `misto` SHALL být toto místo
 akce. Pokud má akce víc míst, místo se MUST NOT z akce dědit.
 
 #### Scenario: Jedno místo akce
-- **WHEN** akce má `mista` = [`Holštejn`] a soubor ani skupina místo
+- **WHEN** akce má `mista` = [`Vzorkov`] a soubor ani skupina místo
   nemají
-- **THEN** výsledné místo souboru je `Holštejn`
+- **THEN** výsledné místo souboru je `Vzorkov`
 
 #### Scenario: Víc míst akce
-- **WHEN** akce má `mista` = [`Molenburk`, `Housko`] a soubor ani
+- **WHEN** akce má `mista` = [`Pokusín`, `Zkušebnice`] a soubor ani
   skupina místo nemají
 - **THEN** soubor nemá žádné místo
 

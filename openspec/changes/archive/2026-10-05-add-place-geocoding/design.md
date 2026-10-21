@@ -5,8 +5,8 @@
 `model.resolve` a `static/inherit.js` proti společným fixturám. Export
 XMP zatím není; tato změna připraví výsledné GPS, ze kterého bude čerpat.
 
-Ověřeno 5. 10. 2026: Nominatim pro `Vysočany` vrací 7 kandidátů (CZ, SK),
-pro `Holštejn` jednoho. Podmínky provozu
+Ověřeno 5. 10. 2026: Nominatim pro `Zkušebná` vrací 7 kandidátů (CZ, SK),
+pro `Vzorkov` jednoho. Podmínky provozu
 (operations.osmfoundation.org/policies/nominatim): max 1 dotaz/s,
 identifikující User-Agent, povinná cache, zákaz našeptávání, atribuce.
 
@@ -27,14 +27,14 @@ identifikující User-Agent, povinná cache, zákaz našeptávání, atribuce.
 Cache (`work/cache/geokodovani.json`, klíč = normalizovaný dotaz →
 kandidáti + čas) je čistě odpověď služby, smazatelná bez ztráty dat.
 Volba kandidáta je v `souradnice_mist` dokumentu akce. Ukládat volbu do
-cache by ji sdílelo napříč akcemi — „Vysočany“ jsou v různých akcích
+cache by ji sdílelo napříč akcemi — „Zkušebná“ jsou v různých akcích
 různé obce.
 *Alternativa:* globální číselník míst v archivu — porušuje „zdroj pravdy
 je `_metadata.json` ve složce akce“.
 
 ### `souradnice_mist` na nejvyšší úrovni dokumentu
-`{"Vysočany": {"gps": [49.43, 16.804], "popis": "Vysočany, okres
-Blansko, …", "osm": "relation/…"}, "X": null}`. Klíč je přesný řetězec
+`{"Zkušebná": {"gps": [49.15, 16.45], "popis": "Zkušebná, okres
+Ukázkový, …", "osm": "relation/…"}, "X": null}`. Klíč je přesný řetězec
 `misto` (bez normalizace, ať se místa nepletou). Přejmenování místa
 rozhodnutí nepřenese — přijatelné, lišta ho ukáže znovu.
 *Alternativa:* uvnitř `akce` — `akce` se dědí, tohle ne.
