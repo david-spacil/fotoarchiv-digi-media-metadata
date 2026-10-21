@@ -85,6 +85,24 @@ spuštění](docs/provoz/spusteni.md), [Přihlášení a
 role](docs/provoz/prihlaseni.md), [Docker](docs/provoz/docker.md),
 [Příkazy](docs/provoz/prikazy.md). Testy viz `AGENTS.md`.
 
+## Nasazení přes Docker
+
+Hotový image je v GHCR, repozitář klonovat netřeba. Stačí stáhnout
+[`compose.yaml`](https://raw.githubusercontent.com/david-spacil/fotoarchiv-digi-media-metadata/main/compose.yaml)
+a [`.env.example`](https://raw.githubusercontent.com/david-spacil/fotoarchiv-digi-media-metadata/main/.env.example)
+do jedné složky, `.env.example` přejmenovat na `.env` a vyplnit
+v něm cestu k archivu (`FOTOARCHIV_ARCHIV`) a UID/GID:
+
+```sh
+mv .env.example .env          # a vyplnit FOTOARCHIV_ARCHIV, UID, GID
+mkdir work                    # pracovní adresář (stejné UID/GID)
+docker compose pull && docker compose up -d
+# → http://127.0.0.1:5000, aktualizace stejnými dvěma příkazy
+```
+
+Kontejner běží v produkčním režimu. Připojení archivu, oprávnění
+a účty: [Docker](docs/provoz/docker.md).
+
 ## Struktura archivu
 
 Příklad s vymyšlenými názvy:
