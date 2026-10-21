@@ -169,6 +169,14 @@ class Client:
                 return result, total
             page += 1
 
+    def person(self, person_id):
+        """Jedna osoba (`GET /api/people/{id}`): `name`, `isHidden`.
+
+        Čte se před vrácením kroku v nástroji pojmenování (kontrola,
+        že osoba má pořád stav po kroku).
+        """
+        return self._call("GET", f"/api/people/{person_id}")
+
     def assets(self, person_id=None, size=PAGE, all_pages=True):
         """Assety osoby (nebo libovolné bez `person_id`)."""
         result, page = [], 1

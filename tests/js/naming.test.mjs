@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import { OKRAJ, pocetadlo, posunVyberu, poradiOsob, prechod,
-  volbaEnteru, vyrez, vyrid, zkratka } from "../../fotoarchiv/static/naming.js";
+  volbaEnteru, vyrez, vyrid, vratit, zkratka } from "../../fotoarchiv/static/naming.js";
 
 test("výřez: čtverec s okrajem kolem obličeje", () => {
   const q = vyrez({ x1: 100, y1: 100, x2: 200, y2: 250 }, 1600, 1200, 256);
@@ -96,14 +96,55 @@ test("vyřízení neexistující id frontu nemění", () => {
   assert.deepEqual(vyrid(fronta, "jiné"), fronta);
 });
 
+test("návrat osoby: začátek fronty bez duplicity", () => {
+  const a = { id: "a", pocet: 3 }, b = { id: "b", pocet: 1 };
+  assert.deepEqual(vratit([b], a).map((o) => o.id), ["a", "b"]);
+  // osoba už ve fronty je → jen přesun na začátek, žádná duplicita
+  assert.deepEqual(vratit([a, b], b).map((o) => o.id), ["b", "a"]);
+  // původní fronta se nemění (stejně jako u `vyrid`)
+  const fronta = [a, b];
+  vratit(fronta, b);
+  assert.deepEqual(fronta.map((o) => o.id), ["a", "b"]);
+});
+
+test("návrat po vyřízení: přechod nabídne vrácenou osobu", () => {
+  const a = { id: "a", pocet: 5 }, b = { id: "b", pocet: 1 };
+  let fronta = poradiOsob([a, b]);
+  fronta = vyrid(fronta, "a");           // pojmenovat → Zpět
+  assert.equal(prechod(fronta, 0).osoba.id, "b");
+  fronta = vratit(fronta, a);
+  const krok = prechod(fronta, 0);
+  assert.equal(krok.krok, "osoba");
+  assert.equal(krok.osoba, a);           // tentýž objekt, ne kopie
+});
+
 test("počítadlo osob", () => {
   assert.equal(pocetadlo(0, 3), "Osoba 1 z 3");
   assert.equal(pocetadlo(2, 1), "Osoba 3 z 3");
 });
 
-test("zkratky: PageDown odloží, Alt+Delete skryje", () => {
+test("zkratky: PageDown odloží, Alt+Delete skryje, Alt+Backspace vrátí", () => {
   assert.equal(zkratka({ key: "PageDown" }), "odlozit");
   assert.equal(zkratka({ key: "Delete", altKey: true }), "skryt");
+  assert.equal(zkratka({ key: "Backspace", altKey: true }), "zpet");
+});
+
+test("zkratka: Backspace sám o sobě maže text, nevrací", () => {
+  for (const e of [
+    { key: "Backspace" },                          // maže znak
+    { key: "Backspace", ctrlKey: true },
+    { key: "Backspace", metaKey: true },
+    { key: "Backspace", shiftKey: true },
+    { key: "Backspace", altKey: true, ctrlKey: true },
+    { key: "Backspace", altKey: true, metaKey: true },
+    { key: "Backspace", altKey: true, shiftKey: true },
+    { key: "Delete", altKey: true, metaKey: true },
+  ]) assert.equal(zkratka(e), null, JSON.stringify(e));
+});
+
+test("zkratka: podržený Alt+Backspace se neopakuje", () => {
+  assert.equal(
+    zkratka({ key: "Backspace", altKey: true, repeat: true }), null);
 });
 
 test("zkratky: klávesy pro editaci pole a prohlížeč nic nedělají", () => {

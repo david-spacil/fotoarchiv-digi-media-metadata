@@ -529,6 +529,57 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             jmena_zmeny.add((login, nazev))
         return {"ok": True, "osoby": jmena_precti(client, album, nazev)}
 
+    @app.post("/api/akce/<nazev>/osoby/<person_id>/zpet")
+    def osoby_zpet(nazev, person_id):
+        """Vrácení posledního kroku nástroje: pojmenovat / skryt / nevim.
+
+        Bez stavu na serveru (design.md rozhodnutí 1): klient pošle krok
+        i jméno, server ověří oprávnění a osobu v albu jako `osoby_jednat`
+        a stav osoby v Immichi (`person`). Nesouhlasí-li stav, vrátí 409
+        `zmeneno` a nic nezapíše; chyba Immiche = 502. `nevim` jen zruší
+        odložení uživatele z relace. Po zápisu do Immiche poznamená změnu
+        a přepočte počty — odpověď jako úspěšné `osoby_jednat`.
+        """
+        client, album = jmena_klient(nazev)
+        body = request.get_json(force=True, silent=True) or {}
+        krok = body.get("krok")
+        if krok not in ("pojmenovat", "skryt", "nevim"):
+            abort(400)
+        # Osoba musí mít obličej v albu akce (stejně jako osoby_jednat).
+        assets = jmena_assets(client, album)
+        if person_id not in {p["id"] for a in assets
+                             for p in a.get("people") or []
+                             if p.get("id")}:
+            abort(404)
+        login = g.user["login"] or ""
+        if krok == "nevim":
+            odlozene.zrusit(login, nazev, person_id)
+            return {"ok": True, "osoby": None}
+        jmeno = str(body.get("jmeno") or "").strip()
+        if krok == "pojmenovat" and not jmeno:
+            return {"chyba": "jmeno_povinne"}, 400
+        try:
+            osoba = client.person(person_id) or {}
+        except immich.ImmichError as e:
+            return {"chyba": str(e)}, 502
+        # Kontrola, že osoba má pořád stav po kroku (nikdo ji mezitím
+        # nezměnil); jinak nic nezapisujeme.
+        if krok == "pojmenovat":
+            souhlasi = (osoba.get("name") or "").strip() == jmeno
+            zpet = {"id": person_id, "name": ""}
+        else:
+            souhlasi = bool(osoba.get("isHidden"))
+            zpet = {"id": person_id, "isHidden": False}
+        if not souhlasi:
+            abort(make_response({"chyba": "zmeneno"}, 409))
+        try:
+            client.update_people([zpet])
+        except immich.ImmichError as e:
+            return {"chyba": str(e)}, 502
+        with jmena_lock:
+            jmena_zmeny.add((login, nazev))
+        return {"ok": True, "osoby": jmena_precti(client, album, nazev)}
+
     @app.post("/api/akce/<nazev>/osoby/kolo")
     def osoby_kolo(nazev):
         """Nové kolo: vymaže odložení uživatele v akci."""

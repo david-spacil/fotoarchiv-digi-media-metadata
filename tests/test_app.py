@@ -1758,6 +1758,141 @@ def test_naming_archiv_beze_zmeny_a_klic(naming_app):
         f"/api/akce/{EVENT}/osoby/hotovo", json={}).get_data(as_text=True)
 
 
+# --- krok zpět (pojmenovani-zpet-a-naseptavani, 1.3) --------------------------
+
+def test_naming_zpet_pojmenovani(naming_app):
+    """Scénář Překlep ve jménu: zápis `name: ""`, osoba se nabídne
+    znovu, odpověď jako u kroku."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1",
+               json={"akce": "pojmenovat", "jmeno": "Nováková, Alena"})
+    assert r.status_code == 200
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1/zpet",
+               json={"krok": "pojmenovat", "jmeno": "Nováková, Alena"})
+    assert r.status_code == 200
+    assert r.json == {"ok": True, "osoby": [1, 3]}   # zpět na 1/3
+    assert ("PUT", "/api/people",
+            {"people": [{"id": "p-1", "name": ""}]}) in fake.writes
+    data = c.get(f"/api/akce/{EVENT}/osoby").json
+    assert [o["id"] for o in data["osoby"]] == ["p-1", "p-2"]
+
+
+def test_naming_zpet_skryti(naming_app):
+    """Scénář Skrytí omylem: zápis `isHidden: false`, osoba zpět."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    assert c.post(f"/api/akce/{EVENT}/osoby/p-2",
+                  json={"akce": "skryt"}).status_code == 200
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-2/zpet", json={"krok": "skryt"})
+    assert r.status_code == 200
+    assert r.json == {"ok": True, "osoby": [1, 3]}
+    assert ("PUT", "/api/people",
+            {"people": [{"id": "p-2", "isHidden": False}]}) in fake.writes
+    data = c.get(f"/api/akce/{EVENT}/osoby").json
+    assert [o["id"] for o in data["osoby"]] == ["p-1", "p-2"]
+
+
+def test_naming_zpet_odlozeni(naming_app):
+    """Scénář Odložení omylem: `nevim` bez Immiche, osoba zpět
+    v seznamu; bez zápisu a bez příznaku ke synchronizaci."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    assert c.post(f"/api/akce/{EVENT}/osoby/p-1",
+                  json={"akce": "nevim"}).status_code == 200
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1/zpet", json={"krok": "nevim"})
+    assert r.json == {"ok": True, "osoby": None}
+    data = c.get(f"/api/akce/{EVENT}/osoby").json
+    assert data["odlozene"] == 0
+    assert [o["id"] for o in data["osoby"]] == ["p-1", "p-2"]
+    assert lidi_writes(fake) == []
+    assert c.post(f"/api/akce/{EVENT}/osoby/hotovo",
+                  json={}).json["synchronizace"] is False
+
+
+def test_naming_zpet_cizi_zmena(naming_app):
+    """Scénář Někdo osobu mezitím přejmenoval: 409 `zmeneno`,
+    cizí jméno zůstane, žádný nový zápis."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    assert c.post(f"/api/akce/{EVENT}/osoby/p-1",
+                  json={"akce": "pojmenovat",
+                        "jmeno": "Nováková, Alena"}).status_code == 200
+    pred = list(lidi_writes(fake))
+    for p in fake.people:                  # jiný archivář přejmenuje
+        if p["id"] == "p-1":
+            p["name"] = "Vzorná, Jana"
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1/zpet",
+               json={"krok": "pojmenovat", "jmeno": "Nováková, Alena"})
+    assert r.status_code == 409 and r.json == {"chyba": "zmeneno"}
+    assert lidi_writes(fake) == pred
+    assert any(p["id"] == "p-1" and p["name"] == "Vzorná, Jana"
+               for p in fake.people)
+
+
+def test_naming_zpet_stav_nesouhlasi(naming_app):
+    """Skrytí se nikdy neprovedlo → `isHidden` není true → 409;
+    prázdné jméno u kroku pojmenovat → 400."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1/zpet", json={"krok": "skryt"})
+    assert r.status_code == 409 and r.json == {"chyba": "zmeneno"}
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-1/zpet",
+               json={"krok": "pojmenovat", "jmeno": " "})
+    assert r.status_code == 400 and r.json["chyba"] == "jmeno_povinne"
+    assert lidi_writes(fake) == []
+
+
+def test_naming_zpet_chyba_immiche(naming_app):
+    """Scénář Chyba Immiche při vrácení: 502 s textem, žádný zápis."""
+    app, fake = naming_app
+    c = logged_in(app, "novak")
+    assert c.post(f"/api/akce/{EVENT}/osoby/p-2",
+                  json={"akce": "skryt"}).status_code == 200
+    pred = list(lidi_writes(fake))
+    fake.fail = "/api/people"
+    r = c.post(f"/api/akce/{EVENT}/osoby/p-2/zpet", json={"krok": "skryt"})
+    assert r.status_code == 502 and "HTTP 403" in r.json["chyba"]
+    assert lidi_writes(fake) == pred
+
+
+def test_naming_zpet_odmitnuti(naming_app):
+    """Bez role 403; osoba mimo album 404; neznámý krok 400."""
+    app, fake = naming_app
+    user = logged_in(app, "modelova")
+    r = user.post(f"/api/akce/{EVENT}/osoby/p-1/zpet",
+                  json={"krok": "nevim"})
+    assert r.status_code == 403 and r.json["chyba"] == "jen_archivar"
+    c = logged_in(app, "novak")
+    assert c.post(f"/api/akce/{EVENT}/osoby/p-ning/zpet",
+                  json={"krok": "skryt"}).status_code == 404
+    assert c.post(f"/api/akce/{EVENT}/osoby/p-1/zpet",
+                  json={"krok": "sloucit"}).status_code == 400
+    assert c.post(f"/api/akce/{EVENT}/osoby/p-1/zpet",
+                  json={}).status_code == 400
+    assert lidi_writes(fake) == []
+
+
+def test_naming_zpet_hotovo_spusti_sync(naming_app, monkeypatch):
+    """Scénář Synchronizace po vrácení: i po vyčištění při `hotovo`
+    vrácení poznamená změnu a zavření nástroje spustí synchronizaci."""
+    app, fake = naming_app
+    volani = []
+    monkeypatch.setattr(app.config["IMMICH"], "trigger",
+                        lambda: volani.append(1))
+    novak = logged_in(app, "novak")
+    url = f"/api/akce/{EVENT}/osoby/hotovo"
+    assert novak.post(f"/api/akce/{EVENT}/osoby/p-2",
+                      json={"akce": "pojmenovat",
+                            "jmeno": "Nováková, Alena"}).status_code == 200
+    assert novak.post(url, json={}).json["synchronizace"] is True
+    r = novak.post(f"/api/akce/{EVENT}/osoby/p-2/zpet",
+                   json={"krok": "pojmenovat", "jmeno": "Nováková, Alena"})
+    assert r.status_code == 200
+    assert novak.post(url, json={}).json["synchronizace"] is True
+    assert volani == [1, 1]
+
+
 # --- koš smazaných akcí ------------------------------------------------------
 
 def smazat(c, nazev=EVENT, **body):
