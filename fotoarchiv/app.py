@@ -21,7 +21,7 @@ from flask import (Flask, Response, abort, g, jsonify, make_response,
 
 from . import (albums, auth, cleanup, consistency, download, geocode,
                immich, importer, integrity, lock, model, naming, names,
-               scan, thumbs, trash, unsorted, version, xmp)
+               scan, thumbs, trash, unsorted, velikost, version, xmp)
 from . import index as archive_index
 from .archive import SCHEMA, UNSORTED, Collision, Conflict, Workspace
 
@@ -43,7 +43,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                immich_fetch=None, immich_interval=None, prihlaseni=True,
                https=False, immich_hlidac_interval=None,
                immich_hlidac_limit=None, immich_fetch_bytes=None,
-               kos_interval=None):
+               kos_interval=None, velikost_interval=None):
     """`immich_interval` (s) zapne pravidelnou synchronizaci obličejů
     z Immiche, jakmile je nastavené připojení; None = jen na požádání.
 
@@ -60,6 +60,10 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     `kos_interval` (s) zapne v produkčním režimu vysypání koše hned
     a pak po intervalu (`trash.purge`); None = jen ručně
     (`app.config["KOS_VYSYPAT"]`, příkaz `vysypat`).
+
+    `velikost_interval` (s) spustí vlákno přepočtu velikostí akcí
+    a koše (`velikost.Velikosti`) s denním přepočtem celého archivu;
+    None = přepočet jen přímým voláním (`app.config["VELIKOSTI"]`).
     """
     ws = Workspace(archiv, work, zapis)
     # Jednou při startu: po `git pull` musí dál ukazovat běžící kód.
@@ -91,10 +95,17 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     jmena_lock = threading.Lock()
     # Stav akcí ve `.work`, který smazání přenese do záznamu v koši.
     kos_stav = trash.Stav(ws, sync.alba, sync.osoby, odlozene)
+    # Velikost akcí a koše „k datu“; výpis čte jen cache.
+    velikosti = velikost.Velikosti(ws)
+    if velikost_interval:
+        velikosti.spustit(velikost_interval)
 
     def vysypat():
         """Trvale smaže akce v koši po lhůtě (a alba z fronty)."""
         smazane = trash.purge(ws, client=sync.client())
+        velikosti.odebrat_z_kose(
+            [id for id in velikosti.kos()
+             if not (trash.root(ws) / id).is_dir()])
         if smazane:
             archive_index.write(ws)
         return smazane
@@ -118,6 +129,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     app.config["IMMICH_HLIDAC"] = hlidac
     app.config["AUTH"] = accounts
     app.config["KOS_VYSYPAT"] = vysypat
+    app.config["VELIKOSTI"] = velikosti
     app.config.update(SECRET_KEY=auth.secret_key(ws.work),
                       SESSION_COOKIE_NAME="fotoarchiv",
                       SESSION_COOKIE_HTTPONLY=True,
@@ -261,14 +273,19 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         album a `rozpoznano`, `hotovost` dostane i `osoby` [p, c] ze
         `.work/immich-osoby.json` a `chybi` u *hotovo* i `osoby` při
         nepojmenovaných. Výpis se Immiche neptá — jen soubory ve
-        `.work/`."""
+        `.work/`. `bajtu` je velikost akce z cache (`velikost`), bez
+        údaje None a akce se zařadí k přepočtu na pozadí."""
         relace = request.args.get("relace")
         events = ws.list_events()
         # Jedno čtení souboru pro celý výpis; Immiche se neptá.
         nastaveno = immich_settings.load() is not None
         alba = sync.alba.nacti() if nastaveno else {}
         osoby = sync.osoby.nacti() if nastaveno else {}
+        bajtu = velikosti.akce()
         for event in events:
+            event["bajtu"] = (bajtu.get(event["nazev"]) or {}).get("bajtu")
+            if event["bajtu"] is None:
+                velikosti.zmena(event["nazev"])
             event["upravit"] = model.can_edit(g.user, event)
             holder = locks.holder(event["nazev"])
             event["drzitel"] = holder and {
@@ -285,6 +302,15 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                             and "osoby" not in event["chybi"]:
                         event["chybi"].append("osoby")
         return jsonify(events)
+
+    @app.get("/api/velikost")
+    def velikost_soucet():
+        """Součet velikostí akcí (jen akce, které jsou v archivu) a koše
+        pro každého přihlášeného; bez údaje se nezapočte."""
+        akce = velikosti.akce()
+        return {"akce": sum((akce.get(nazev) or {}).get("bajtu", 0)
+                            for nazev in ws.event_names()),
+                "kos": sum(e["bajtu"] for e in velikosti.kos().values())}
 
     @app.get("/api/akce/<nazev>")
     def akce_detail(nazev):
@@ -709,6 +735,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             return {"chyba": "presun_selhal", "detail": str(e)}, 500
         finally:
             locks.release(nazev, relace)
+        velikosti.presun_do_kose(nazev, result["id"])
         hlidac.zastavit(nazev)
         if dokoncena:
             hlidac.skenovat()
@@ -716,7 +743,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     @app.get("/api/kos")
     def kos_list():
-        return {"akce": trash.entries(ws), "zapis": ws.zapis,
+        return {"akce": trash.entries(ws, velikosti=velikosti.kos()),
+                "zapis": ws.zapis,
                 "lhuta_dni": trash.LHUTA.days}
 
     @app.post("/api/kos/<id>/obnovit")
@@ -732,6 +760,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         except OSError as e:
             log.warning("koš: obnovení %s selhalo: %s", id, e)
             return {"chyba": "presun_selhal", "detail": str(e)}, 500
+        velikosti.vratit_z_kose(id, nazev)
         if ws.event_dir(nazev).name == nazev:
             # Dokončená akce: sken vrátí assety z offline, hlídač album.
             hlidac.spust(nazev)
@@ -815,6 +844,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                 version = ws.save(nazev, doc, version)
         except Conflict as e:
             return {"chyba": "konflikt", "version": e.current_version}, 409
+        finally:
+            velikosti.zmena(nazev)    # sidecary, přejmenování složky
         if result and not result["chyby"] and not result.get("zverejneni"):
             # Alba a rozpoznávání hlídá pozadí: sken knihovny, album,
             # stav. Dokončení na Immich nečeká a jeho chybu nezaznamená.
@@ -863,6 +894,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         result = cleanup.execute(
             path, *cleanup_args(path, doc, body),
             sidecar=lambda name: xmp.sidecar(doc, nazev, name))
+        velikosti.zmena(nazev)
         gone = [o["soubor"] for o in result["operace"]
                 if o.get("vyradit") and o["stav"] == cleanup.DONE]
         if gone:
@@ -1348,6 +1380,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
         def release():
             release_source()
+            # I přerušený import mohl soubory zkopírovat.
+            velikosti.zmena(nazev)
             # Klient bez výsledku (zavřená záložka) zámek nové akce
             # nepřevezme ani neobnovuje: neblokovat akci do vypršení.
             if created and not finished:

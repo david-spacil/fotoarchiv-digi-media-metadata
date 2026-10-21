@@ -79,7 +79,29 @@ export const RAZENI = [
     if (!la || !lb) return (!la) - (!lb) || byDate(a, b);
     return (la < lb ? 1 : la > lb ? -1 : 0) || byDate(a, b);
   }],
+  ["velikost", "Podle velikosti", (a, b) => {
+    const va = a.bajtu ?? null, vb = b.bajtu ?? null;
+    if (va === null || vb === null) {
+      return (va === null) - (vb === null) || byDate(a, b);
+    }
+    return vb - va || byDate(a, b);
+  }],
 ];
+
+// Velikost v desítkových jednotkách s desetinnou čárkou (4,2 GB).
+export function fmtSize(n) {
+  const units = ["B", "kB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+  return `${n.toLocaleString("cs", { maximumFractionDigits: i ? 1 : 0 })} ` +
+    units[i];
+}
+
+// Řádek součtu z `GET /api/velikost`; prázdný koš bez závorky.
+export function celkemText(akce, kos) {
+  return `Celkem ${fmtSize(akce || 0)}` +
+    (kos ? ` (+${fmtSize(kos)} v koši)` : "");
+}
 
 // Akce podle filtru, hledání a řazení; `me` = jméno uživatele.
 export function visibleEvents(events, view, me) {

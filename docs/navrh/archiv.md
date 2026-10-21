@@ -53,6 +53,19 @@
     v záznamu; složku bez platného záznamu nesmaže nikdy (řeší ji
     správce ručně). Záznam se maže poslední, přerušené vysypání
     dokončí další běh. Ve vývojovém režimu se nic nemaže.
+- **Velikost akcí a koše** (issue #56) je údaj „k datu“ v
+  `.work/velikosti.json` (akce podle názvu bez přípony, položky koše
+  podle ID), archiv se kvůli ní nemění. Velikost = součet `st_size`
+  všech souborů celé složky rekurzivně (podsložky `*.ignored`,
+  `_metadata.json`, sidecary, `Thumbs.db`); symlinky se nesledují,
+  akce v kolizi přípony se sečte z obou složek. Výpis akcí čte jen
+  cache. Přepočet běží ve vlákně serveru (i ve vývojovém režimu, archiv
+  jen čte) po jedné položce: po importu, úklidu, dokončení
+  a obnovení z koše, u položek bez údaje (start serveru, nová akce
+  přes SMB) a jednou denně celý archiv i koš, který zachytí změny
+  mimo aplikaci a odebere zmizelé položky. Smazání do koše přenese
+  údaj akce k položce koše bez průchodu, obnovení ho vrátí, vysypání
+  položku odebere. Do `_smazano.json` se velikost nepíše.
 - `přetřídit` drží nezatříděné akce k importu, `fotky mimo akce`
   materiál, který akcí není (sbírky, portréty, výběry pro web, podklady
   na večírky). Kopie, které při zploštění `přetřídit` vyšly jako

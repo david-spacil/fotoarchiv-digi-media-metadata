@@ -4,7 +4,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  filterCounts, listHash, matchesSearch, parseListHash, visibleEvents,
+  celkemText, filterCounts, fmtSize, listHash, matchesSearch, parseListHash,
+  visibleEvents,
 } from "../../fotoarchiv/static/fronta.js";
 
 const ME = "Příkladný, Daniel";
@@ -104,4 +105,36 @@ test("stav seznamu v hash adrese", () => {
   assert.equal(listHash(view()), "#/");
   const v = view({ filtr: "moje", hledat: "stezky v", razeni: "uprava" });
   assert.deepEqual(parseListHash(listHash(v)), v);
+});
+
+test("Podle velikosti: sestupně, bez údaje na konci, shoda podle data", () => {
+  const G = 1e9;
+  const events = [
+    ev("2026-01-01 A", { bajtu: 2 * G }),
+    ev("2026-01-02 B", { bajtu: 7 * G }),
+    ev("2026-01-03 C", { bajtu: null }),
+    ev("2026-01-04 D"),
+    ev("2026-01-05 E", { bajtu: 2 * G }),
+  ];
+  assert.deepEqual(names(visibleEvents(events, view({ razeni: "velikost" }))),
+    ["2026-01-02 B", "2026-01-05 E", "2026-01-01 A", "2026-01-04 D",
+      "2026-01-03 C"]);
+  assert.equal(listHash(view({ razeni: "velikost" })), "#/?razeni=velikost");
+  assert.equal(parseListHash("#/?razeni=velikost").razeni, "velikost");
+});
+
+test("Velikost na kartě: desítkové jednotky s desetinnou čárkou", () => {
+  assert.equal(fmtSize(4_200_000_000), "4,2 GB");
+  assert.equal(fmtSize(0), "0 B");
+  assert.equal(fmtSize(999), "999 B");
+  assert.equal(fmtSize(1500), "1,5 kB");
+  assert.equal(fmtSize(42_001_000), "42 MB");
+  assert.equal(fmtSize(3e12), "3 TB");
+});
+
+test("Celkový součet: koš v závorce, prázdný koš bez ní", () => {
+  assert.equal(celkemText(25e9, 5e9), "Celkem 25 GB (+5 GB v koši)");
+  assert.equal(celkemText(25e9, 0), "Celkem 25 GB");
+  assert.equal(celkemText(25e9, null), "Celkem 25 GB");
+  assert.equal(celkemText(0, 0), "Celkem 0 B");
 });

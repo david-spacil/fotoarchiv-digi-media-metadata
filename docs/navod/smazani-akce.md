@@ -18,9 +18,12 @@ smaže natrvalo (návrh viz [Archiv](../navrh/archiv.md)).
   (Immich je označí jako offline a přesune do svého koše).
 - **Koš:** odkaz **Koš** na seznamu akcí (jen admin). Tabulka ukazuje
   smazané akce od nejnovějších: kdo a kdy je smazal, důvod, počet
-  souborů a kdy se smažou natrvalo. Složka v koši bez záznamu
-  o smazání je uvedena jako neznámá — aplikace ji nikdy nesmaže ani
-  neobnoví, řeší ji správce archivu ručně.
+  souborů, velikost a kdy se smažou natrvalo. Velikost smazané akce
+  přejde z akce do koše, takže součet pod seznamem akcí hned ukáže,
+  kolik místa vysypání uvolní (`Celkem 25 GB (+5 GB v koši)`).
+  Složka v koši bez záznamu o smazání je uvedena jako neznámá —
+  aplikace ji nikdy nesmaže ani neobnoví, řeší ji správce archivu
+  ručně.
 - **Obnovit:** tlačítko u akce v koši vrátí složku pod původní název
   (nedokončená zůstane skrytá před Immichem) i se stavem akce: vazbou
   na album, stavem v Immichi a záznamem exportu. U dokončené akce
