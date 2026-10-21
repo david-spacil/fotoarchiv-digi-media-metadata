@@ -71,12 +71,12 @@ Zvažované alternativy:
 
 ### Ztlumení jmen mimo aktuální fotku
 
-`facesRow` v lupě s výběrem více souborů porovná jména s `obliceje`
-souboru `state.current` a ostatním dá třídu `.off` (bez hover reakce).
-Formulář se dnes překresluje při změně výběru; v lupě se aktuální
-soubor mění vždy spolu s výběrem (`moveTo`, `clickFile`), kromě
-Ctrl+kliku, který formulář překreslí také. Přepnutí mřížka/lupa
-formulář překreslí, aby se ztlumení přidalo nebo odebralo.
+`facesRow` vypíše všechna jména jako `<span class="osoba">`. Třídu
+`.off` (bez hover reakce) jim nastavuje zvlášť `markOsoby`: v lupě
+s výběrem více souborů ji dostanou jména mimo `obliceje` souboru
+`state.current`. Volá se na konci `renderPanel`, v `select` (i když
+panel zůstává) a v `setView`, takže přepnutí mřížka/lupa ztlumení
+přidá nebo odebere bez překreslení formuláře.
 
 ### Čistá logika v modulu
 
@@ -96,4 +96,5 @@ v `app.js` a `style.css`.
 - [Obal mění rozvržení velké fotky] → `.vmsg`, zástupný text
   a video zůstávají přímo v `.media` bez obalu.
 - [Rámeček s `oblast` mimo 0–1 (chyba dat)] → ořízne ho `overflow:
-  hidden` obalu.
+  hidden` oblasti `.media`; obal sám neořezává, aby štítek u okraje
+  fotky mohl přesáhnout do pruhu.
