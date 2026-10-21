@@ -155,7 +155,9 @@ akce. Pravidelná synchronizace SHALL album každé dokončené akce, jejíž
 fotky Immich zná, udržovat: chybějící assety doplnit a assety, které
 už k akci nepatří, odebrat. Album SHALL obsahovat assety spárované se
 soubory v kořeni akce (viz Párování souborů) kromě označených
-k vyřazení. Assety ani album samotné MUST NOT mazat. Vazba akce na
+k vyřazení. Assety MUST NOT mazat. Album samotné MUST NOT mazat,
+s jedinou výjimkou: při trvalém smazání akce z koše (viz `event-trash`)
+SHALL aplikace album akce v Immichi smazat; assety ani tehdy nemaže. Vazba akce na
 album SHALL být v pracovním adresáři. Nedokončená akce album MUST NOT
 dostat. Ve vývojovém režimu SHALL dokončení sken vynechat a album
 založit jen tehdy, když Immich fotky akce už zná.
@@ -195,6 +197,17 @@ založit jen tehdy, když Immich fotky akce už zná.
 - **WHEN** akce se dokončí ve vývojovém režimu
 - **THEN** sken se nespustí, a pokud Immich fotky akce zná, album se
   založí
+
+#### Scenario: Akce vysypaná z koše
+- **WHEN** vysypání koše trvale smaže akci
+  `2026-09-08 Konference Dějiny archeologie`, která má v Immichi album
+- **THEN** album v Immichi neexistuje a vazba akce na album
+  v pracovním adresáři je odstraněná
+
+#### Scenario: Akce v koši
+- **WHEN** dokončená akce leží v koši a proběhne synchronizace
+- **THEN** synchronizace její album nemění ani nemaže
+
 
 ### Requirement: Stav akce v Immichi
 Aplikace SHALL u každé dokončené akce vést v pracovním adresáři stav

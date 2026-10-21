@@ -9,6 +9,7 @@ relace stránky přesměruje na přihlášení, API vrátí 401.
 """
 
 import json
+import logging
 import math
 import secrets
 import threading
@@ -20,18 +21,19 @@ from flask import (Flask, Response, abort, g, jsonify, make_response,
 
 from . import (albums, auth, cleanup, consistency, geocode, immich,
                importer, integrity, lock, model, naming, names, scan,
-               thumbs, unsorted, version, xmp)
+               thumbs, trash, unsorted, version, xmp)
 from . import index as archive_index
 from .archive import SCHEMA, UNSORTED, Collision, Conflict, Workspace
 
 STATIC = Path(__file__).parent / "static"
+log = logging.getLogger(__name__)
 
 # Bez relace dostupné; s povinnou změnou hesla navíc jen PASSWORD_PATHS.
 OPEN_PATHS = {"/prihlaseni", "/api/prihlaseni", "/api/odhlaseni"}
 PASSWORD_PATHS = {"/heslo", "/api/heslo", "/api/ja"}
-# Nastavení serveru; správu archivu (přetřídit, uvolnění zámku) hlídají
-# endpointy podle role archivář.
-ADMIN_PREFIXES = ("/api/immich", "/api/nominatim")
+# Nastavení serveru a koš smazaných akcí; správu archivu (přetřídit,
+# uvolnění zámku) hlídají endpointy podle role archivář.
+ADMIN_PREFIXES = ("/api/immich", "/api/nominatim", "/api/kos")
 # Bez přihlášení (jen vývojový režim) je každý admin.
 NOBODY = dict({"login": None, "jmeno": None, "email": None, "role": "admin",
                "zmenit_heslo": False}, **auth.rights("admin"))
@@ -40,7 +42,8 @@ NOBODY = dict({"login": None, "jmeno": None, "email": None, "role": "admin",
 def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
                immich_fetch=None, immich_interval=None, prihlaseni=True,
                https=False, immich_hlidac_interval=None,
-               immich_hlidac_limit=None, immich_fetch_bytes=None):
+               immich_hlidac_limit=None, immich_fetch_bytes=None,
+               kos_interval=None):
     """`immich_interval` (s) zapne pravidelnou synchronizaci obličejů
     z Immiche, jakmile je nastavené připojení; None = jen na požádání.
 
@@ -53,6 +56,10 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
 
     `prihlaseni=False` jen ve vývojovém režimu (hlídá CLI); `https`
     posílá cookie relace jen přes HTTPS.
+
+    `kos_interval` (s) zapne v produkčním režimu vysypání koše hned
+    a pak po intervalu (`trash.purge`); None = jen ručně
+    (`app.config["KOS_VYSYPAT"]`, příkaz `vysypat`).
     """
     ws = Workspace(archiv, work, zapis)
     # Jednou při startu: po `git pull` musí dál ukazovat běžící kód.
@@ -82,6 +89,27 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     odlozene = naming.Odlozene(ws.work)
     jmena_zmeny = set()          # (login, akce)
     jmena_lock = threading.Lock()
+    # Stav akcí ve `.work`, který smazání přenese do záznamu v koši.
+    kos_stav = trash.Stav(ws, sync.alba, sync.osoby, odlozene)
+
+    def vysypat():
+        """Trvale smaže akce v koši po lhůtě (a alba z fronty)."""
+        smazane = trash.purge(ws, client=sync.client())
+        if smazane:
+            archive_index.write(ws)
+        return smazane
+
+    if kos_interval and ws.zapis:
+        def kos_loop():
+            stop = threading.Event()
+            while True:
+                try:
+                    vysypat()
+                except Exception:  # noqa: BLE001 — vlákno nesmí umřít
+                    log.exception("koš: neočekávaná chyba vysypání")
+                stop.wait(kos_interval)
+        threading.Thread(target=kos_loop, daemon=True,
+                         name="kos-vysypani").start()
     app = Flask(__name__, static_folder=str(STATIC), static_url_path="/static")
     app.config["WORKSPACE"] = ws
     app.config["LOCKS"] = locks
@@ -89,6 +117,7 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
     app.config["IMMICH"] = sync
     app.config["IMMICH_HLIDAC"] = hlidac
     app.config["AUTH"] = accounts
+    app.config["KOS_VYSYPAT"] = vysypat
     app.config.update(SECRET_KEY=auth.secret_key(ws.work),
                       SESSION_COOKIE_NAME="fotoarchiv",
                       SESSION_COOKIE_HTTPONLY=True,
@@ -591,6 +620,71 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         body = request.get_json(force=True, silent=True) or {}
         locks.release(nazev, body_field(body, "relace"))
         return {}
+
+    @app.post("/api/akce/<nazev>/smazat")
+    def akce_smazat(nazev):
+        """Admin přesune akci do koše (`trash.delete`); trvale ji smaže
+        až vysypání po lhůtě. `potvrzeni` = opsaný název akce, `duvod`
+        povinný; jméno z relace. Smazání si vezme zámek akce pro relaci
+        z těla (cizí platný zámek = 409). U dokončené akce pak sken
+        knihovny Immiche na pozadí. Ve vývojovém režimu jen plán."""
+        if not g.user["admin"]:
+            return {"chyba": "jen_admin"}, 403
+        event_dir(nazev)
+        body = request.get_json(force=True, silent=True) or {}
+        if body.get("potvrzeni") != nazev:
+            return {"chyba": "spatne_potvrzeni"}, 400
+        duvod = str(body.get("duvod") or "").strip()
+        if not duvod:
+            return {"chyba": "bez_duvodu"}, 400
+        relace = body_field(body, "relace")
+        jmeno = g.user["jmeno"] or "admin"
+        if not ws.zapis:
+            return dict(trash.delete(ws, nazev, jmeno, duvod, kos_stav),
+                        plan=True)
+        ok, info = locks.acquire(nazev, relace, jmeno, session.get("id"))
+        if not ok:
+            return {"chyba": "obsazeno", "drzitel": info}, 409
+        try:
+            # Dokončenou akci (bez přípony) Immich zná: po přesunu sken.
+            dokoncena = ws.event_dir(nazev).name == nazev
+            result = trash.delete(ws, nazev, jmeno, duvod, kos_stav)
+        except Collision:
+            return {"chyba": "kolize_pripony"}, 409
+        except KeyError:
+            abort(404)
+        except OSError as e:
+            log.warning("koš: smazání %s selhalo: %s", nazev, e)
+            return {"chyba": "presun_selhal", "detail": str(e)}, 500
+        finally:
+            locks.release(nazev, relace)
+        hlidac.zastavit(nazev)
+        if dokoncena:
+            hlidac.skenovat()
+        return dict(result, plan=False, index=archive_index.write(ws))
+
+    @app.get("/api/kos")
+    def kos_list():
+        return {"akce": trash.entries(ws), "zapis": ws.zapis,
+                "lhuta_dni": trash.LHUTA.days}
+
+    @app.post("/api/kos/<id>/obnovit")
+    def kos_obnovit(id):
+        if not ws.zapis:
+            return {"chyba": "vyvojovy_rezim"}, 403
+        try:
+            nazev = trash.restore(ws, id, kos_stav)
+        except KeyError:
+            abort(404)
+        except trash.Refused as e:
+            return dict({"chyba": e.code}, **e.info), 409
+        except OSError as e:
+            log.warning("koš: obnovení %s selhalo: %s", id, e)
+            return {"chyba": "presun_selhal", "detail": str(e)}, 500
+        if ws.event_dir(nazev).name == nazev:
+            # Dokončená akce: sken vrátí assety z offline, hlídač album.
+            hlidac.spust(nazev)
+        return {"nazev": nazev, "index": archive_index.write(ws)}
 
     def touch(nazev, doc, stored):
         """Zapíše do `upravili` přihlášeného uživatele (jméno jako u

@@ -25,6 +25,8 @@ Práce s akcí od importu po dokončení, v pořadí, jak jde za sebou.
    zápis sidecarů a zveřejnění pro Immich.
 7. [Pojmenování osob](navod/pojmenovani-osob.md) — jména obličejů
    rozpoznaných Immichem (admin a archivář).
+8. [Smazání akce](navod/smazani-akce.md) — koš smazaných akcí,
+   obnovení a trvalé smazání po 7 dnech (admin).
 
 Výchozí je tmavý režim; přepínač v hlavičce přepne do světlého
 (pamatuje si ho prohlížeč, platí i pro přihlášení). Lupa je tmavá

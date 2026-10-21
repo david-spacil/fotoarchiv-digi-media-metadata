@@ -7,7 +7,8 @@ API klíč a výběr knihovny archivu. Klíč potřebuje čtení osob, assetů
 a obličejů (`person.read`, `asset.read`, `face.read`, `asset.view`);
 pro alba akcí, sken knihovny, stav rozpoznávání a nástroj pojmenování
 osob i práva k zápisu a čtení front (`person.update`, `person.merge`,
-`album.read`, `album.create`, `albumAsset.create`, `albumAsset.delete`,
+`album.read`, `album.create`, `album.delete` — jen smazání alba akce
+vysypané z koše —, `albumAsset.create`, `albumAsset.delete`,
 `library.read`, `library.update`, `queue.read`) — klíč s `all` kryje
 vše. Sken knihovny a fronty jsou v Immichi jen pro admina, klíč musí
 patřit uživateli s rolí admin. Nastavení se ukládá do

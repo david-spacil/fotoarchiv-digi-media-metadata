@@ -3,8 +3,9 @@
 Album akce vymezují assety spárované se soubory kořene akce kromě
 označených k vyřazení (stejně jako hotovost). Album zakládá dokončení
 akce (hlídač na pozadí) a pravidelná synchronizace ho udržuje:
-chybějící assety doplní, cizí z alba odebere. Album ani asset se
-nikdy nemažou — `file_key` navíc dofiltruje cizí akci se stejným
+chybějící assety doplní, cizí z alba odebere. Asset se nikdy
+nemaže a album jen u akce trvale smazané z koše (`smazat_alba`) —
+`file_key` navíc dofiltruje cizí akci se stejným
 podřetězcem cesty.
 
 Stav akce (`nacitani` | `rozpoznavani` | `rozpoznano` | `nenalezeno`)
@@ -98,6 +99,15 @@ class Stavy:
             _zapsat(self.path, data)
             return entry
 
+    def vyjmout(self, akce):
+        """Odebere záznam akce a vrátí ho (None, když není); smazání
+        akce do koše ho přenese do záznamu o smazání."""
+        return _vyjmout(self, akce)
+
+    def vlozit(self, akce, entry):
+        """Vrátí záznam akce (obnovení z koše); None nic nedělá."""
+        _vlozit(self, akce, entry)
+
 
 def _bez_casu(entry):
     return {key: value for key, value in entry.items() if key != "cas"}
@@ -157,6 +167,33 @@ class Osoby:
             _zapsat(self.path, data, prefix=".immich-osoby-")
             return entry
 
+    def vyjmout(self, akce):
+        """Jako `Stavy.vyjmout`."""
+        return _vyjmout(self, akce, prefix=".immich-osoby-")
+
+    def vlozit(self, akce, entry):
+        """Jako `Stavy.vlozit`."""
+        _vlozit(self, akce, entry, prefix=".immich-osoby-")
+
+
+def _vyjmout(store, akce, prefix=".immich-alba-"):
+    """Read-modify-write pod zámkem `store`: odebere a vrátí záznam."""
+    with store._lock:
+        data = store.nacti()
+        entry = data.pop(akce, None)
+        if entry is not None:
+            _zapsat(store.path, data, prefix=prefix)
+        return entry
+
+
+def _vlozit(store, akce, entry, prefix=".immich-alba-"):
+    if entry is None:
+        return
+    with store._lock:
+        data = store.nacti()
+        data[akce] = entry
+        _zapsat(store.path, data, prefix=prefix)
+
 
 def pocty_osob(assets):
     """{pojmenovane, celkem} osob s obličejem v albu.
@@ -173,6 +210,62 @@ def pocty_osob(assets):
                 continue
             jmen[person["id"]] = bool((person.get("name") or "").strip())
     return {"pojmenovane": sum(jmen.values()), "celkem": len(jmen)}
+
+
+# --- alba akcí vysypaných z koše -------------------------------------------
+
+class KosAlba:
+    """`<work>/kos-alba.json` = {id alba: název akce}.
+
+    Fronta alb akcí trvale smazaných z koše. Album se do ní zapíše před
+    smazáním složky (vazba je jen v záznamu o smazání) a odebere se po
+    smazání v Immichi; jinak počká na další vysypání.
+    """
+
+    def __init__(self, work):
+        self.path = Path(work) / "kos-alba.json"
+        self._lock = threading.Lock()
+
+    def nacti(self):
+        try:
+            data = json.loads(self.path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    def pridat(self, album_id, akce):
+        with self._lock:
+            data = self.nacti()
+            data[album_id] = akce
+            _zapsat(self.path, data, prefix=".kos-alba-")
+
+    def odebrat(self, album_id):
+        with self._lock:
+            data = self.nacti()
+            if data.pop(album_id, None) is not None:
+                _zapsat(self.path, data, prefix=".kos-alba-")
+
+
+def smazat_alba(client, fronta):
+    """Smaže v Immichi alba z fronty `KosAlba`; vrací smazaná id.
+
+    Jediné místo, kde aplikace maže album (akce vysypaná z koše);
+    assety nemaže. Album, které už neexistuje (404), se z fronty
+    odebere; jiná chyba ho tam nechá do dalšího vysypání.
+    """
+    smazana = []
+    for album_id, akce in sorted(fronta.nacti().items()):
+        try:
+            client.delete_album(album_id)
+        except ImmichError as e:
+            if e.status != 404:
+                log.warning("koš: smazání alba %s (%s) selhalo: %s",
+                            album_id, akce, e)
+                continue
+        log.info("koš: smazáno album %s akce %s", album_id, akce)
+        fronta.odebrat(album_id)
+        smazana.append(album_id)
+    return smazana
 
 
 # --- obsah alba ------------------------------------------------------------
@@ -316,8 +409,8 @@ def udrzet_album(client, ws, stavy, akce):
 class Hlidac:
     """Hlídání dokončené akce: sken knihovny, album, rozpoznávání.
 
-    Spouští ho `akce_finish` po úspěšném zveřejnění složky na pozadí
-    (daemon); dokončení na Immich nečeká a chyba Immiche výsledek
+    Spouští ho `akce_finish` po úspěšném zveřejnění složky (a obnovení
+    dokončené akce z koše) na pozadí (daemon); dokončení na Immich nečeká a chyba Immiche výsledek
     dokončení nezmění. Nejvýš jeden hlídač na akci — opakované
     dokončení ho pustí znovu a běžící se u dalšího kroku sám ukončí.
     Ve vývojovém režimu se sken nespouští (`.ignored` se tam
@@ -346,6 +439,39 @@ class Hlidac:
         self._nitka.add(nitka)
         nitka.start()
         return True
+
+    def zastavit(self, akce):
+        """Běžící hlídač akce se u dalšího kroku ukončí (akce smazaná
+        do koše; stav už ve `.work` není a nesmí se tam vrátit)."""
+        with self._lock:
+            if akce in self._generace:
+                self._generace[akce] += 1
+
+    def skenovat(self):
+        """Jen sken knihovny na pozadí (dokončená akce smazaná do koše:
+        Immich její assety hned označí offline). Ve vývojovém režimu
+        a bez vybrané knihovny se nespouští."""
+        nastaveni = self.sync.settings.load()
+        if not self.sync.ws.zapis or not nastaveni \
+                or not nastaveni.get("knihovna"):
+            return False
+        nitka = threading.Thread(target=self._sken,
+                                 args=(nastaveni["knihovna"],),
+                                 daemon=True, name="immich-sken")
+        self._nitka.add(nitka)
+        nitka.start()
+        return True
+
+    def _sken(self, knihovna):
+        try:
+            client = self.sync.client()
+            if client is not None:
+                client.scan_library(knihovna)
+        except Exception:  # noqa: BLE001 — chyba Immiche nesmí měnit
+            # výsledek smazání
+            log.exception("immich: sken knihovny po smazání selhal")
+        finally:
+            self._nitka.discard(threading.current_thread())
 
     def cekat(self, timeout=10):
         """Počká na doběhnutí všech hlídačů; True, když doběhli."""

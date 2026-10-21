@@ -1979,3 +1979,18 @@ def test_api_excluded_execute(tmp_path, monkeypatch):
     assert sorted(doc["soubory"]) == ["a.jpg"]
     [item] = c.get("/api/import", query_string={"jmeno": ME}).json["importy"]
     assert item["id"] == id and item["souboru"] == 2
+
+
+def test_api_target_event_deleted(tmp_path, monkeypatch):
+    """Import s cílem ve smazané akci selže jako u neexistující akce."""
+    c, archiv = api_client(tmp_path, monkeypatch, zapis=True)
+    id = c.post("/api/import", json=R1).json["id"]
+    api_upload(c, id, {"n.jpg": "n"})
+    r = c.post(f"/api/akce/{EVENT}/smazat", json=dict(
+        R1, potvrzeni=EVENT, duvod="omyl"))
+    assert r.status_code == 200, r.json
+    r = c.post(f"/api/import/{id}/provest", json=dict(R1, cil=EVENT))
+    assert r.status_code == 404
+    assert not (archiv / EVENT).exists()
+    assert c.get(f"/api/import/{id}",
+                 query_string={"jmeno": ME}).json["pocty"] == {"foto": 1}

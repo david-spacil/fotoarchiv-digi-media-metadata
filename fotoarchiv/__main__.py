@@ -6,7 +6,8 @@ skrytí nedokončených akcí před Immichem: python -m fotoarchiv skryt
 --archiv … [--zapis-do-archivu], kontrola poškozených souborů:
 python -m fotoarchiv zkontrolovat [AKCE] --archiv …, převod
 _metadata.json na schéma /2: python -m fotoarchiv migrovat --archiv …
-[--zapis-do-archivu]."""
+[--zapis-do-archivu], vysypání koše smazaných akcí: python -m fotoarchiv
+vysypat --archiv … [--zapis-do-archivu]."""
 
 import argparse
 import json
@@ -21,11 +22,15 @@ from pathlib import Path
 from cheroot import wsgi
 
 from . import (auth, consistency, geocode, immich, importer, index,
-               integrity, xmp)
+               integrity, trash, xmp)
 from .app import create_app
 from .archive import (IGNORED, METADATA_NAME, SCHEMA_V1, Collision,
                       Conflict, Workspace, adopt, event_name, upgrade,
                       version_of)
+
+
+# Vysypání koše v serveru: při startu a pak jednou denně.
+KOS_INTERVAL = 24 * 60 * 60
 
 
 def paths(args):
@@ -152,6 +157,43 @@ def skryt(argv):
         print("Archiv beze změny; přejmenuje až --zapis-do-archivu.")
     if failed:
         sys.exit(1)
+
+
+def vysypat(argv):
+    parser = argparse.ArgumentParser(
+        prog="python -m fotoarchiv vysypat",
+        description="Vypíše akce v koši (_kos.ignored) s datem trvalého "
+                    "smazání; s --zapis-do-archivu trvale smaže ty, "
+                    f"kterým uplynula lhůta {trash.LHUTA.days} dní, a "
+                    "jejich alba v Immichi (jako server).")
+    common(parser)
+    parser.add_argument("--zapis-do-archivu", action="store_true",
+                        help="akce po lhůtě opravdu smazat")
+    args = parser.parse_args(argv)
+    archiv, work = paths(args)
+    ws = Workspace(archiv, work, zapis=True)
+    entries = trash.entries(ws)
+    due = {id for id, _ in trash.due(ws)}
+    for e in entries:
+        if e.get("neznama"):
+            print(f"neznámá složka: {e['id']} (bez záznamu, nesmaže se)")
+            continue
+        when = "po lhůtě" if e["id"] in due else \
+            f"smaže se {e['vysypat'][:10]}"
+        print(f"{e['nazev']} ({e['id']}): smazal {e['smazal']} "
+              f"{e['smazano'][:10]}, {when}")
+    if not args.zapis_do_archivu:
+        if due:
+            print(f"Po lhůtě: {len(due)}. Archiv beze změny; smaže až "
+                  "--zapis-do-archivu.")
+        return
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    s = immich.Settings(work).load()
+    client = immich.Client(s["adresa"], s["klic"]) if s else None
+    smazane = trash.purge(ws, client=client)
+    if smazane:
+        index.write(ws)
+    print(f"Trvale smazáno: {len(smazane)}")
 
 
 def _lost_authors(doc):
@@ -507,6 +549,8 @@ def main(argv=None):
         return skryt(argv[1:])
     if argv[:1] == ["migrovat"]:
         return migrovat(argv[1:])
+    if argv[:1] == ["vysypat"]:
+        return vysypat(argv[1:])
     parser = argparse.ArgumentParser(
         prog="python -m fotoarchiv",
         description="Průvodce metadaty fotoarchivu. Převzetí metadat "
@@ -516,7 +560,8 @@ def main(argv=None):
                     "skrytí nedokončených akcí před Immichem: "
                     "python -m fotoarchiv skryt, kontrola poškozených "
                     "souborů: python -m fotoarchiv zkontrolovat, převod "
-                    "na schéma /2: python -m fotoarchiv migrovat.")
+                    "na schéma /2: python -m fotoarchiv migrovat, "
+                    "vysypání koše: python -m fotoarchiv vysypat.")
     common(parser)
     parser.add_argument("--zapis-do-archivu", action="store_true",
                         help="produkční režim: _metadata.json ve složkách "
@@ -558,6 +603,7 @@ def main(argv=None):
     watcher = args.debug and not os.environ.get("WERKZEUG_RUN_MAIN")
     app = create_app(archiv, work, zapis=args.zapis_do_archivu,
                      immich_interval=None if watcher else immich.INTERVAL,
+                     kos_interval=None if watcher else KOS_INTERVAL,
                      prihlaseni=not args.bez_prihlaseni, https=args.https)
     print(f"Archiv: {archiv.resolve()}")
     print(f"Pracovní adresář: {work.resolve()}")

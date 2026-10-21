@@ -204,6 +204,28 @@ class Odlozene:
                 data[login] = uzivatel
                 _zapsat(self.path, data, prefix=".pojmenovani-")
 
+    def vyjmout_akci(self, akce):
+        """Odebere odložení všech uživatelů v akci a vrátí je
+        ({login: [id, …]}); smazání akce je přenese do koše."""
+        with self._lock:
+            data = self.nacti()
+            vyjmute = {login: uzivatel.pop(akce)
+                       for login, uzivatel in data.items()
+                       if isinstance(uzivatel, dict) and akce in uzivatel}
+            if vyjmute:
+                _zapsat(self.path, data, prefix=".pojmenovani-")
+            return vyjmute
+
+    def vlozit_akci(self, akce, odlozene):
+        """Vrátí odložení z `vyjmout_akci` (obnovení z koše)."""
+        if not odlozene:
+            return
+        with self._lock:
+            data = self.nacti()
+            for login, ids in odlozene.items():
+                data.setdefault(login, {})[akce] = list(ids)
+            _zapsat(self.path, data, prefix=".pojmenovani-")
+
     def vyradit(self, login, akce, ids):
         """Odebere odložená id, která už nelze odložit."""
         without = set(ids)

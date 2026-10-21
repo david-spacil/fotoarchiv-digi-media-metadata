@@ -1756,3 +1756,123 @@ def test_naming_archiv_beze_zmeny_a_klic(naming_app):
         assert IMMICH_KLIC not in r.get_data(as_text=True)
     assert IMMICH_KLIC not in c.post(
         f"/api/akce/{EVENT}/osoby/hotovo", json={}).get_data(as_text=True)
+
+
+# --- koš smazaných akcí ------------------------------------------------------
+
+def smazat(c, nazev=EVENT, **body):
+    return c.post(f"/api/akce/{nazev}/smazat", json=dict(
+        {"relace": "r1", "potvrzeni": nazev, "duvod": "duplicita"}, **body))
+
+
+@pytest.mark.parametrize("login", ["novak", "modelova"])
+def test_delete_only_admin(login_app, login):
+    app, archiv = login_app
+    before = snapshot(archiv)
+    c = logged_in(app, login)
+    r = smazat(c)
+    assert r.status_code == 403 and r.json["chyba"] == "jen_admin"
+    assert c.get("/api/kos").status_code == 403
+    assert c.post("/api/kos/x/obnovit").status_code == 403
+    assert snapshot(archiv) == before
+
+
+def test_delete_confirmation(login_app):
+    app, archiv = login_app
+    before = snapshot(archiv)
+    c = logged_in(app, "prikladny")
+    r = smazat(c, potvrzeni=EVENT + " ")
+    assert r.status_code == 400 and r.json["chyba"] == "spatne_potvrzeni"
+    r = smazat(c, duvod="  ")
+    assert r.status_code == 400 and r.json["chyba"] == "bez_duvodu"
+    assert smazat(c, nazev="2026-01-01 neni").status_code == 404
+    assert snapshot(archiv) == before
+
+
+def test_delete_refused_when_locked_by_other(login_app):
+    app, archiv = login_app
+    before = snapshot(archiv)
+    novak = logged_in(app, "novak")
+    assert novak.post(f"/api/akce/{EVENT}/zamek",
+                      json={"relace": "r2"}).status_code == 200
+    r = smazat(logged_in(app, "prikladny"))
+    assert r.status_code == 409 and r.json["chyba"] == "obsazeno"
+    assert r.json["drzitel"]["jmeno"] == "Novák, Petr"
+    assert snapshot(archiv) == before
+
+
+def test_delete_list_and_restore(login_app):
+    app, archiv = login_app
+    c = logged_in(app, "prikladny")
+    assert c.post(f"/api/akce/{EVENT}/zamek",
+                  json={"relace": "r1"}).status_code == 200
+    r = smazat(c, jmeno="Podvržené, Jméno")
+    assert r.status_code == 200, r.json
+    assert r.json["plan"] is False and r.json["index"] == []
+    id = r.json["id"]
+    assert not (archiv / EVENT).exists()
+    assert app.config["LOCKS"].holder(EVENT) is None
+    assert c.get("/api/akce").json == []
+    assert EVENT.split(" ", 1)[1] not in (archiv / "_INDEX.md").read_text()
+    [item] = c.get("/api/kos").json["akce"]
+    assert item["id"] == id and item["nazev"] == EVENT
+    assert item["smazal"] == "Příkladný, Daniel"
+    assert item["duvod"] == "duplicita" and item["zbyva_dni"] == 7
+    assert c.get(f"/api/akce/{EVENT}").status_code == 404
+    # Obnovení se odmítne, když mezitím vznikla akce stejného názvu.
+    make_tree(archiv, {f"{EVENT}.ignored/": {"x.jpg": "x"}})
+    r = c.post(f"/api/kos/{id}/obnovit")
+    assert r.status_code == 409 and r.json["chyba"] == "obsazeno"
+    os.rename(archiv / f"{EVENT}.ignored", archiv / "jinam")
+    r = c.post(f"/api/kos/{id}/obnovit")
+    assert r.status_code == 200 and r.json["nazev"] == EVENT
+    assert (archiv / EVENT / "IMG-20260428-WA0001.jpg").is_file()
+    assert c.get("/api/kos").json["akce"] == []
+    assert EVENT.split(" ", 1)[1] in (archiv / "_INDEX.md").read_text()
+    assert c.post("/api/kos/neni/obnovit").status_code == 404
+
+
+def test_delete_development_mode_plan(client):
+    c, archiv = client
+    before = snapshot(archiv)
+    r = smazat(c)
+    assert r.status_code == 200 and r.json["plan"] is True
+    assert r.json["id"] is None and r.json["slozka"] == EVENT
+    assert snapshot(archiv) == before
+    assert c.post("/api/kos/x/obnovit").status_code == 403
+    assert c.get("/api/kos").json == {"akce": [], "zapis": False,
+                                      "lhuta_dni": 7}
+
+
+def test_server_purge(login_app):
+    from fotoarchiv import trash
+    app, archiv = login_app
+    c = logged_in(app, "prikladny")
+    id = smazat(c).json["id"]
+    record = archiv / trash.TRASH / id / trash.RECORD
+    data = json.loads(record.read_text())
+    data["smazano"] = "2026-01-01T10:00:00"
+    record.write_text(json.dumps(data))
+    assert app.config["KOS_VYSYPAT"]() == [EVENT]
+    assert not (archiv / trash.TRASH / id).exists()
+
+
+def test_command_vysypat(login_app, capsys):
+    from fotoarchiv import trash
+    app, archiv = login_app
+    c = logged_in(app, "prikladny")
+    id = smazat(c).json["id"]
+    record = archiv / trash.TRASH / id / trash.RECORD
+    data = json.loads(record.read_text())
+    data["smazano"] = "2026-01-01T10:00:00"
+    record.write_text(json.dumps(data))
+    work = str(archiv.parent / "work")
+    main(["vysypat", "--archiv", str(archiv), "--work", work])
+    out = capsys.readouterr().out
+    assert f"{EVENT} ({id})" in out and "po lhůtě" in out
+    assert "Archiv beze změny" in out
+    assert record.is_file()
+    main(["vysypat", "--archiv", str(archiv), "--work", work,
+          "--zapis-do-archivu"])
+    assert "Trvale smazáno: 1" in capsys.readouterr().out
+    assert not (archiv / trash.TRASH / id).exists()

@@ -7,12 +7,21 @@ pojmenování osob i pro prohlížení). Po dokončení (odebrání přípony
 `.ignored`) spustí server hlídače na pozadí: spustí sken knihovny
 vybrané v nastavení a pak co 20 s zjišťuje, zda Immich zná všechny
 soubory akce; jakmile ano, založí album pojmenované jako akce a později
-do něj doplňuje přibývající assety a cizí z alba odebírá. Album ani
-asset se nikdy nemažou. Pravidelná synchronizace totéž opakuje pro
+do něj doplňuje přibývající assety a cizí z alba odebírá. Asset se
+nikdy nemaže; album jen při vysypání akce z koše (viz
+[Archiv](archiv.md)) — vazba je tehdy v záznamu o smazání, odtud jde do
+fronty `.work/kos-alba.json` a smaže se podle id (404 = už není;
+jiná chyba počká na další vysypání). Pravidelná synchronizace totéž opakuje pro
 každou dokončenou akci (bez skenu), takže album dorovná i po restartu
 serveru nebo smazání alba v Immichi; hlídač je jen zrychlení. Vazba
 akce → id alba je v `.work/immich-alba.json`; při ztrátě souboru se
-album dohledá podle názvu, takže nevznikne duplicitní.
+album dohledá podle názvu, takže nevznikne duplicitní. Sken knihovny
+spouští server i po smazání dokončené akce do koše (jen sken; běžící
+hlídač akce ukončí) a po jejím obnovení (celý hlídač jako po
+dokončení), aby Immich assety hned označil offline, resp. je vrátil;
+chyba skenu jde jen do logu. Ověřeno proti Immichi: po obnovení
+dokončené akce se assety na původní cestě vrátily i s obličeji
+(dokud je koš Immiche ještě trvale nesmazal).
 
 **Stav akce v Immichi** vidí každý přihlášený uživatel na kartě akce
 a na ploše akce; bez nastaveného Immiche se nezobrazuje. Hlídač
