@@ -5,9 +5,11 @@
 Pro server s Dockerem (např. tam, kde běží Immich) je v repozitáři
 `Dockerfile`, `compose.yaml` a `.env.example`. Hotový image staví
 GitHub Actions po úspěšných testech do GitHub Container Registry
-(`ghcr.io/david-spacil/fotoarchiv-digi-media-metadata`): `latest`
-z větve `main`, z tagu `vX.Y.Z` image `X.Y.Z` a `X.Y`, ke každému
-i `sha-<hash>` commitu. Kontejner běží
+(`ghcr.io/david-spacil/fotoarchiv-digi-media-metadata`): z tagu
+`vX.Y.Z` image `X.Y.Z`, `X.Y` a `latest` (ten jen u verze bez
+předverze, ne u `v2.4.0-rc1`), z větve `main` image `main`, ke každému
+i `sha-<hash>` commitu. Pull requesty do GHCR nic nenahrávají, `latest`
+je tedy vždy poslední release. Kontejner běží
 v produkčním režimu (`--zapis-do-archivu`) na serveru cheroot v jediném
 procesu bez varování vývojového serveru, archiv se připojuje z hostitele
 (typicky SMB/CIFS mount) a pracovní adresář je bind mount `./work`;
@@ -19,7 +21,7 @@ v `docker compose logs`.
 ```sh
 cp .env.example .env          # a vyplnit FOTOARCHIV_ARCHIV, UID, GID
 mkdir work                    # pracovní adresář vedle repozitáře
-docker compose pull           # image latest z GHCR
+docker compose pull           # poslední release (latest) z GHCR
 docker compose up -d          # http://127.0.0.1:5000
 ```
 
@@ -79,8 +81,15 @@ změnám `compose.yaml`):
 git pull && docker compose pull && docker compose up -d
 ```
 
+Tag image vybírá `FOTOARCHIV_TAG` v `.env` (výchozí `latest`, poslední
+release). `FOTOARCHIV_TAG=main` stahuje poslední build větve `main`
+(vše sloučené, ještě nevydané), konkrétní verze (`2.3`, `2.3.1`) drží
+server na ní; `2.3` bere i další opravné verze řady. Po změně stačí
+`docker compose pull && docker compose up -d`.
+
 Vyzkoušení větve před releasem: image se postaví z pracovní kopie pod
-stejným jménem a nahradí stažený; návrat na release je znovu `pull`.
+stejným jménem (tag podle `FOTOARCHIV_TAG`) a nahradí stažený; návrat
+na release je znovu `pull`.
 
 ```sh
 git switch nazev-vetve && docker compose up -d --build

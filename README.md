@@ -100,6 +100,9 @@ docker compose pull && docker compose up -d
 # → http://127.0.0.1:5000, aktualizace stejnými dvěma příkazy
 ```
 
+`pull` stahuje jen vydané verze (`latest`); jiný tag, např. `main`
+nebo pevnou verzi, nastaví `FOTOARCHIV_TAG` v `.env`.
+
 Kontejner běží v produkčním režimu. Připojení archivu, oprávnění
 a účty: [Docker](docs/provoz/docker.md).
 

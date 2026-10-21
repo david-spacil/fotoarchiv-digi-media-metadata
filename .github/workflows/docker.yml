@@ -1,5 +1,6 @@
-# Testy a Docker image do GHCR. Image se nahraje jen z main (latest)
-# a z tagů vX.Y.Z; u pull requestu se jen ověří, že se postaví.
+# Testy a Docker image do GHCR. Image se nahraje jen z main (tag main)
+# a z tagů vX.Y.Z (X.Y.Z, X.Y a latest, ten jen bez předverze); u pull
+# requestu se jen ověří, že se postaví.
 name: Testy a image
 
 on:
@@ -54,8 +55,10 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository }}
+          # latest přidá výchozí flavor latest=auto jen k semver tagu
+          # bez předverze, ne k větvi.
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=edge,branch=main
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha
