@@ -19,6 +19,7 @@ import { icon } from "./icons.js";
 import { immichStav } from "./immichstav.js";
 import { lzeSmazat, nazevSedi, zbyvaText } from "./kos.js";
 import { showNaming } from "./naming.js";
+import { pripojNaseptavani } from "./naseptavani.js";
 import { jmenaOsob, ramecek } from "./obliceje.js";
 import { osmUrl } from "./osm.js";
 import { klavesa, naPas, oddil, radek, stranka } from "./pohyb.js";
@@ -3146,6 +3147,8 @@ function namesField(initial, update, inheritedValue, placeholder,
   const list = h("ul", { class: "suggest", hidden: true });
   const hint = h("div", { class: "hint", hidden: true });
   let active = -1;
+  // Návrhy se otevírají v horní vrstvě, aby je neořezal `#panel`.
+  const nasept = pripojNaseptavani(input, list);
 
   const commit = (next) => {
     names = next;
@@ -3166,7 +3169,7 @@ function namesField(initial, update, inheritedValue, placeholder,
     const name = raw.trim().replace(/\s+/g, " ");
     if (!name) return;
     input.value = "";
-    list.hidden = true;
+    nasept.skryj();
     const base = inherited || names;
     if (!people) {
       if (!base.includes(name)) commit([...base, name]);
@@ -3203,7 +3206,7 @@ function namesField(initial, update, inheritedValue, placeholder,
     const q = input.value.trim();
     if (!people) return;
     if (!q) {
-      list.hidden = true;
+      nasept.skryj();
       return;
     }
     const r = await api(`/api/jmena?q=${encodeURIComponent(q)}`);
@@ -3223,7 +3226,8 @@ function namesField(initial, update, inheritedValue, placeholder,
     list.replaceChildren(...all.map((n) => h("li", {
       onmousedown: (e) => { e.preventDefault(); add(n); },
     }, n)));
-    list.hidden = !all.length;
+    if (all.length) nasept.ukaz();
+    else nasept.skryj();
   }, 150);
   input.addEventListener("input", showSuggest);
   input.addEventListener("keydown", (e) => {
@@ -3239,14 +3243,14 @@ function namesField(initial, update, inheritedValue, placeholder,
       add(!list.hidden && active >= 0 ? items[active].textContent
         : input.value);
     } else if (e.key === "Escape") {
-      list.hidden = true;
+      nasept.skryj();
     } else if (e.key === "Backspace" && !input.value &&
                (inherited || names).length) {
       commit((inherited || names).slice(0, -1));
     }
   });
   input.addEventListener("blur", () => setTimeout(() => {
-    list.hidden = true;
+    nasept.skryj();
     if (!people && input.value.trim()) add(input.value);
   }, 100));
   renderChips();

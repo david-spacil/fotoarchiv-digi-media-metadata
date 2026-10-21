@@ -7,6 +7,7 @@
 // i na mobilu. Výřez se kreslí z proxované zmenšeniny na canvas.
 
 import { icon } from "./icons.js";
+import { pripojNaseptavani } from "./naseptavani.js";
 
 // --- čisté funkce ----------------------------------------------------------
 
@@ -60,16 +61,28 @@ export function vyrid(fronta, id) {
   return fronta.filter((o) => o.id !== id);
 }
 
+// Vrácení posledního kroku (Zpět) → nová fronta s osobou zpět na
+// začátku, na jak ji uživatel viděl naposledy. Bez duplicity: je-li
+// osoba ve fronty už (jmenem i objektem pracuje jako `vyrid`), patří
+// jen na začátek. Původní frontu nemění.
+export function vratit(fronta, os) {
+  return [os, ...fronta.filter((o) => o.id !== os.id)];
+}
+
 // Klávesová zkratka volby z události `keydown` → "odlozit" | "skryt" |
-// null. Platí i s kurzorem v poli jména, proto jen klávesy bez
+// "zpet" | null. Platí i s kurzorem v poli jména, proto jen klávesy bez
 // významu pro editaci jednořádkového pole ani pro prohlížeč: PageDown
 // (bez modifikátorů) a Alt+Delete (Ctrl+Delete maže slovo, Shift+Delete
-// na Windows vyjímá). Podržená klávesa (`repeat`) se nepočítá.
+// na Windows vyjímá). Alt+Backspace vrátí poslední krok — v poli by na
+// Windows jinak vrátil psaní, listener proto volá `preventDefault`
+// vždy, i když žádný krok vrátit nejde. Podržená klávesa (`repeat`)
+// se nepočítá.
 export function zkratka(e) {
   if (e.repeat) return null;
   const mod = e.ctrlKey || e.metaKey || e.shiftKey;
   if (e.key === "PageDown" && !mod && !e.altKey) return "odlozit";
   if (e.key === "Delete" && e.altKey && !mod) return "skryt";
+  if (e.key === "Backspace" && e.altKey && !mod) return "zpet";
   return null;
 }
 
@@ -187,6 +200,7 @@ export function showNaming(deps) {
     chyba: "",            // chyba Immiche (osoba zůstává s jménem)
     zprava: "",           // měkké hlášení pod polem
     slouceni: null,       // {id, jmeno} po 409 (nabídka sloučení)
+    posledni: null,       // {typ, os, jmeno} poslední vratitelný krok (Zpět)
     osoby: null,           // poslední [pojmenované, celkem] z odpovědi
     zmena: false,         // zapisovalo se (poznámka ke synchronizaci)
     nacitani: true,
@@ -293,7 +307,8 @@ export function showNaming(deps) {
 
   // --- jméno: našeptávání a uložení ---------------------------------------
 
-  let input, suggest, zpetna, panelSlouceni, dialog, tlUlozit, tlSloucit;
+  let input, suggest, nasept, zpetna, panelSlouceni, dialog, tlUlozit,
+    tlSloucit, tlZpet;
 
   function jmenovePole() {
     input = h("input", { type: "text", id: "pojm-jmeno",
@@ -336,6 +351,10 @@ export function showNaming(deps) {
       } });
     if (s.os && s.priorJmeno) input.value = s.priorJmeno;
     suggest = h("ul", { class: "suggest", hidden: true });
+    // Nová osoba = nové pole i seznam: odpošlouchá starý seznam a ten
+    // svůj napojí na modul strkající návrhy do horní vrstvy.
+    nasept?.skryj();
+    nasept = pripojNaseptavani(input, suggest);
     zpetna = h("div", { class: "zpetna-vazba" });
     panelSlouceni = h("div", { class: "panel-slouceni" });
     return h("div", { class: "field" },
@@ -349,7 +368,7 @@ export function showNaming(deps) {
 
   function skrytNavesty() {
     if (!suggest) return;
-    suggest.hidden = true;
+    nasept.skryj();
     suggest.replaceChildren();
     delete suggest.dataset.active;
   }
@@ -391,7 +410,7 @@ export function showNaming(deps) {
       navrhy = (await api(`/api/jmena?q=${encodeURIComponent(q)}`)).navrhy;
     } catch { /* našeptávání je jen pohodlnost */ }
     if (!navrhy.length || input.value.trim() !== q) return;
-    suggest.replaceChildren(...navrhy.slice(0, 8).map((n) => h("li", {
+    suggest.replaceChildren(...navrhy.map((n) => h("li", {
       onmousedown: (e) => {
         e.preventDefault();
         input.value = n;
@@ -400,7 +419,8 @@ export function showNaming(deps) {
       },
     }, n)));
     suggest.dataset.active = "-1";
-    suggest.hidden = !suggest.children.length;
+    if (suggest.children.length) nasept.ukaz();
+    else nasept.skryj();
   }, 150);
 
   function vykresZpetnou() {
@@ -417,6 +437,9 @@ export function showNaming(deps) {
 
   async function pokusUlozit() {
     if (!s.os) return;
+    // Jméno odchází (Enter i tlačítko): návrhy pryč, jinak by seznam
+    // v horní vrstvě zůstal na místě, když se okno přeskládá (sloučení).
+    skrytNavesty();
     const jmeno = input.value.trim().replace(/\s+/g, " ")
       .replace(/\s*,\s*/, ", ");
     s.zprava = "";
@@ -500,7 +523,8 @@ export function showNaming(deps) {
     panelSlouceni.replaceChildren(h("div", { class: "slouceni" }, nahled,
       h("div", {}, `V Immichi už existuje osoba „${shoda.jmeno}“ — ` +
         "shoda bez diakritiky, velikosti písmen a pořadí slov. Sloučit " +
-        "tuto osobu do ní (obličeje se spojí)?"),
+        "tuto osobu do ní (obličeje se spojí)? Sloučení nejde v nástroji " +
+        "vrátit."),
       h("div", { class: "tl" },
         tlSloucit = h("button", { class: "primary",
           title: "Sloučit (Enter)", onclick: sloucit }, "Sloučit"),
@@ -517,8 +541,58 @@ export function showNaming(deps) {
     if (typ === "nevim") s.odlozene += 1;
     else s.zmena = true;
     if (Array.isArray(r?.osoby)) s.osoby = r.osoby;
+    // Zpět vrátí jen poslední krok; sloučení se vracet nedá. „Ponechat
+    // samostatně“ posílá pojmenovat, jméno kroku drží s.posledniJmeno.
+    s.posledni = typ === "sloucit" ? null
+      : {
+        typ, os,
+        jmeno: typ === "pojmenovat" ? (s.posledniJmeno || "") : "",
+      };
     s.vyslo += 1;
     dalsi();
+  }
+
+  // Vrácení posledního kroku (tlačítko i Alt+Backspace): endpoint
+  // `zpet` ověří, že osobu nikdo mezitím nezměnil. Při úspěchu osobu
+  // vrátí na začátek fronty a nabídne ji znovu (po pojmenování
+  // s předvyplněným jménem); 409 krok odepíše, chyba Immiche ho nechá
+  // na výběr. Hlídá tentýž zámek `s.zapisuje` jako ostatní volby.
+  async function vratitKrok() {
+    const p = s.posledni;
+    if (!p || s.zapisuje) return;
+    s.zapisuje = true;
+    const body = p.typ === "pojmenovat"
+      ? { krok: p.typ, jmeno: p.jmeno } : { krok: p.typ };
+    try {
+      const r = await api(url(`/osoby/${encodeURIComponent(p.os.id)}/zpet`),
+        { method: "POST", body });
+      s.posledni = null;
+      s.fronta = vratit(s.fronta, p.os);
+      s.vyslo -= 1;
+      if (p.typ === "nevim") s.odlozene -= 1;
+      else {
+        s.zmena = true;
+        if (Array.isArray(r?.osoby)) s.osoby = r.osoby;
+      }
+      dalsi(p.typ === "pojmenovat" ? p.jmeno : "");
+    } catch (err) {
+      if (err.status === 409 && err.data?.chyba === "zmeneno") {
+        // někdo jiný už osobu pozměnil — krok už není co vrátit
+        s.posledni = null;
+        if (tlZpet) tlZpet.disabled = true;
+        s.zprava = "Osobu mezitím změnil někdo jiný, krok nejde vrátit.";
+        if (s.os) vykresZpetnou();
+        else kresleni();
+      } else {
+        // zápis do Immiche selhal — krok zůstává, Zpět je pořád dostupné
+        s.chyba = `Chyba Immiche — ${textChyby(err)} ` +
+          "Osoba se nezměnila, vrácení lze zkusit znovu.";
+        if (s.os) vykresZpetnou();
+        else kresleni();
+      }
+    } finally {
+      s.zapisuje = false;
+    }
   }
 
   function nevime() {
@@ -533,14 +607,14 @@ export function showNaming(deps) {
 
   // --- průchod a kreslení ---------------------------------------------------
 
-  function dalsi() {
+  function dalsi(priorJmeno = "") {
     const krok = prechod(s.fronta, s.odlozene);
     s.os = krok.krok === "osoba" ? krok.osoba : null;
     s.prevedeno = false;
     s.navrh = "";
     s.chyba = "";
     s.zprava = "";
-    s.priorJmeno = "";
+    s.priorJmeno = priorJmeno;   // jen po vrácení pojmenování
     s.slouceni = null;
     kresleni();
     if (s.os) dialog.querySelector("#pojm-jmeno")?.focus();
@@ -548,6 +622,9 @@ export function showNaming(deps) {
 
   function konecKola() {
     const obs = h("div", { class: "konec" });
+    // Hláška z vrácení, které selhalo už na obrazovce konce kola.
+    if (s.chyba) obs.append(h("div", { class: "notice error" }, s.chyba));
+    else if (s.zprava) obs.append(h("div", { class: "notice" }, s.zprava));
     if (s.odlozene > 0) {
       obs.append(h("div", { class: "notice warn" },
         h("strong", {}, "Konec kola. "),
@@ -558,21 +635,32 @@ export function showNaming(deps) {
       h("div", { class: "radek" },
         h("button", { class: "primary", onclick: noveKolo },
           `Projít odložené znovu (${s.odlozene})`),
+        tlacitkoZpet(),
         h("button", { onclick: () => zavrit() }, "Zavřít")));
     } else {
       obs.append(h("div", { class: "notice" },
         h("strong", {}, "Hotovo. "),
         "Všechny osoby z alba této akce jsou pojmenované nebo skryté."),
       h("div", { class: "radek" },
+        tlacitkoZpet(),
         h("button", { class: "primary", onclick: () => zavrit() },
           "Zavřít")));
     }
     return obs;
   }
 
+  // Tlačítko Zpět: vrácení naposledy vyřízené osoby, ne volba nad tou
+  // aktuální — proto vlevo od „Uložit“. Neaktivní, dokud nic není.
+  function tlacitkoZpet() {
+    return tlZpet = h("button", { class: "zpet", disabled: !s.posledni,
+      title: "Vrátit poslední krok (Alt+Backspace)",
+      onclick: () => vratitKrok() }, "Zpět (Alt+⌫)");
+  }
+
   async function noveKolo() {
     try {
       await api(url("/osoby/kolo"), { method: "POST" });
+      s.posledni = null;        // nové kolo — krok z toho předchozího už ne
       await nacti();
       dalsi();
     } catch (err) {
@@ -620,6 +708,7 @@ export function showNaming(deps) {
       h("div", { class: "ovladani" },
         h("div", { class: "poloz" }, jmenovePole()),
         h("div", { class: "tl" },
+          tlacitkoZpet(),
           tlUlozit = h("button", { class: "primary", title: "Uložit (Enter)",
             onclick: () => pokusUlozit() }, "Uložit"),
           h("button", { title: "Osoba se v tomto kole už nenabídne",
@@ -665,6 +754,7 @@ export function showNaming(deps) {
     try {
       vysledek = await api(url("/osoby/hotovo"), { method: "POST" }) || {};
     } catch { /* zavření se provede i bez potvrzení ze serveru */ }
+    nasept?.skryj();        // otevřený seznam návrhů nesmí přežít dialog
     dialog.close();
     dialog.remove();
     window.removeEventListener("resize", onResize);
@@ -690,9 +780,10 @@ export function showNaming(deps) {
   dialog.addEventListener("keydown", (e) => {
     const volba = zkratka(e);
     if (!volba) return;
-    e.preventDefault();
+    e.preventDefault();     // Alt+Backspace v poli nesmí smazat text
     if (volba === "odlozit") nevime();
-    else skryt();
+    else if (volba === "skryt") skryt();
+    else vratitKrok();      // bez kroku nic nedělá
   });
   dialog.addEventListener("cancel", (e) => {
     e.preventDefault();      // Esc → stejné zavření jako křížek

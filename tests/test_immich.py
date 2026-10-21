@@ -131,6 +131,13 @@ class FakeImmich:
             return None
         if parts.path == "/api/people/merge":
             return None
+        if parts.path.startswith("/api/people/"):
+            pid = parts.path.removeprefix("/api/people/")
+            p = next((p for p in self.people if p["id"] == pid), None)
+            if p is None:
+                raise immich.ImmichError(f"HTTP 404 {url}", status=404)
+            return {"id": p["id"], "name": p.get("name"),
+                    "isHidden": bool(p.get("isHidden"))}
         if parts.path == "/api/people":
             page, size = int(query["page"][0]), int(query["size"][0])
             chunk = self.people[(page - 1) * size:page * size]
@@ -380,6 +387,23 @@ def test_merge_people_target_is_first_id(setup):
     method, path, body = fake.writes[0]
     assert (method, path) == ("POST", "/api/people/merge")
     assert body == {"ids": ["p-cil", "p-a", "p-b"]}
+
+
+def test_person_detail_jmeno_a_is_hidden(setup):
+    """`person(id)` vrátí jméno a `isHidden`; neznámé id = 404."""
+    _, fake = setup
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG",
+             oblicej(osoba("p-sk", "Vzorná, Jana", skryta=True)),
+             oblicej(osoba("p-1")))
+    client = immich.Client(URL, KEY, fake)
+    assert client.person("p-sk") == {"id": "p-sk", "name": "Vzorná, Jana",
+                                     "isHidden": True}
+    assert client.person("p-1") == {"id": "p-1", "name": None,
+                                    "isHidden": False}
+    with pytest.raises(immich.ImmichError) as e:
+        client.person("p-ning")
+    assert e.value.status == 404
+    assert all(m == "GET" for m, _ in fake.calls[-3:])   # čtení, žádný zápis
 
 
 def test_album_requests(setup):

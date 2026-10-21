@@ -200,6 +200,37 @@ def test_odlozene_vyradeni_pojmenovane(tmp_path):
     assert od.seznam("novak", AKCE) == []
 
 
+def test_odlozene_zrusit_odebere_jedno_id(tmp_path):
+    """Krok zpět: zrušení odložení odebere jen dané id (přetrvá)."""
+    od = Odlozene(tmp_path)
+    od.odlozit("novak", AKCE, "p-1")
+    od.odlozit("novak", AKCE, "p-2")
+    od.zrusit("novak", AKCE, "p-1")
+    assert Odlozene(tmp_path).seznam("novak", AKCE) == ["p-2"]
+
+
+def test_odlozene_zrusit_jiny_uzivatel_nedoten(tmp_path):
+    """Zrušení zasáhne jen login a akci daného uživatele."""
+    od = Odlozene(tmp_path)
+    od.odlozit("novak", AKCE, "p-1")
+    od.odlozit("prikladny", AKCE, "p-1")
+    od.odlozit("novak", "2026-05-01 jina", "p-1")
+    od.zrusit("novak", AKCE, "p-1")
+    assert od.seznam("novak", AKCE) == []
+    assert od.seznam("prikladny", AKCE) == ["p-1"]
+    assert od.seznam("novak", "2026-05-01 jina") == ["p-1"]
+
+
+def test_odlozene_zrusit_chybejici_id_nicnedela(tmp_path):
+    """Id, které není odložené (ani cizí login/akce): nic, bez souboru."""
+    od = Odlozene(tmp_path)
+    od.zrusit("novak", AKCE, "p-1")            # prázdný stav
+    od.odlozit("novak", AKCE, "p-2")
+    od.zrusit("novak", AKCE, "p-1")            # cizí id
+    od.zrusit("prikladny", AKCE, "p-2")        # cizí login
+    assert Odlozene(tmp_path).seznam("novak", AKCE) == ["p-2"]
+
+
 def test_odlozene_poruseny_soubor_prazdny(tmp_path):
     """Poškozený soubor = prázdný stav (jako ostatní `.work/`)."""
     (tmp_path / "pojmenovani.json").write_text("{", encoding="utf-8")

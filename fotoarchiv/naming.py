@@ -226,6 +226,17 @@ class Odlozene:
                 data.setdefault(login, {})[akce] = list(ids)
             _zapsat(self.path, data, prefix=".pojmenovani-")
 
+    def zrusit(self, login, akce, person_id):
+        """Zruší odložení jedné osoby (krok zpět); chybějící id
+        nic nedělá."""
+        with self._lock:
+            data = self.nacti()
+            odlozene = (data.get(login) or {}).get(akce) or []
+            if person_id not in odlozene:
+                return
+            data[login][akce] = [i for i in odlozene if i != person_id]
+            _zapsat(self.path, data, prefix=".pojmenovani-")
+
     def vyradit(self, login, akce, ids):
         """Odebere odložená id, která už nelze odložit."""
         without = set(ids)

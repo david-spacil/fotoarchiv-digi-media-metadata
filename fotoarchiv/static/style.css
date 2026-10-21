@@ -776,8 +776,14 @@ fieldset.tools.current { border-color: var(--accent); }
   var(--border-strong); color: var(--text-muted); }
 .chip .x { border: 0; background: none; padding: 0 3px;
   color: var(--text-muted); }
-.suggest { position: absolute; z-index: 5; left: 0; right: 0; margin: 0;
-  padding: 0; list-style: none; background: var(--surface);
+/* Seznam návrhů jmen: v horní vrstvě přes Popover API, jinak fixed
+   jako fallback. Polohu left/top/width/maxHeight nastavuje JS
+   (static/naseptavani.js) vždy, proto `inset: auto` a `margin: 0` —
+   ruší výchozí vycentrování UA stylu popoveru. `overflow: auto` pro
+   zkrácení přes maxHeight. */
+.suggest { position: fixed; z-index: 5; inset: auto; margin: 0;
+  padding: 0; box-sizing: border-box; overflow: auto; list-style: none;
+  color: var(--text); background: var(--surface);
   border: 1px solid var(--border-strong); border-radius: var(--radius);
   box-shadow: 0 4px 12px var(--shadow); }
 .suggest li { padding: 2px 6px; cursor: pointer; }
