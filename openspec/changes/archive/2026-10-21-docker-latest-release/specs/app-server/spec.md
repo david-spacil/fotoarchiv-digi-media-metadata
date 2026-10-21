@@ -2,13 +2,11 @@
 
 ### Requirement: Image z GitHubu
 Workflow GitHub Actions SHALL u pushe do `main`, tagu `v*` a pull
-requestu spustit testy Pythonu a JS a teprve po jejich úspěchu postavit
-image z `Dockerfile`. U `main` a tagů `v*` SHALL image nahrát do
-`ghcr.io/david-spacil/fotoarchiv-digi-media-metadata`; u pull requestu
-MUST NOT nic nahrát. Image `latest` SHALL vzniknout jen z tagu
-`vX.Y.Z` bez předverze; push do `main` MUST NOT `latest` změnit
-a SHALL nahrát image `main`. Verze v hlavičce image SHALL být `git
-describe --tags` buildovaného commitu.
+requestu spustit testy a po jejich úspěchu postavit image
+z `Dockerfile`. U `main` a tagů `v*` SHALL image nahrát do GHCR, u pull
+requestu MUST NOT nic nahrát. `latest` SHALL vzniknout jen z tagu
+`vX.Y.Z` bez předverze, push do `main` SHALL nahrát image `main`. Verze
+v hlavičce image SHALL být `git describe --tags` commitu.
 
 #### Scenario: Release z tagu
 - **WHEN** se pushne tag `v0.4.0` a testy projdou
