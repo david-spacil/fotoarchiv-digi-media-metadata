@@ -81,13 +81,13 @@
 
 ## 6. Sken knihovny po smazání a obnovení
 
-- [ ] 6.1 `albums.Hlidac`: `zastavit(akce)` (ukončí běžícího hlídače)
+- [x] 6.1 `albums.Hlidac`: `zastavit(akce)` (ukončí běžícího hlídače)
   a `skenovat()` (jen sken na pozadí, produkce, vybraná knihovna).
   `akce_smazat` u dokončené akce zastaví hlídače a spustí sken,
   `kos_obnovit` u dokončené akce spustí hlídače. Ověřit testy
   v `tests/test_immich.py` (sken po smazání dokončené, bez skenu
   u nedokončené, sken po obnovení, nedostupný Immich).
-- [ ] 6.2 Dokumentace: `docs/navrh/immich.md`, `docs/navrh/archiv.md`,
+- [x] 6.2 Dokumentace: `docs/navrh/immich.md`, `docs/navrh/archiv.md`,
   návod a invariant v AGENTS.md (sken i po smazání a obnovení).
 
 ## Workflow follow-up
