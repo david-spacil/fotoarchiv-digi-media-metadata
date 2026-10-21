@@ -26,5 +26,5 @@
 
 ## 3. Ověření
 
-- [ ] 3.1 Po pushi zkontrolovat běh workflow na GitHubu (testy a build
+- [x] 3.1 Po pushi zkontrolovat běh workflow na GitHubu (testy a build
   bez pushe image u větve/pull requestu).
