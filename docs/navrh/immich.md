@@ -19,7 +19,9 @@ album dohledá podle názvu, takže nevznikne duplicitní. Sken knihovny
 spouští server i po smazání dokončené akce do koše (jen sken; běžící
 hlídač akce ukončí) a po jejím obnovení (celý hlídač jako po
 dokončení), aby Immich assety hned označil offline, resp. je vrátil;
-chyba skenu jde jen do logu.
+chyba skenu jde jen do logu. Ověřeno proti Immichi: po obnovení
+dokončené akce se assety na původní cestě vrátily i s obličeji
+(dokud je koš Immiche ještě trvale nesmazal).
 
 **Stav akce v Immichi** vidí každý přihlášený uživatel na kartě akce
 a na ploše akce; bez nastaveného Immiche se nezobrazuje. Hlídač
