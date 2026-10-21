@@ -409,8 +409,8 @@ def udrzet_album(client, ws, stavy, akce):
 class Hlidac:
     """Hlídání dokončené akce: sken knihovny, album, rozpoznávání.
 
-    Spouští ho `akce_finish` po úspěšném zveřejnění složky na pozadí
-    (daemon); dokončení na Immich nečeká a chyba Immiche výsledek
+    Spouští ho `akce_finish` po úspěšném zveřejnění složky (a obnovení
+    dokončené akce z koše) na pozadí (daemon); dokončení na Immich nečeká a chyba Immiche výsledek
     dokončení nezmění. Nejvýš jeden hlídač na akci — opakované
     dokončení ho pustí znovu a běžící se u dalšího kroku sám ukončí.
     Ve vývojovém režimu se sken nespouští (`.ignored` se tam
@@ -439,6 +439,39 @@ class Hlidac:
         self._nitka.add(nitka)
         nitka.start()
         return True
+
+    def zastavit(self, akce):
+        """Běžící hlídač akce se u dalšího kroku ukončí (akce smazaná
+        do koše; stav už ve `.work` není a nesmí se tam vrátit)."""
+        with self._lock:
+            if akce in self._generace:
+                self._generace[akce] += 1
+
+    def skenovat(self):
+        """Jen sken knihovny na pozadí (dokončená akce smazaná do koše:
+        Immich její assety hned označí offline). Ve vývojovém režimu
+        a bez vybrané knihovny se nespouští."""
+        nastaveni = self.sync.settings.load()
+        if not self.sync.ws.zapis or not nastaveni \
+                or not nastaveni.get("knihovna"):
+            return False
+        nitka = threading.Thread(target=self._sken,
+                                 args=(nastaveni["knihovna"],),
+                                 daemon=True, name="immich-sken")
+        self._nitka.add(nitka)
+        nitka.start()
+        return True
+
+    def _sken(self, knihovna):
+        try:
+            client = self.sync.client()
+            if client is not None:
+                client.scan_library(knihovna)
+        except Exception:  # noqa: BLE001 — chyba Immiche nesmí měnit
+            # výsledek smazání
+            log.exception("immich: sken knihovny po smazání selhal")
+        finally:
+            self._nitka.discard(threading.current_thread())
 
     def cekat(self, timeout=10):
         """Počká na doběhnutí všech hlídačů; True, když doběhli."""

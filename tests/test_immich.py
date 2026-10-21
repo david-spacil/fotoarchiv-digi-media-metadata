@@ -1294,6 +1294,74 @@ def test_hlidac_opakovany_start_pusti_znovu(tmp_path, monkeypatch):
         ["a1", "a2"]
 
 
+def smazat_akci(app, nazev=EVENT):
+    r = app.test_client().post(f"/api/akce/{nazev}/smazat", json={
+        "relace": "r1", "potvrzeni": nazev, "duvod": "duplicita"})
+    assert r.status_code == 200, r.json
+    return r.json
+
+
+def skeny(fake):
+    return [w for w in fake.writes if w[1] == "/api/libraries/lib-1/scan"]
+
+
+def test_smazani_dokoncene_akce_spusti_sken(tmp_path, monkeypatch):
+    """Scénář Smazání dokončené akce: odpověď hned, sken na pozadí."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch, zapis=True)
+    smazat_akci(app)
+    assert app.config["IMMICH_HLIDAC"].cekat(5)
+    assert len(skeny(fake)) == 1
+    assert app.config["IMMICH"].alba.polozka(EVENT) is None
+
+
+def test_smazani_nedokoncene_akce_bez_skenu(tmp_path, monkeypatch):
+    app, fake = hlidaci_setup(tmp_path, monkeypatch, zapis=True)
+    ws = app.config["WORKSPACE"]
+    ws.event_dir(EVENT).rename(ws.archiv / f"{EVENT}.ignored")
+    smazat_akci(app)
+    assert app.config["IMMICH_HLIDAC"].cekat(5)
+    assert skeny(fake) == []
+
+
+def test_smazani_immich_nedostupny(tmp_path, monkeypatch):
+    """Chyba skenu smazání nezabrání, jen se zapíše do logu."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch, zapis=True)
+    fake.fail = "/api"
+    smazat_akci(app)
+    assert app.config["IMMICH_HLIDAC"].cekat(5)
+    assert not (app.config["WORKSPACE"].archiv / EVENT).exists()
+
+
+def test_smazani_zastavi_hlidace(tmp_path, monkeypatch):
+    """Hlídač smazané akce skončí a nevrátí její stav do `.work`."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch, zapis=True,
+                              interval=0.05, limit=3.0)
+    hlidac = app.config["IMMICH_HLIDAC"]
+    assert hlidac.spust(EVENT)
+    time.sleep(0.1)                       # hlídač čeká na assety
+    smazat_akci(app)
+    assert hlidac.cekat(5)
+    assert app.config["IMMICH"].alba.polozka(EVENT) is None
+
+
+def test_obnoveni_dokoncene_akce_spusti_hlidace(tmp_path, monkeypatch):
+    """Scénář Obnovení dokončené akce spustí sken: assety se vrátí
+    z offline a album se udržuje jako po dokončení."""
+    app, fake = hlidaci_setup(tmp_path, monkeypatch, zapis=True)
+    id = smazat_akci(app)["id"]
+    hlidac = app.config["IMMICH_HLIDAC"]
+    assert hlidac.cekat(5)
+    fake.add("a1", f"{ROOT}/{EVENT}/P9109996.JPG", face("Vzorný, Tomáš"))
+    fake.add("a2", f"{ROOT}/{EVENT}/b.jpg", face("Vzorný, Tomáš"))
+    monkeypatch.setattr(app.config["IMMICH"], "trigger", lambda: None)
+    r = app.test_client().post(f"/api/kos/{id}/obnovit")
+    assert r.status_code == 200, r.json
+    assert hlidac.cekat(5)
+    assert len(skeny(fake)) == 2
+    assert sorted(next(iter(fake.albums.values()))["assetIds"]) == \
+        ["a1", "a2"]
+
+
 def test_hlidac_bez_nastaveneho_immiche(tmp_path):
     app = create_app(tmp_path, tmp_path / "work", prihlaseni=False)
     assert app.config["IMMICH_HLIDAC"].spust(EVENT) is False

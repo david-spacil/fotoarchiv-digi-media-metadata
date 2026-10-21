@@ -36,6 +36,13 @@
   stejného názvu tak začíná s čistým stavem a obnovení stav vrátí.
   Koš nesplňuje vzor akce a má příponu `.ignored`: seznam akcí, index,
   návrhy jmen ani Immich ho nevidí.
+  - **Smazání a obnovení dokončené akce** (složka bez `.ignored`)
+    spustí na pozadí sken knihovny v Immichi (viz [Immich](immich.md)):
+    po smazání Immich assety hned označí offline a přesune do svého
+    koše, po obnovení je při skenu vrátí. Obnova s obličeji tedy
+    předpokládá, že koš Immiche drží assety déle než 7 dní (výchozí
+    30 dní); při vypnutém koši Immiche nebo kratší lhůtě se akce po
+    obnovení rozpozná znovu.
   - **Obnovení** vrátí složku pod původní název; když mezitím vznikla
     akce stejného názvu (s příponou i bez), odmítne se.
   - **Vysypání** je jediné trvalé mazání v aplikaci: server při startu

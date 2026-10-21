@@ -626,7 +626,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         """Admin přesune akci do koše (`trash.delete`); trvale ji smaže
         až vysypání po lhůtě. `potvrzeni` = opsaný název akce, `duvod`
         povinný; jméno z relace. Smazání si vezme zámek akce pro relaci
-        z těla (cizí platný zámek = 409). Ve vývojovém režimu jen plán."""
+        z těla (cizí platný zámek = 409). U dokončené akce pak sken
+        knihovny Immiche na pozadí. Ve vývojovém režimu jen plán."""
         if not g.user["admin"]:
             return {"chyba": "jen_admin"}, 403
         event_dir(nazev)
@@ -645,6 +646,8 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         if not ok:
             return {"chyba": "obsazeno", "drzitel": info}, 409
         try:
+            # Dokončenou akci (bez přípony) Immich zná: po přesunu sken.
+            dokoncena = ws.event_dir(nazev).name == nazev
             result = trash.delete(ws, nazev, jmeno, duvod, kos_stav)
         except Collision:
             return {"chyba": "kolize_pripony"}, 409
@@ -655,6 +658,9 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
             return {"chyba": "presun_selhal", "detail": str(e)}, 500
         finally:
             locks.release(nazev, relace)
+        hlidac.zastavit(nazev)
+        if dokoncena:
+            hlidac.skenovat()
         return dict(result, plan=False, index=archive_index.write(ws))
 
     @app.get("/api/kos")
@@ -675,6 +681,9 @@ def create_app(archiv, work, zapis=False, locks=None, geocoder=None,
         except OSError as e:
             log.warning("koš: obnovení %s selhalo: %s", id, e)
             return {"chyba": "presun_selhal", "detail": str(e)}, 500
+        if ws.event_dir(nazev).name == nazev:
+            # Dokončená akce: sken vrátí assety z offline, hlídač album.
+            hlidac.spust(nazev)
         return {"nazev": nazev, "index": archive_index.write(ws)}
 
     def touch(nazev, doc, stored):

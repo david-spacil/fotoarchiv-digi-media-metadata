@@ -98,7 +98,8 @@ poruší:
   jedné osoby), **dokončení a synchronizace** (`albums.py`: alba akcí
   se jen doplňují a odebírají z nich assety, nikdy se nemaže asset;
   album smaže jen vysypání koše u trvale smazané akce; sken knihovny
-  jen hlídač po dokončení, ne pravidelná synchronizace). Zapisuje se i ve vývojovém režimu, testy jen proti
+  jen hlídač po dokončení či obnovení z koše a smazání dokončené akce
+  do koše, ne pravidelná synchronizace). Zapisuje se i ve vývojovém režimu, testy jen proti
   `FakeImmich`. Nástroj smí archivář a admin (`g.user["archivar"]`,
   ne `ADMIN_PREFIXES`), bez zámku akce a nikdy nemění `_metadata.json`.
   Stav nástroje a Immiche je jen ve `.work/`: `immich-alba.json` (akce →

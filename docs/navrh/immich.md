@@ -15,7 +15,11 @@ jiná chyba počká na další vysypání). Pravidelná synchronizace totéž op
 každou dokončenou akci (bez skenu), takže album dorovná i po restartu
 serveru nebo smazání alba v Immichi; hlídač je jen zrychlení. Vazba
 akce → id alba je v `.work/immich-alba.json`; při ztrátě souboru se
-album dohledá podle názvu, takže nevznikne duplicitní.
+album dohledá podle názvu, takže nevznikne duplicitní. Sken knihovny
+spouští server i po smazání dokončené akce do koše (jen sken; běžící
+hlídač akce ukončí) a po jejím obnovení (celý hlídač jako po
+dokončení), aby Immich assety hned označil offline, resp. je vrátil;
+chyba skenu jde jen do logu.
 
 **Stav akce v Immichi** vidí každý přihlášený uživatel na kartě akce
 a na ploše akce; bez nastaveného Immiche se nezobrazuje. Hlídač
