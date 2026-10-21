@@ -75,7 +75,7 @@
 
 - [x] 5.1 Celé testy: `.venv/bin/python -m pytest -q`
   a `node --test tests/js/*.test.mjs` zelené.
-- [ ] 5.2 Ověřit proti testovacímu Immichi (ne produkčnímu, s dummy
+- [x] 5.2 Ověřit proti testovacímu Immichi (ne produkčnímu, s dummy
   fotkami): dokončená akce smazaná do koše → sken → obnovení → sken;
   zapsat do `docs/navrh/immich.md`, zda se assety vrátily i s obličeji.
 

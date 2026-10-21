@@ -85,8 +85,9 @@ z nich. Autor bez souboru MUST NOT být uveden.
 
 ### Requirement: Okamžiky generování
 Aplikace SHALL index přegenerovat po provedení importu, po exportu XMP
-z aplikace (dokončení akce) a jednou na konci
-příkazu `exportovat`. Uložení `_metadata.json` a kontrola exportu
+z aplikace (dokončení akce), po smazání akce do koše, jejím obnovení
+a trvalém smazání (viz `event-trash`) a jednou na konci příkazu
+`exportovat`. Uložení `_metadata.json` a kontrola exportu
 nanečisto MUST NOT index generovat. Soubor indexu SHALL být zapsán
 atomicky a jen tehdy, když chybí nebo se jeho obsah liší; obsah MUST
 NOT obsahovat čas generování. Selhání zápisu indexu MUST NOT způsobit
@@ -97,6 +98,10 @@ selhání exportu ani importu; aplikace ho SHALL ohlásit jako varování.
   fotky
 - **THEN** oba indexy obsahují akci `nová akce` jako *rozpracováno*
   s údaji akce a autory z importu a s počtem fotek z importu
+
+#### Scenario: Smazání akce
+- **WHEN** admin smaže akci `2026-10-06 nová akce` do koše
+- **THEN** oba indexy ji už neobsahují
 
 #### Scenario: Bez změny se nezapisuje
 - **WHEN** se export spustí znovu bez změny metadat a souborů
@@ -109,6 +114,7 @@ selhání exportu ani importu; aplikace ho SHALL ohlásit jako varování.
 #### Scenario: Index nejde zapsat
 - **WHEN** zápis `_INDEX.html` selže a sidecary se zapsaly
 - **THEN** export skončí úspěšně s varováním o indexu
+
 
 ### Requirement: Umístění podle režimu
 V produkčním režimu SHALL být index zapsán do kořene archivu a odkazy

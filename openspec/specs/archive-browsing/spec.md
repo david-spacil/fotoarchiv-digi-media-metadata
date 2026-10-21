@@ -19,7 +19,9 @@ Ostatní složky a soubory první úrovně MUST být ignorovány a nesmí se
 měnit. Výjimkou jsou soubory indexu `_INDEX.html` a `_INDEX.md`, které
 v produkčním režimu zapisuje aplikace (viz `archive-index`), a složka
 `přetřídit`, ze které v produkčním režimu přesouvá soubory import (viz
-`unsorted-import`). Seznam SHALL obsahovat odkaz na stránku Přetřídit.
+`unsorted-import`), a složka koše `_kos.ignored`, do které přesouvá
+smazané akce (viz `event-trash`). Seznam SHALL obsahovat odkaz na
+stránku Přetřídit a adminovi odkaz na stránku Koš.
 Seznam SHALL nabídnout přepínač podoby karet: dlaždice (výchozí)
 a řádky; volbu si pamatuje prohlížeč.
 
@@ -41,6 +43,11 @@ a řádky; volbu si pamatuje prohlížeč.
 - **THEN** `fotky mimo akce` a `přednášky SKLEP TIC` zůstanou beze
   změny
 
+#### Scenario: Koš v kořeni archivu
+- **WHEN** kořen archivu obsahuje `_kos.ignored` se smazanou akcí
+  `2026-04-28 kontrola Stezky`
+- **THEN** seznam akcí ji neuvádí a admin vidí odkaz na Koš
+
 #### Scenario: Karta akce
 - **WHEN** seznam ukazuje akci `2026-04-28 kontrola Stezky` s 50 soubory
 - **THEN** karta uvádí `2026-04-28`, název `kontrola Stezky` jako odkaz
@@ -50,6 +57,7 @@ a řádky; volbu si pamatuje prohlížeč.
 - **WHEN** uživatel otevře seznam poprvé, přepne na řádky a znovu
   načte stránku
 - **THEN** seznam je napoprvé v dlaždicích a po načtení v řádcích
+
 
 ### Requirement: Stav akce
 U každé akce SHALL seznam uvádět počet souborů v kořeni (bez
