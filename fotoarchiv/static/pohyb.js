@@ -131,3 +131,23 @@ export function naPas(sirkaPasu, sirkaDlazdice) {
       sirkaDlazdice <= 0) return 1;
   return Math.max(1, Math.floor(sirkaPasu / sirkaDlazdice));
 }
+
+// Lehká lupa kroku skupin: cílový soubor pro klávesu `key` (←/→ o jeden
+// v pořadí mřížky bez přetečení, Home/End kraje). Jiné klávesy, klávesy
+// s modifikátorem a pohyb za kraj vrací null. Bez aktuálního souboru
+// v pořadí začne prvním.
+const LUPA_KROKU = { ArrowLeft: -1, ArrowRight: 1, Home: "-", End: "+" };
+
+export function vLupeKroku(order, current, e) {
+  const smer = LUPA_KROKU[e.key];
+  if (smer === undefined || !order.length) return null;
+  if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return null;
+  const i = order.indexOf(current);
+  let j;
+  if (smer === "-") j = 0;
+  else if (smer === "+") j = order.length - 1;
+  else if (i < 0) j = 0;
+  else j = i + smer;
+  if (j < 0 || j >= order.length || j === i) return null;
+  return order[j];
+}
