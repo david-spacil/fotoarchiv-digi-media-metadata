@@ -22,7 +22,9 @@ import { showNaming } from "./naming.js";
 import { pripojNaseptavani } from "./naseptavani.js";
 import { jmenaOsob, ramecek } from "./obliceje.js";
 import { osmUrl } from "./osm.js";
-import { klavesa, naPas, oddil, radek, stranka } from "./pohyb.js";
+import {
+  klavesa, naPas, oddil, radek, stranka, vLupeKroku,
+} from "./pohyb.js";
 import {
   applyToggle, excludedCounts, importCount, planToggle, withExcluded,
 } from "./vylouceni.js";
@@ -476,11 +478,14 @@ document.addEventListener("keydown", (e) => {
     if (loupe) setView("grid");
     else select(new Set(), null);
   } else if (!ws) {
-    // Enter a P ve skupinovém kroku nic nedělají, Delete jen v importu
-    // (vyloučení z importu).
+    // Ve skupinovém kroku Enter otevře lehkou lupu, P nic nedělá,
+    // Delete jen v importu (vyloučení z importu).
     if (e.key === "Delete" && state.mode === "import") {
       e.preventDefault();
       toggleExcluded();
+    } else if (e.key === "Enter" && !e.target.closest("button, a")) {
+      e.preventDefault();
+      stepLoupe(state.current);
     }
   } else if (e.key === "Delete") {
     e.preventDefault();
@@ -1475,12 +1480,20 @@ function groupTools(afterChange) {
     groupIds().map((g) => h("option", { value: g }, groupName(g))));
   const nameInput = h("input", { placeholder: "název nové skupiny" });
   const back = state.mode === "import" && files.every(excludedFile);
+  // Krok skupin (průvodce, import) má lehkou lupu místo lupy plochy.
+  const krok = state.mode !== "workspace";
+  const lupa = krok ? h("button", { class: "with-icon",
+    title: "Lupa (Enter nebo dvojklik)",
+    onclick: () => stepLoupe(files.includes(state.current) ? state.current
+      : state.order.find((f) => state.sel.has(f))),
+  }, icon("lupa"), "Lupa") : null;
   return h("fieldset", { class: "tools" },
     h("legend", {}, `Skupina (${plural(files.length, "soubor", "soubory",
       "souborů")})`),
-    state.mode === "import" ? h("div", { class: "row" }, h("button", {
+    state.mode === "import" ? h("div", { class: "row" }, lupa, h("button", {
       title: "Del", onclick: toggleExcluded,
-    }, back ? "Vrátit do importu" : "Vyloučit z importu")) : null,
+    }, back ? "Vrátit do importu" : "Vyloučit z importu"))
+      : lupa ? h("div", { class: "row" }, lupa) : null,
     h("div", { class: "row" }, target,
       h("button", {
         onclick: () => {
@@ -1497,6 +1510,112 @@ function groupTools(afterChange) {
           dropEmptyGroups(afterChange);
         },
       }, "Nová skupina z výběru")));
+}
+
+// Lehká lupa kroku „Skupiny a autoři“ (průvodce i import): okno přes
+// stránku s velkým náhledem, ←/→ a Home/End po pořadí mřížky, v importu
+// Del přepíná vyloučení. Zobrazený soubor je aktuální a jediný vybraný;
+// mřížka zůstává pod oknem a po zavření je posunutá k němu.
+function stepLoupe(f) {
+  if (!f || !state.order.includes(f) ||
+      document.querySelector("dialog.steploupe")) return;
+  const vImportu = state.mode === "import";
+  let cur = f;
+  const media = h("div", { class: "media" });
+  const caption = h("div", { class: "caption" });
+  const tlacitko = (label, text, onclick) => h("button", {
+    class: "ico", title: label, "aria-label": label, onclick }, text);
+  const prev = tlacitko("Předchozí (←)", "‹", () => krok("ArrowLeft"));
+  const next = tlacitko("Další (→)", "›", () => krok("ArrowRight"));
+  const excl = vImportu ? h("button", { title: "Del",
+    onclick: () => vyloucit() }) : null;
+  const dialog = h("dialog", { class: "steploupe", tabindex: -1,
+    "aria-label": "Lupa",
+    onclick: (e) => {
+      if (e.target === dialog || e.target === media) dialog.close();
+    },
+    onclose: () => {
+      dialog.remove();
+      const el = document.querySelector(
+        `#grid .tile[data-file="${CSS.escape(cur)}"]`);
+      el?.scrollIntoView({ block: "nearest" });
+      el?.focus({ preventScroll: true });
+    },
+  },
+  h("div", { class: "bar" }, caption, excl,
+    tlacitko("Zavřít (Esc)", "×", () => dialog.close())),
+  h("div", { class: "stage" }, prev, media, next));
+
+  const ukaz = (g) => {
+    cur = g;
+    state.current = g;
+    state.anchor = g;
+    select(new Set([g]), null);
+    kresli();
+  };
+  const krok = (key) => {
+    const g = vLupeKroku(state.order, cur, { key });
+    if (g) ukaz(g);
+  };
+  const vyloucit = async () => {
+    await toggleExcluded();
+    if (dialog.open) kresli();
+  };
+  const kresli = () => {
+    const info = state.scan[cur] || {};
+    const vylouceny = excludedFile(cur);
+    const i = state.order.indexOf(cur);
+    const ph = (text) => h("span", { class: "ph" }, text);
+    if (!state.present.has(cur)) {
+      media.replaceChildren(ph("Soubor chybí."));
+    } else {
+      // Hned malý náhled (z cache), po načtení 1600 px.
+      const img = h("img", { src: thumbUrl(cur), alt: "", draggable: false,
+        onerror: () => img.replaceWith(ph("bez náhledu")) });
+      const large = new Image();
+      const pro = cur;
+      large.onload = () => { if (cur === pro) img.src = large.src; };
+      large.src = thumbUrl(cur, LARGE);
+      media.replaceChildren(img);
+    }
+    media.classList.toggle("excluded", vylouceny);
+    // Nativní replaceChildren by null vypsal jako text.
+    caption.replaceChildren(...[h("span", { class: "fn" }, cur),
+      ` · ${i + 1} / ${state.order.length}`,
+      info.video ? h("span", { class: "tag" }, "video") : null,
+      vylouceny ? h("span", { class: "tag excl" }, icon("vyloucit"),
+        "vyloučeno z importu") : null].filter(Boolean));
+    prev.disabled = i <= 0;
+    next.disabled = i >= state.order.length - 1;
+    if (excl) {
+      excl.textContent = vylouceny ? "Vrátit do importu"
+        : "Vyloučit z importu";
+    }
+    // Sousedé dopředu, ať šipka nečeká na SMB.
+    dialog.preload = [i + 1, i - 1].map((n) => state.order[n])
+      .filter((g) => g && state.present.has(g)).map((g) => {
+        const im = new Image();
+        im.src = thumbUrl(g, LARGE);
+        return im;
+      });
+  };
+  dialog.addEventListener("keydown", (e) => {
+    const g = vLupeKroku(state.order, cur, e);
+    if (g) {
+      e.preventDefault();
+      ukaz(g);
+    } else if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home",
+      "End", "PageUp", "PageDown"].includes(e.key)) {
+      e.preventDefault(); // kraj nebo nepodporovaná klávesa: nic
+    } else if (e.key === "Delete" && vImportu) {
+      e.preventDefault();
+      vyloucit();
+    }
+  });
+  document.body.append(dialog);
+  dialog.showModal();
+  dialog.focus();
+  ukaz(f);
 }
 
 function mergeTools(gid, afterChange) {
@@ -1864,7 +1983,8 @@ function setupGrid(grid) {
 
   grid.addEventListener("dblclick", (e) => {
     const t = e.target.closest(".tile");
-    if (!t || state.mode !== "workspace") return;
+    if (!t) return;
+    if (state.mode !== "workspace") return stepLoupe(t.dataset.file);
     state.current = t.dataset.file;
     setView("loupe");
   });

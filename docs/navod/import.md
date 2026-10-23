@@ -90,8 +90,11 @@ popisovalo jen to, co se opravdu přenese.
 - **Skupiny a autoři:** mřížka náhledů přenášených fotek a videí
   (náhledy nahraných souborů i souborů zdroje v `přetřídit`, nic se
   nezapisuje) a panel jako v průvodci akce. Mřížka kroku se ovládá
-  klávesnicí jako na ploše, Esc ruší výběr souborů i skupiny; Enter a
-  P nic nedělají a **Del** (stejně jako tlačítko v panelu) přepíná
+  klávesnicí jako na ploše, Esc ruší výběr souborů i skupiny, Enter,
+  dvojklik a tlačítko „Lupa“ otevřou **lehkou lupu** jako v průvodci
+  akce (v ní Del a tlačítko vylučují zobrazený soubor; vyloučený je
+  zašedlý s označením), P nic nedělá a **Del** (stejně jako tlačítko
+  v panelu) přepíná
   **vyloučení z importu**: jsou-li všechna vybraná média vyloučená,
   vrátí je do importu, jinak všechna vybraná vyloučí; popisek tlačítka
   je podle výběru „Vyloučit z importu“ resp. „Vrátit do

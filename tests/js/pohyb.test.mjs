@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  klavesa, naPas, oddil, radek, stranka,
+  klavesa, naPas, oddil, radek, stranka, vLupeKroku,
 } from "../../fotoarchiv/static/pohyb.js";
 
 // Mřížka: 5 sloupců, dlaždice 100×100, mezera 20 px, každý oddíl
@@ -149,4 +149,46 @@ test("klavesa: šipky, stránka, kraj, Shift a nic neznámého", () => {
   assert.deepEqual(kl("Home"), { druh: "kraj", smer: -1, rozsir: false });
   assert.deepEqual(kl("End"), { druh: "kraj", smer: 1, rozsir: false });
   assert.equal(kl("x"), null);
+});
+
+// Lehká lupa kroku skupin (změna lupa-ve-skupinach).
+const PORADI = ["P1503718.JPG", "P1503719.JPG", "P1503720.JPG",
+  "P1503721.JPG"]; // první dva skupina DOD 2015_Lenka, pak DOD 2015_Olga
+const k = (key, mod = {}) => ({ key, ...mod });
+
+test("lupa kroku: šipka vpravo přejde přes hranici skupin", () => {
+  assert.equal(vLupeKroku(PORADI, "P1503719.JPG", k("ArrowRight")),
+    "P1503720.JPG");
+  assert.equal(vLupeKroku(PORADI, "P1503720.JPG", k("ArrowLeft")),
+    "P1503719.JPG");
+});
+
+test("lupa kroku: za krajem nepřeteče", () => {
+  assert.equal(vLupeKroku(PORADI, "P1503721.JPG", k("ArrowRight")), null);
+  assert.equal(vLupeKroku(PORADI, "P1503718.JPG", k("ArrowLeft")), null);
+  assert.equal(vLupeKroku(PORADI, "P1503718.JPG", k("Home")), null);
+});
+
+test("lupa kroku: Home a End skočí na kraje", () => {
+  assert.equal(vLupeKroku(PORADI, "P1503720.JPG", k("Home")),
+    "P1503718.JPG");
+  assert.equal(vLupeKroku(PORADI, "P1503719.JPG", k("End")),
+    "P1503721.JPG");
+});
+
+test("lupa kroku: ostatní klávesy a modifikátory ignoruje", () => {
+  for (const key of ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "a",
+    "Enter", "Delete"]) {
+    assert.equal(vLupeKroku(PORADI, "P1503719.JPG", k(key)), null, key);
+  }
+  for (const mod of [{ shiftKey: true }, { ctrlKey: true },
+    { metaKey: true }, { altKey: true }]) {
+    assert.equal(vLupeKroku(PORADI, "P1503719.JPG", k("ArrowRight", mod)),
+      null, JSON.stringify(mod));
+  }
+});
+
+test("lupa kroku: bez aktuálního začne prvním, prázdné pořadí nic", () => {
+  assert.equal(vLupeKroku(PORADI, null, k("ArrowRight")), "P1503718.JPG");
+  assert.equal(vLupeKroku([], null, k("End")), null);
 });
