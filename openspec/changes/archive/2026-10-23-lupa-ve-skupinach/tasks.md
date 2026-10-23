@@ -40,4 +40,4 @@
   režim, úzké okno ~400 px; lupa plochy beze změny. **Ručně
   neověřeno:** dotyk na skutečném telefonu (jen emulace šířky 400 px:
   okno se vejde, nic nepřetéká)
-- [ ] 4.3 Ruční zkouška uživatelem na reálném importu
+- [x] 4.3 Ruční zkouška uživatelem na reálném importu
