@@ -1,16 +1,16 @@
 ## 1. Ověření na Linuxu (agent na Linuxu, před implementací)
 
-- [ ] 1.1 Zapsat distribuci a desktopové prostředí; připojit telefon
+- [x] 1.1 Zapsat distribuci a desktopové prostředí; připojit telefon
   (přenos souborů, odemčený) a zjistit, kde se objeví (`gio mount -l`,
   `/run/user/$UID/gvfs/`), případně kio-mtp u KDE
-- [ ] 1.2 Ověřit, že je vidět `DCIM/Camera`, a změřit výpis
+- [x] 1.2 Ověřit, že je vidět `DCIM/Camera`, a změřit výpis
   (počet položek, čas); porovnat s Windows (871 položek za 1,3 s)
-- [ ] 1.3 Zkopírovat jednu fotku `PXL_*.jpg` (se svolením uživatele,
+- [x] 1.3 Zkopírovat jednu fotku `PXL_*.jpg` (se svolením uživatele,
   reálná data) do scratch adresáře; ověřit SHA-256 proti kopii
   z Windows a GPS `exiftool -n -GPSLatitude -GPSLongitude`
-- [ ] 1.4 Ověřit čtení jen začátku souboru přes gvfs (EXIF náhled
+- [x] 1.4 Ověřit čtení jen začátku souboru přes gvfs (EXIF náhled
   bez stažení celé fotky) a jeho rychlost
-- [ ] 1.5 Podle výsledků potvrdit adaptér gvfs, nebo přejít na libmtp;
+- [x] 1.5 Podle výsledků potvrdit adaptér gvfs, nebo přejít na libmtp;
   doplnit design.md (Context, Open Questions) a issue #69
 
 ## 2. Kostra klienta
@@ -27,14 +27,17 @@
 - [ ] 3.1 Windows: `Windows.Media.Import`, výběr zařízení (přeskočit
   zdroje bez položek a s chybou), filtr camera roll, náhled,
   kopie do dočasné složky bez podsložky s datem
-- [ ] 3.2 Linux: gvfs (nebo libmtp podle 1.5), výpis `DCIM/Camera`,
-  náhled z EXIF hlavičky, kopie
+- [ ] 3.2 Linux: gvfs, výpis složky (výchozí `DCIM/Camera`), strom
+  složek úložiště, náhled z EXIF hlavičky, kopie; čekání na připojení
+  telefonu (sledování svazků)
+- [ ] 3.4 Windows: výběr jiné složky (cesta položky z
+  `IMAGES_AND_VIDEOS`, nebo Shell MTP); ověřit na telefonu
 - [ ] 3.3 Hlášky: žádné zařízení, zamčený telefon, odpojení za běhu
 
 ## 4. Evidence, výběr a upload
 
-- [ ] 4.1 Evidence nahraných po zařízení (název + velikost + datum),
-  testy
+- [ ] 4.1 Evidence nahraných po zařízení (složka + název + velikost
+  + datum) a poslední otevřená složka, testy
 - [ ] 4.2 Přihlášení, založení importu, nahrání po jednom se `mtime`,
   odmítnutí HTTP mimo localhost; testy proti testovacímu serveru
   aplikace (Flask test client nebo živý cheroot na localhostu)
@@ -45,15 +48,18 @@
 
 ## 5. UI
 
-- [ ] 5.1 Mřížka náhledů od nejnovějších, líné načítání náhledů
+- [ ] 5.1 Mřížka náhledů od nejnovějších, líné načítání náhledů;
+  zástupný náhled a dopočet z celého souboru u položek bez EXIF
+  náhledu (jen viditelné)
+- [ ] 5.4 Volba složky telefonu (strom), průběh pomalého výpisu
 - [ ] 5.2 Výběr jednotlivě, rozsahem, „vybrat nové“; počet a velikost
 - [ ] 5.3 Průběh nahrávání a souhrn nenahraných
 
 ## 6. Spuštění po připojení a sestavení
 
 - [ ] 6.1 `--registrovat` / `--odregistrovat`: AutoPlay v HKCU
-  (Windows), `.desktop` s `x-content/image-dcf` (Linux); ověřit
-  ručně na obou systémech
+  (Windows), `.desktop` pro menu aplikací (Linux, bez nabídky
+  po připojení – MTP svazek nehlásí `x-content`); ověřit ručně
 - [ ] 6.2 PyInstaller onefile pro Windows a Linux, workflow
   v `.github/workflows/`
 - [ ] 6.3 Dokumentace: `docs/navod/` (použití klienta),

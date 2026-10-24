@@ -13,12 +13,13 @@ Windows: připojit telefon, vybrat fotky od nejnovějších, odeslat.
 - Nový desktopový klient (Python, jeden spustitelný soubor bez
   instalace) pro Windows a Linux v novém adresáři `klient/`.
 - Klient vypíše média z fotoaparátu připojeného telefonu (USB, MTP)
-  s náhledy od nejnovějších, uživatel označí výběr a klient pošle
+  s náhledy od nejnovějších; uživatel může otevřít i jinou složku
+  telefonu, uživatel označí výběr a klient pošle
   originální bajty do stávajícího importu na serveru. Pak otevře
   prohlížeč na průvodci importem v kroku přehled.
 - Klient si pamatuje, co z telefonu už nahrál, a nabízí výběr nových.
-- Po připojení telefonu ho jde spustit z nabídky systému (AutoPlay ve
-  Windows, obsluha `x-content/image-dcf` v Linuxu).
+- Ve Windows ho jde spustit z nabídky AutoPlay po připojení telefonu;
+  v Linuxu se spouští ručně a na připojení telefonu počká.
 - Server se nemění: klient používá stávající přihlášení a API importu.
 
 ## Capabilities

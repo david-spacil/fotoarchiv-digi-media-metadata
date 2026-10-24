@@ -24,14 +24,32 @@ připojit, odemknout a zapnout přenos souborů.
 - **THEN** klient zobrazí výzvu k odemčení a po odemčení výpis načte
 
 ### Requirement: Výpis médií z fotoaparátu
-Klient SHALL vypsat fotky a videa z fotoaparátu telefonu (`DCIM`,
-bez WhatsAppu, snímků obrazovky a podobně) s náhledem, názvem
-a datem, seřazené od nejnovějších.
+Klient SHALL po připojení vypsat fotky a videa ze složky fotoaparátu
+telefonu (`DCIM/Camera`, bez WhatsAppu, snímků obrazovky a podobně)
+s náhledem, názvem a datem, seřazené od nejnovějších. Když fotka nemá
+náhled v EXIF, klient SHALL ukázat zástupný náhled a skutečný doplnit
+později.
 
 #### Scenario: Řazení
 - **WHEN** telefon má `PXL_20260101_120000000.MP.jpg`
   a `PXL_20260102_090000000.jpg`
 - **THEN** klient ukáže `PXL_20260102_090000000.jpg` jako první
+
+#### Scenario: Fotka bez EXIF náhledu
+- **WHEN** fotka HDR+ nemá v EXIF náhled
+- **THEN** výpis ji ukáže se zástupným náhledem a nečeká na stažení
+  celého souboru
+
+### Requirement: Jiná složka telefonu
+Uživatel SHALL moci otevřít i jinou složku úložiště telefonu než
+složku fotoaparátu a vybírat média z ní. Klient SHALL si u telefonu
+pamatovat naposledy otevřenou složku. Evidence nahraných MUST
+rozlišovat stejně pojmenované soubory z různých složek.
+
+#### Scenario: Fotky z fotoaparátu Canon
+- **WHEN** uživatel otevře `DCIM/Export` a označí 5 fotek
+- **THEN** klient nahraje těch 5 fotek stejně jako z `DCIM/Camera`
+  a při příštím připojení otevře `DCIM/Export`
 
 ### Requirement: Výběr médií
 Uživatel SHALL moci označit jednotlivá média, souvislý rozsah a všechna
@@ -80,11 +98,15 @@ heslo.
   zapíše jen nahrané a archiv zůstane beze změny
 
 ### Requirement: Spuštění po připojení
-Klient SHALL jít spustit z nabídky, kterou systém ukáže po připojení
-telefonu (AutoPlay ve Windows, obsluha médií s fotkami v Linuxu),
-a také ručně.
+Klient SHALL jít ve Windows spustit z nabídky AutoPlay po připojení
+telefonu a na obou systémech ručně. Spuštěný klient bez připojeného
+telefonu SHALL čekat na jeho připojení a pak ho načíst.
 
 #### Scenario: AutoPlay
 - **WHEN** uživatel ve Windows připojí telefon a v nabídce AutoPlay
   zvolí Fotoarchiv
 - **THEN** klient se spustí s tímto telefonem vybraným
+
+#### Scenario: Ruční spuštění před připojením
+- **WHEN** uživatel v Linuxu spustí klient a teprve pak připojí telefon
+- **THEN** klient telefon sám najde a vypíše složku fotoaparátu
