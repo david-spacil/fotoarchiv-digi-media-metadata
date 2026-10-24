@@ -13,6 +13,8 @@ Práce s akcí od importu po dokončení, v pořadí, jak jde za sebou.
    nebo stávající akce.
    - [Import ze složky přetřídit](navod/import-z-pretridit.md) —
      převzetí nezatříděných složek (admin a archivář).
+   - [Import z telefonu](navod/import-z-telefonu.md) — klient na PC
+     pro fotky z telefonu připojeného kabelem (poloha zůstane).
 2. [Seznam akcí](navod/seznam-akci.md) — fronta práce, hotovost,
    filtry a hledání.
 3. [Průvodce akcí](navod/pruvodce-akce.md) — první otevření akce:
@@ -43,6 +45,8 @@ v obou režimech. Plocha je stavěná na okna od 1280 × 720 CSS px
 - [Nastavení Immiche](provoz/nastaveni-immich.md) — adresa, API klíč
   a jeho oprávnění, knihovna.
 - [Příkazy](provoz/prikazy.md) — přehled příkazů `python -m fotoarchiv`.
+- [Klient pro import z telefonu](provoz/klient.md) — vývoj, testy,
+  sestavení a registrace v systému.
 
 ## Návrh
 

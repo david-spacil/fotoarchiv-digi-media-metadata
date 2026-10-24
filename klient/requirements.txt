@@ -1,0 +1,4 @@
+# Klient pro import z telefonu (samostatně od serveru).
+# Testy klienta potřebují navíc requirements.txt serveru a pytest.
+PySide6-Essentials==6.12.0
+pyinstaller==6.16.0
